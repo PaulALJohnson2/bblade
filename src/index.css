@@ -1,0 +1,126 @@
+/*
+ * BBlade Design Tokens — "Cobalt"
+ * Electric blue on cool slate. Crisp, technical, trustworthy.
+ *
+ * Single source of truth for color. The canonical tokens below (--bg, --surface,
+ * --primary, …) come straight from the BBlade Design System (design/BBlade-Design-System.html).
+ * The --color-* aliases preserve the names existing app code already consumes, so
+ * everything updates from one place. JS inline styles mirror these in utils/theme.js.
+ */
+:root {
+  /* ===== Canonical tokens — Light ===== */
+  --bg: #F5F7FA;
+  --surface: #FFFFFF;
+  --surface-sunken: #EEF1F6;
+
+  --text-primary: #131A24;
+  --text-secondary: #5A6675;
+  --text-muted: #8A93A3;
+
+  --border: #E2E7EE;
+  --border-strong: #CFD6E0;
+
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-soft: #EAF0FE;
+  --on-primary: #FFFFFF;
+
+  --success: #197A4B;  --success-soft: #E6F4EC;
+  --warning: #C77A18;  --warning-soft: #FBF0DE;
+  --danger:  #DC3B40;  --danger-soft:  #FCEAEA;
+
+  --header-bg: #2563EB; --header-text: #FFFFFF; --header-sub: #C8D8FB; --header-btn: #3D77EE;
+
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.06);
+  --shadow-md: 0 6px 16px rgba(16,24,40,.10);
+
+  /* ===== Back-compat aliases (consumed by existing app code) ===== */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-soft);
+  --color-primary-dark: #1E40AF;
+  --color-primary-darker: #1E3A8A;
+
+  --color-success: var(--success);
+  --color-success-dark: #14613B;
+  --color-error: var(--danger);
+  --color-error-dark: #C32F34;
+  --color-warning: var(--warning);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-border: var(--border-strong);
+  --color-border-light: var(--border);
+
+  --color-bg-light: var(--surface-sunken);
+  --color-bg-page: var(--bg);
+  --color-bg-card: var(--surface);
+  --color-bg-header: var(--header-bg);
+
+  --color-shadow: rgba(16,24,40,.10);
+}
+
+/* ===== Dark mode ===== */
+[data-theme="dark"] {
+  --bg: #0C1016;
+  --surface: #161C26;
+  --surface-sunken: #11161E;
+
+  --text-primary: #EAEEF5;
+  --text-secondary: #93A0B2;
+  --text-muted: #6B7686;
+
+  --border: #283242;
+  --border-strong: #36425A;
+
+  --primary: #4F8BFF;
+  --primary-hover: #6B9DFF;
+  --primary-soft: #1B2740;
+  --on-primary: #08152E;
+
+  --success: #34B27B;  --success-soft: #143025;
+  --warning: #E0A038;  --warning-soft: #2E2614;
+  --danger:  #F0716E;  --danger-soft:  #2A1719;
+
+  --header-bg: #1B3A82; --header-text: #FFFFFF; --header-sub: #A7C2F5; --header-btn: #27488F;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.30);
+  --shadow-md: 0 8px 20px rgba(0,0,0,.45);
+
+  /* Back-compat literals that don't alias a canonical token */
+  --color-primary-dark: #27488F;
+  --color-primary-darker: #1B3A82;
+  --color-success-dark: #2A8B5F;
+  --color-error-dark: #D85C59;
+  --color-shadow: rgba(0,0,0,.45);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  /* Remove the grey square tap flash on mobile (it ignores border-radius) */
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg-page);
+  color: var(--color-text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+#root {
+  min-height: 100vh;
+}

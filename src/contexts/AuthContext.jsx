@@ -1,0 +1,217 @@
+/**
+ * AuthContext — Google sign-in + per-account authorization.
+ *
+ * Flow:
+ *   1. User signs in with Google (Firebase Auth).
+ *   2. We check the account's `members` for one whose `email` matches — that's
+ *      the allowlist. Match → authorized (with the member's role). No match →
+ *      access denied + signed out. (Bootstrap: if no member has an email yet,
+ *      the first signed-in user is allowed, so you can't lock yourself out.)
+ *   3. Once authorized, the tenant's live data (venue, account, members) loads.
+ *
+ * Tenant is still the hardcoded ACCOUNT_ID/VENUE_ID (single pub, no switcher).
+ * Counts are attributed to the signed-in user. StockTaking consumes useAuth()
+ * unchanged.
+ */
+
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { auth } from '../firebase/config';
+import { ACCOUNT_ID, VENUE_ID, venuePath } from '../config/app';
+import {
+  subscribeToVenue,
+  saveVenue as saveVenueSvc,
+  subscribeToAccount,
+  saveAccount as saveAccountSvc,
+  subscribeToMembers,
+  getMembers,
+  saveMember as saveMemberSvc,
+  deleteMember as deleteMemberSvc,
+} from '../services/apiService';
+
+const AuthContext = createContext({});
+
+export const useAuth = () => useContext(AuthContext);
+
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// Popups are unreliable on mobile (iOS Safari blocks them); use a full-page
+// redirect there instead. The auth handler is same-origin (authDomain = the
+// Hosting domain), so redirect completes without the storage-partition error.
+const isMobileDevice = () =>
+  typeof navigator !== 'undefined' &&
+  /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
+
+export const AuthProvider = ({ children }) => {
+  const PATH = venuePath(ACCOUNT_ID, VENUE_ID);
+
+  // ---- auth state ----
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authorized, setAuthorized] = useState(false);
+  const [role, setRole] = useState('staff');
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+
+  // ---- tenant data (loaded once authorized) ----
+  const [venueName, setVenueName] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [entitlements, setEntitlements] = useState({});
+  const [members, setMembers] = useState([]);
+
+  // Listen for Google sign-in / sign-out and authorize against members.
+  useEffect(() => {
+    // Complete a redirect sign-in (mobile) and surface any error from it.
+    getRedirectResult(auth).catch((err) => {
+      console.error('Redirect sign-in error:', err);
+      setAuthError('Sign-in failed. Please try again.');
+    });
+
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setCurrentUser(null);
+        setAuthorized(false);
+        setRole('staff');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Ensure the auth token is minted before any Firestore read, otherwise
+        // a redirect sign-in can fire reads before the token attaches and get
+        // permission-denied.
+        await user.getIdToken();
+
+        const res = await getMembers(ACCOUNT_ID);
+        if (!res.success) {
+          // Don't silently treat a failed access check as a bootstrap; surface it.
+          throw new Error(res.error || 'permission-denied');
+        }
+        const list = res.data;
+        const withEmail = list.filter((m) => m.email);
+        const match = list.find(
+          (m) => m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase()
+        );
+
+        if (withEmail.length === 0 || match) {
+          // Authorized (matched member, or bootstrap when no allowlist exists yet)
+          setRole(match?.role || 'owner');
+          setCurrentUser(user);
+          setAuthorized(true);
+          setAuthError(null);
+        } else {
+          setAuthError(
+            'Access denied — this Google account is not authorised. Ask an administrator to add you.'
+          );
+          await signOut(auth);
+          setCurrentUser(null);
+          setAuthorized(false);
+        }
+      } catch (err) {
+        console.error('Authorization error:', err);
+        setAuthError('Could not verify access. Please try again.');
+        await signOut(auth);
+        setCurrentUser(null);
+        setAuthorized(false);
+      } finally {
+        setLoading(false);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Live tenant data — only while authorized.
+  useEffect(() => {
+    if (!authorized) {
+      setVenueName(''); setAccountName(''); setEntitlements({}); setMembers([]);
+      return;
+    }
+    const unsubVenue = subscribeToVenue(PATH, (d) => setVenueName(d?.name || ''), (e) => console.error(e));
+    const unsubAcct = subscribeToAccount(ACCOUNT_ID, (d) => {
+      setAccountName(d?.name || '');
+      setEntitlements(d?.entitlements || {});
+    }, (e) => console.error(e));
+    const unsubMembers = subscribeToMembers(ACCOUNT_ID, (list) => setMembers(list || []), (e) => console.error(e));
+    return () => { unsubVenue(); unsubAcct(); unsubMembers(); };
+  }, [authorized, PATH]);
+
+  // ---- auth actions ----
+  const loginWithGoogle = async () => {
+    try {
+      setAuthError(null);
+      if (isMobileDevice()) {
+        // Full-page redirect; the browser navigates away and returns to the app.
+        await signInWithRedirect(auth, googleProvider);
+        return { success: true };
+      }
+      await signInWithPopup(auth, googleProvider);
+      return { success: true };
+    } catch (error) {
+      if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+        return { success: false, error: 'cancelled' };
+      }
+      return { success: false, error: error.message };
+    }
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+  };
+
+  // ---- bound writers for the current tenant ----
+  const saveVenue = (data) => saveVenueSvc(PATH, data);
+  const saveAccount = (data) => saveAccountSvc(ACCOUNT_ID, data);
+  const saveMember = (memberId, data) => saveMemberSvc(ACCOUNT_ID, memberId, data);
+  const deleteMember = (memberId) => deleteMemberSvc(ACCOUNT_ID, memberId);
+
+  // Counts are attributed to the signed-in user.
+  const displayName = currentUser?.displayName || currentUser?.email || 'Staff';
+
+  const value = {
+    currentUser,
+    userProfile: { displayName, role },
+    authorized,
+    loading,
+    authError,
+    clearAuthError: () => setAuthError(null),
+    loginWithGoogle,
+    logout,
+
+    // Tenant context
+    accountId: ACCOUNT_ID,
+    accountName,
+    entitlements,
+    selectedPub: { id: VENUE_ID, accountId: ACCOUNT_ID, name: venueName, path: PATH },
+    accessiblePubs: [{ id: VENUE_ID, accountId: ACCOUNT_ID, name: venueName, path: PATH }],
+
+    // Venue + account settings
+    pubName: venueName,
+    saveVenue,
+    saveAccount,
+
+    // Members (staff)
+    members,
+    saveMember,
+    deleteMember,
+
+    // Role helpers — derived from the signed-in member's role.
+    canAccessStock: () => true,
+    canEdit: () => true,
+    isSuperAdmin: () => role === 'owner',
+    isAdmin: () => role === 'owner' || role === 'manager',
+    isStockRole: () => false,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
