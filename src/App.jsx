@@ -39,7 +39,9 @@ function UserMenu() {
     <div style={{ position: 'relative' }}>
       {currentUser?.photoURL ? (
         <img
-          src={currentUser.photoURL}
+          // Force HTTPS: Firebase Auth can hand back an http:// photoURL, and that
+          // one insecure image downgrades the whole page to "Not Secure" (mixed content).
+          src={currentUser.photoURL.replace(/^http:\/\//i, 'https://')}
           alt=""
           referrerPolicy="no-referrer"
           onClick={() => setOpen((o) => !o)}
