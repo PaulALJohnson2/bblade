@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
 
@@ -22,7 +22,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Firestore — the data backend for the stock module.
-const db = getFirestore(app);
+// Durable offline persistence (IndexedDB): the stock list is cached on the
+// device, reads work with no signal, and counts are queued and survive reloads
+// / tab eviction, syncing when connectivity returns — essential for counting in
+// underground cellars. Multi-tab manager keeps several open tabs consistent.
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 
 // Authentication — Google sign-in.
 const auth = getAuth(app);

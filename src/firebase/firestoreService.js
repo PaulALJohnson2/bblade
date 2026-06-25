@@ -192,70 +192,77 @@ export async function getStockSession(venuePath, sessionId) {
  * Uses a transaction to merge contributors and append history.
  */
 export async function saveStockCount(venuePath, sessionId, itemId, countData) {
+  // Offline-first: this must work in dead-signal cellars. Firestore transactions
+  // require connectivity, so instead we read the session from the local cache and
+  // do a field-path update that is applied to the cache immediately and synced
+  // when signal returns. We intentionally DON'T await the server ack — awaited
+  // writes stay pending while offline, which would hang the counter's screen.
+  // Trade-off vs the old transaction: if two devices edit the SAME item while
+  // both offline, it's last-write-wins on sync (different items never conflict —
+  // they're separate field paths).
   try {
     const docRef = doc(db, `${venuePath}/stockSessions/${sessionId}`);
+    const docSnap = await getDoc(docRef); // resolves from cache when offline
+    if (!docSnap.exists()) {
+      return { success: false, error: 'Session not found' };
+    }
 
-    await runTransaction(db, async (transaction) => {
-      const docSnap = await transaction.get(docRef);
-      if (!docSnap.exists()) {
-        throw new Error('Session not found');
-      }
+    const sessionData = docSnap.data();
+    const existing = sessionData.counts?.[itemId];
 
-      const sessionData = docSnap.data();
-      const existing = sessionData.counts?.[itemId];
+    let contributors = [];
+    if (existing?.countedBy) {
+      contributors = Array.isArray(existing.countedBy)
+        ? [...existing.countedBy]
+        : [existing.countedBy];
+    }
+    if (existing?.entries && Array.isArray(existing.entries)) {
+      existing.entries.forEach(e => {
+        if (e.countedBy && !contributors.includes(e.countedBy)) {
+          contributors.push(e.countedBy);
+        }
+      });
+    }
+    if (countData.countedBy && !contributors.includes(countData.countedBy)) {
+      contributors.push(countData.countedBy);
+    }
 
-      let contributors = [];
-      if (existing?.countedBy) {
-        contributors = Array.isArray(existing.countedBy)
-          ? [...existing.countedBy]
-          : [existing.countedBy];
-      }
-      if (existing?.entries && Array.isArray(existing.entries)) {
-        existing.entries.forEach(e => {
-          if (e.countedBy && !contributors.includes(e.countedBy)) {
-            contributors.push(e.countedBy);
-          }
-        });
-      }
-      if (countData.countedBy && !contributors.includes(countData.countedBy)) {
-        contributors.push(countData.countedBy);
-      }
-
-      const history = existing?.history && Array.isArray(existing.history)
-        ? [...existing.history]
-        : [];
-      if (history.length === 0 && existing?.countedAt) {
-        history.push({
-          wholeCount: existing.wholeCount,
-          partCount: existing.partCount,
-          quantity: existing.quantity,
-          countedBy: Array.isArray(existing.countedBy) ? existing.countedBy[0] : (existing.countedBy || ''),
-          countedAt: existing.countedAt
-        });
-      }
-      const now = Timestamp.now();
+    const history = existing?.history && Array.isArray(existing.history)
+      ? [...existing.history]
+      : [];
+    if (history.length === 0 && existing?.countedAt) {
       history.push({
+        wholeCount: existing.wholeCount,
+        partCount: existing.partCount,
+        quantity: existing.quantity,
+        countedBy: Array.isArray(existing.countedBy) ? existing.countedBy[0] : (existing.countedBy || ''),
+        countedAt: existing.countedAt
+      });
+    }
+    const now = Timestamp.now();
+    history.push({
+      wholeCount: countData.wholeCount,
+      partCount: countData.partCount,
+      quantity: countData.quantity,
+      countedBy: countData.countedBy || '',
+      countedAt: now
+    });
+
+    // Don't await — the local write applies instantly; failures (if any) surface
+    // on sync and are logged. This is what lets the count "save" with no signal.
+    updateDoc(docRef, {
+      [`counts.${itemId}`]: {
         wholeCount: countData.wholeCount,
         partCount: countData.partCount,
         quantity: countData.quantity,
-        countedBy: countData.countedBy || '',
-        countedAt: now
-      });
-
-      transaction.update(docRef, {
-        [`counts.${itemId}`]: {
-          wholeCount: countData.wholeCount,
-          partCount: countData.partCount,
-          quantity: countData.quantity,
-          itemName: countData.itemName,
-          wholeLabel: countData.wholeLabel,
-          partLabel: countData.partLabel,
-          countedBy: contributors,
-          countedAt: now,
-          history
-        }
-      });
-    });
+        itemName: countData.itemName,
+        wholeLabel: countData.wholeLabel,
+        partLabel: countData.partLabel,
+        countedBy: contributors,
+        countedAt: now,
+        history
+      }
+    }).catch(err => console.error('Deferred stock-count write failed:', err));
 
     return { success: true };
   } catch (error) {
