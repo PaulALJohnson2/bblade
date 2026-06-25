@@ -14,15 +14,20 @@
  */
 
 import React, { useState } from 'react';
-import { UNIT_TEMPLATES } from '../utils/unitTemplates';
+import { templatesForSection, templateAcceptsCustomSize, customSizeMeta, customSizeFor } from '../utils/unitTemplates';
 import { parseUnitInfo, formatItemDescription } from '../utils/stockUnitUtils';
 
 function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
   const [templateKey, setTemplateKey] = useState('');
   const [custom, setCustom] = useState({ wholeUnit: '', partUnit: '' });
+  const [customSizeMode, setCustomSizeMode] = useState(false);
+  const [customSize, setCustomSize] = useState('');
 
-  const template = UNIT_TEMPLATES.find(t => t.key === templateKey) || null;
+  // Only show measures that fit the item's section (no kegs for food, etc.).
+  const TEMPLATES = templatesForSection(item.section);
+  const template = TEMPLATES.find(t => t.key === templateKey) || null;
   const isCustom = templateKey === '__custom';
+  const sizeMeta = template ? customSizeMeta(template.key) : null;
 
   const select = {
     width: '100%',
@@ -55,12 +60,12 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
       {/* Count method */}
       <select
         value={templateKey}
-        onChange={(e) => setTemplateKey(e.target.value)}
+        onChange={(e) => { setTemplateKey(e.target.value); setCustomSizeMode(false); setCustomSize(''); }}
         style={select}
         disabled={saving}
       >
         <option value="">Count method…</option>
-        {UNIT_TEMPLATES.map(t => (
+        {TEMPLATES.map(t => (
           <option key={t.key} value={t.key}>{t.label}</option>
         ))}
         <option value="__custom">✎ Custom…</option>
@@ -69,8 +74,10 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
       {/* Size — appears once a method is chosen */}
       {template && (
         <select
-          defaultValue=""
+          value={customSizeMode ? '__customsize' : ''}
           onChange={(e) => {
+            if (e.target.value === '__customsize') { setCustomSizeMode(true); return; }
+            setCustomSizeMode(false);
             const s = template.sizes.find(x => x.label === e.target.value);
             if (s) onAssign({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label });
           }}
@@ -83,7 +90,40 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
               {s.label}{previewFor(s.wholeUnit, s.partUnit) ? ` — ${previewFor(s.wholeUnit, s.partUnit).counts}` : ''}
             </option>
           ))}
+          {templateAcceptsCustomSize(template.key) && (
+            <option value="__customsize">✎ Other size…</option>
+          )}
         </select>
+      )}
+
+      {/* Typed custom size for the chosen method */}
+      {template && customSizeMode && sizeMeta && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input
+            type="number" inputMode="decimal" min="0" step="any"
+            value={customSize}
+            onChange={(e) => setCustomSize(e.target.value)}
+            placeholder={sizeMeta.hint}
+            style={{ ...select, flex: 1 }}
+            disabled={saving}
+            autoFocus
+          />
+          {sizeMeta.suffix && <span style={{ color: colors.textSecondary, fontWeight: 600 }}>{sizeMeta.suffix}</span>}
+          <button
+            type="button"
+            disabled={saving || !(parseFloat(customSize) > 0)}
+            onClick={() => {
+              const u = customSizeFor(template.key, customSize);
+              if (u) onAssign(u);
+            }}
+            style={{
+              padding: '0.7rem 1rem', backgroundColor: colors.primary, color: colors.onPrimary,
+              border: 'none', borderRadius: '8px', fontWeight: 600,
+              cursor: (saving || !(parseFloat(customSize) > 0)) ? 'not-allowed' : 'pointer',
+              opacity: (saving || !(parseFloat(customSize) > 0)) ? 0.6 : 1,
+            }}
+          >Set</button>
+        </div>
       )}
 
       {/* Custom free-text */}

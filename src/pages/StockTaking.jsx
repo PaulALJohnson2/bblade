@@ -2668,6 +2668,7 @@ function StockTaking() {
                   How is it counted?
                 </label>
                 <UnitPicker
+                  section={formData.section}
                   value={{ wholeUnit: formData.wholeUnit, partUnit: formData.partUnit }}
                   onChange={(next) => setFormData({ ...formData, wholeUnit: next.wholeUnit, partUnit: next.partUnit, unit: next.unit })}
                   colors={colors}

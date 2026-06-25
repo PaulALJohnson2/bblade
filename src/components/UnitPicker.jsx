@@ -14,21 +14,27 @@
 
 import React, { useState } from 'react';
 import { parseUnitInfo, formatItemDescription } from '../utils/stockUnitUtils';
-import { UNIT_TEMPLATES as TEMPLATES, findUnitSelection as findSelection } from '../utils/unitTemplates';
+import { templatesForSection, findUnitSelection as findSelection, templateAcceptsCustomSize, customSizeMeta, customSizeFor } from '../utils/unitTemplates';
 
-function UnitPicker({ value = {}, onChange, colors }) {
+function UnitPicker({ value = {}, onChange, colors, section }) {
   const initial = findSelection(value.wholeUnit, value.partUnit);
   const [templateKey, setTemplateKey] = useState(initial.templateKey);
   // Custom mode when there's a value we don't recognise, or the user opts in.
   const [custom, setCustom] = useState(
     !initial.templateKey && !!value.wholeUnit
   );
+  const [customSizeOpen, setCustomSizeOpen] = useState(false);
+  const [customSize, setCustomSize] = useState('');
 
+  // Only offer measures that fit the section (no kegs for food, etc.).
+  const TEMPLATES = templatesForSection(section);
   const template = TEMPLATES.find(t => t.key === templateKey) || null;
   const selection = findSelection(value.wholeUnit, value.partUnit);
 
   const pickTemplate = (t) => {
     setCustom(false);
+    setCustomSizeOpen(false);
+    setCustomSize('');
     setTemplateKey(t.key);
     // Auto-select the first size so a tap on the template already counts.
     const s = t.sizes[0];
@@ -36,7 +42,13 @@ function UnitPicker({ value = {}, onChange, colors }) {
   };
 
   const pickSize = (s) => {
+    setCustomSizeOpen(false);
     onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label });
+  };
+
+  const applyCustomSize = () => {
+    const u = template ? customSizeFor(template.key, customSize) : null;
+    if (u) onChange(u);
   };
 
   const chip = (active) => ({
@@ -78,13 +90,41 @@ function UnitPicker({ value = {}, onChange, colors }) {
 
       {/* Size chips for the chosen template */}
       {!custom && template && (
-        <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', marginTop: '0.5rem', paddingBottom: '0.35rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
-          {template.sizes.map(s => (
-            <button type="button" key={s.label} onClick={() => pickSize(s)} style={chip(selection.sizeLabel === s.label)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', marginTop: '0.5rem', paddingBottom: '0.35rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+            {template.sizes.map(s => (
+              <button type="button" key={s.label} onClick={() => pickSize(s)} style={chip(!customSizeOpen && selection.sizeLabel === s.label)}>
+                {s.label}
+              </button>
+            ))}
+            {templateAcceptsCustomSize(template.key) && (
+              <button type="button" onClick={() => setCustomSizeOpen(true)} style={chip(customSizeOpen)}>
+                ✎ Other
+              </button>
+            )}
+          </div>
+          {customSizeOpen && customSizeMeta(template.key) && (
+            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.4rem' }}>
+              <input
+                type="number" inputMode="decimal" min="0" step="any"
+                value={customSize}
+                onChange={(e) => setCustomSize(e.target.value)}
+                placeholder={customSizeMeta(template.key).hint}
+                style={{ flex: 1, minWidth: 0, padding: '0.5rem', fontSize: '0.9rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: colors.bgCard, color: colors.textPrimary }}
+                autoFocus
+              />
+              {customSizeMeta(template.key).suffix && (
+                <span style={{ color: colors.textSecondary, fontWeight: 600, fontSize: '0.85rem' }}>{customSizeMeta(template.key).suffix}</span>
+              )}
+              <button
+                type="button"
+                disabled={!(parseFloat(customSize) > 0)}
+                onClick={applyCustomSize}
+                style={{ flexShrink: 0, padding: '0.5rem 0.9rem', backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', borderRadius: '6px', fontWeight: 600, fontSize: '0.85rem', cursor: parseFloat(customSize) > 0 ? 'pointer' : 'not-allowed', opacity: parseFloat(customSize) > 0 ? 1 : 0.6 }}
+              >Set</button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Custom free-text fallback */}
