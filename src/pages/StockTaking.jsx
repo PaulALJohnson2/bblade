@@ -33,6 +33,7 @@ import UnitPicker from '../components/UnitPicker';
 import CountUnitPrompt from '../components/CountUnitPrompt';
 import CountCategoryPrompt from '../components/CountCategoryPrompt';
 import { itemHasUnit } from '../utils/unitTemplates';
+import { isDuplicateItem } from '../utils/stockDedup';
 
 // First count of an imported-without-a-category item: confirm the AI suggestion.
 const itemNeedsCategory = (it) =>
@@ -40,6 +41,7 @@ const itemNeedsCategory = (it) =>
 import useTheme from '../hooks/useTheme';
 import { parseUnitInfo, formatCountDisplay, formatCountSummary, formatItemDescription } from '../utils/stockUnitUtils';
 import StockListUpload from '../components/StockListUpload';
+import StockBuilder from '../components/StockBuilder';
 
 function StockTaking() {
   const { currentUser, userProfile, selectedPub, canAccessStock, canEdit, isSuperAdmin, isAdmin } = useAuth();
@@ -104,6 +106,7 @@ function StockTaking() {
 
   // Admin form state (for adding new items)
   const [showAdminForm, setShowAdminForm] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     section: 'bar',
@@ -247,6 +250,24 @@ function StockTaking() {
   // Get count for an item from the current session
   const getSessionCount = (itemId) => {
     return currentSession?.counts?.[itemId] || null;
+  };
+
+  // Resolve a stock-take session for the builder to count into: reuse the active
+  // take if it's the same section, otherwise reuse/create one per section (cached
+  // so several items in a builder run land in the same take).
+  const builderSessionsRef = useRef({});
+  const getSessionForBuilder = async (section) => {
+    if (currentSession?.id && currentSession.section === section) return currentSession.id;
+    if (builderSessionsRef.current[section]) return builderSessionsRef.current[section];
+    const res = await createStockSession(
+      selectedPub.path,
+      currentUser.uid,
+      userProfile?.displayName || currentUser.email,
+      section
+    );
+    if (!res.success) throw new Error(res.error);
+    builderSessionsRef.current[section] = res.sessionId;
+    return res.sessionId;
   };
 
   const handleStartSession = async (section) => {
@@ -546,6 +567,10 @@ function StockTaking() {
     e.preventDefault();
     if (!formData.name.trim()) {
       showToast('Please enter an item name', 'info');
+      return;
+    }
+    if (isDuplicateItem(allItems, { name: formData.name.trim(), wholeUnit: formData.wholeUnit.trim(), partUnit: formData.partUnit.trim() })) {
+      showToast('That item at that volume is already in your stock list', 'info');
       return;
     }
 
@@ -1049,7 +1074,7 @@ function StockTaking() {
         </div>
         {isSuperAdmin() && (
           <button
-            onClick={() => setShowAdminForm(true)}
+            onClick={() => setShowBuilder(true)}
             style={{
               padding: '0.5rem 1rem',
               backgroundColor: colors.primary,
@@ -1065,12 +1090,43 @@ function StockTaking() {
         )}
       </div>
 
-      {/* Empty state: no stock items yet — onboard by uploading a stock list */}
-      {allItems.length === 0 && (
-        <StockListUpload
+      {/* Empty state: no stock yet — ask to start building the list, card by card */}
+      {allItems.length === 0 && !showBuilder && (
+        <div style={{
+          maxWidth: '460px', margin: '2rem auto', padding: '2rem',
+          backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`,
+          borderRadius: '12px', textAlign: 'center', boxShadow: `0 4px 20px ${colors.shadow}`,
+        }}>
+          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📋</div>
+          <h2 style={{ margin: '0 0 0.5rem', color: colors.textPrimary }}>No stock yet</h2>
+          <p style={{ margin: '0 0 1.5rem', color: colors.textSecondary }}>
+            {canEdit()
+              ? 'Build your stock list one item at a time — name each item and set its size. They’re saved as you go and ready to count next time.'
+              : 'This pub doesn’t have a stock list yet. Ask an administrator to set one up.'}
+          </p>
+          {canEdit() && (
+            <button
+              onClick={() => setShowBuilder(true)}
+              style={{
+                padding: '0.9rem 1.5rem', backgroundColor: colors.primary, color: colors.onPrimary,
+                border: 'none', borderRadius: '10px', cursor: 'pointer', fontSize: '1.05rem', fontWeight: 700,
+              }}
+            >
+              Start building
+            </button>
+          )}
+        </div>
+      )}
+
+      {showBuilder && (
+        <StockBuilder
           venuePath={selectedPub.path}
-          canEdit={canEdit()}
-          onAddManually={isSuperAdmin() ? () => setShowAdminForm(true) : null}
+          existingCategories={allCategories}
+          existingItems={allItems.map(i => ({ name: i.name, wholeUnit: i.wholeUnit, partUnit: i.partUnit }))}
+          userName={userProfile?.displayName || currentUser?.email}
+          initialSection={currentSession?.section || 'bar'}
+          getSessionId={getSessionForBuilder}
+          onClose={() => setShowBuilder(false)}
         />
       )}
 
