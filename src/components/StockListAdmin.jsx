@@ -13,7 +13,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { addStockItems, deleteAllStockItems, getAllStockItems } from '../services/apiService';
-import { enrichItemsWithInference } from '../services/aiInference';
+import { enrichItemsWithInference, splitMealsIntoComponents } from '../services/aiInference';
+import { buildMealReviewList, applyMealSplits } from '../utils/mealSplit';
+import MealSplitReview from './MealSplitReview';
 import { parseStockList, STOCK_CSV_TEMPLATE } from '../utils/parseStockList';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -29,6 +31,7 @@ function StockListAdmin({ venuePath, canEdit = true }) {
   const [analysing, setAnalysing] = useState(false);
   const [busy, setBusy] = useState(null);       // 'adding' | 'deleting' | null
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [reviewing, setReviewing] = useState(false); // meal-split wizard open
 
   const refreshCount = async () => {
     const res = await getAllStockItems(venuePath);
@@ -67,27 +70,48 @@ function StockListAdmin({ venuePath, canEdit = true }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
 
     if (allItems.length) {
-      // Gemini batch-infers section (bar/kitchen/ignore) + suggests categories for
-      // items that arrived without one. Falls back to keyword sorting if AI is off.
+      // Gemini sorts bar/kitchen/ignore + suggests categories, then breaks kitchen
+      // "meals" (till menu lines) into ingredient components. Keyword fallback if AI off.
       setAnalysing(true);
       const enriched = await enrichItemsWithInference(allItems);
+      const kitchenNames = enriched.items
+        .filter((i) => !i.archived && (i.section || 'bar') === 'kitchen')
+        .map((i) => i.name);
+      const split = await splitMealsIntoComponents(kitchenNames);
+      const meals = buildMealReviewList(enriched.items, split.map);
       setAnalysing(false);
-      setParsed({ items: enriched.items, skipped, fileNames, summary: enriched.summary, source: enriched.source });
+      setParsed({ items: enriched.items, skipped, fileNames, summary: enriched.summary, source: enriched.source, meals });
     }
   };
 
-  const handleAdd = async () => {
-    if (!parsed || busy) return;
+  // Commit a finished item list to Firestore.
+  const doImport = async (items) => {
     setBusy('adding');
     setError(null);
-    const result = await addStockItems(venuePath, parsed.items);
+    const result = await addStockItems(venuePath, items);
     setBusy(null);
+    setReviewing(false);
     if (result.success) {
       setParsed(null);
       await refreshCount();
     } else {
       setError('Import failed: ' + result.error);
     }
+  };
+
+  const handleAdd = async () => {
+    if (!parsed || busy) return;
+    // If the AI found meals to break down, review them one at a time first.
+    if (parsed.meals && parsed.meals.length > 0) {
+      setReviewing(true);
+      return;
+    }
+    await doImport(parsed.items);
+  };
+
+  const handleReviewComplete = async (decisions) => {
+    const finalItems = applyMealSplits(parsed.items, decisions);
+    await doImport(finalItems);
   };
 
   const handleDeleteAll = async () => {
@@ -146,6 +170,15 @@ function StockListAdmin({ venuePath, canEdit = true }) {
         <div style={{ color: colors.errorDark, marginBottom: '1rem', fontSize: '0.9rem' }}>{error}</div>
       )}
 
+      {reviewing && parsed?.meals?.length > 0 && (
+        <MealSplitReview
+          meals={parsed.meals}
+          colors={colors}
+          onComplete={handleReviewComplete}
+          onCancel={() => setReviewing(false)}
+        />
+      )}
+
       {/* Upload + preview */}
       {analysing ? (
         <div style={{
@@ -154,7 +187,7 @@ function StockListAdmin({ venuePath, canEdit = true }) {
           display: 'flex', alignItems: 'center', gap: '0.6rem',
         }}>
           <div style={{ width: '18px', height: '18px', border: `3px solid ${colors.bgCard}`, borderTopColor: colors.primary, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-          Sorting food vs drink…
+          Sorting food vs drink &amp; breaking down meals…
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       ) : parsed ? (
@@ -184,9 +217,18 @@ function StockListAdmin({ venuePath, canEdit = true }) {
               ? '✨ Sorted by AI — check the split before importing.'
               : 'Sorted by keyword rules (AI off) — check the split before importing.'}
           </div>
+          {parsed.meals && parsed.meals.length > 0 && (
+            <div style={{ fontSize: '0.8rem', color: colors.textPrimary, backgroundColor: colors.primarySoft, padding: '0.6rem 0.75rem', borderRadius: '8px', marginBottom: '0.75rem' }}>
+              🍽 <strong>{parsed.meals.length} meal{parsed.meals.length === 1 ? '' : 's'}</strong> can be broken into ingredients — you'll confirm each one before importing.
+            </div>
+          )}
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button onClick={handleAdd} disabled={busy === 'adding'} style={{ ...primaryBtn, flex: 1, opacity: busy === 'adding' ? 0.6 : 1 }}>
-              {busy === 'adding' ? 'Adding…' : `Add ${parsed.items.length} items to stock`}
+              {busy === 'adding'
+                ? 'Adding…'
+                : parsed.meals && parsed.meals.length > 0
+                  ? `Review ${parsed.meals.length} meals & add`
+                  : `Add ${parsed.items.length} items to stock`}
             </button>
             <button onClick={() => { setParsed(null); setError(null); }} style={subtleBtn}>Cancel</button>
           </div>

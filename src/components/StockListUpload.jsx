@@ -14,7 +14,9 @@
 
 import React, { useRef, useState } from 'react';
 import { importStockList } from '../services/apiService';
-import { enrichItemsWithInference } from '../services/aiInference';
+import { enrichItemsWithInference, splitMealsIntoComponents } from '../services/aiInference';
+import { buildMealReviewList, applyMealSplits } from '../utils/mealSplit';
+import MealSplitReview from './MealSplitReview';
 import { parseStockList, STOCK_CSV_TEMPLATE } from '../utils/parseStockList';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -30,6 +32,7 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
   const [analysing, setAnalysing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(null); // { completed, total }
+  const [reviewing, setReviewing] = useState(false); // meal-split wizard open
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -46,11 +49,17 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
     if (result.error) { setError(result.error); return; }
     if (result.items.length === 0) { setError('No items were found in that file.'); return; }
 
-    // Gemini sorts bar/kitchen/ignore and suggests categories; keyword fallback if AI is off.
+    // Gemini sorts bar/kitchen/ignore, suggests categories, and breaks kitchen
+    // "meals" into ingredients; keyword fallback if AI is off.
     setAnalysing(true);
     const enriched = await enrichItemsWithInference(result.items);
+    const kitchenNames = enriched.items
+      .filter((i) => !i.archived && (i.section || 'bar') === 'kitchen')
+      .map((i) => i.name);
+    const split = await splitMealsIntoComponents(kitchenNames);
+    const meals = buildMealReviewList(enriched.items, split.map);
     setAnalysing(false);
-    setParsed({ items: enriched.items, skipped: result.skipped, fileName: file.name, summary: enriched.summary, source: enriched.source });
+    setParsed({ items: enriched.items, skipped: result.skipped, fileName: file.name, summary: enriched.summary, source: enriched.source, meals });
   };
 
   const onDrop = (e) => {
@@ -59,11 +68,11 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
     handleFile(e.dataTransfer.files?.[0]);
   };
 
-  const handleImport = async () => {
-    if (!parsed || importing) return;
+  const doImport = async (items) => {
+    setReviewing(false);
     setImporting(true);
-    setProgress({ completed: 0, total: parsed.items.length });
-    const result = await importStockList(venuePath, parsed.items, (p) => setProgress(p));
+    setProgress({ completed: 0, total: items.length });
+    const result = await importStockList(venuePath, items, (p) => setProgress(p));
     if (!result.success) {
       setError('Import failed: ' + result.error);
       setImporting(false);
@@ -71,6 +80,16 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
     }
     // On success we deliberately leave the spinner up — the realtime listener
     // will repopulate stock items and unmount this component.
+  };
+
+  const handleImport = async () => {
+    if (!parsed || importing) return;
+    if (parsed.meals && parsed.meals.length > 0) { setReviewing(true); return; }
+    await doImport(parsed.items);
+  };
+
+  const handleReviewComplete = async (decisions) => {
+    await doImport(applyMealSplits(parsed.items, decisions));
   };
 
   const downloadTemplate = () => {
@@ -124,7 +143,7 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
           border: `3px solid ${colors.bgLight}`, borderTopColor: colors.primary,
           borderRadius: '50%', animation: 'spin 1s linear infinite',
         }} />
-        <div style={{ color: colors.textPrimary, fontWeight: 600 }}>Sorting food vs drink…</div>
+        <div style={{ color: colors.textPrimary, fontWeight: 600 }}>Sorting food vs drink &amp; breaking down meals…</div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -187,6 +206,21 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
             : ' · sorted by keyword rules — check before importing.')}
         </div>
 
+        {parsed.meals && parsed.meals.length > 0 && (
+          <div style={{ fontSize: '0.82rem', color: colors.textPrimary, backgroundColor: colors.primarySoft, padding: '0.6rem 0.75rem', borderRadius: '8px', marginBottom: '1rem' }}>
+            🍽 <strong>{parsed.meals.length} meal{parsed.meals.length === 1 ? '' : 's'}</strong> can be broken into ingredients — you'll confirm each one before importing.
+          </div>
+        )}
+
+        {reviewing && (
+          <MealSplitReview
+            meals={parsed.meals}
+            colors={colors}
+            onComplete={handleReviewComplete}
+            onCancel={() => setReviewing(false)}
+          />
+        )}
+
         {parsed.skipped > 0 && (
           <p style={{ margin: '0 0 1rem', color: colors.warning, fontSize: '0.85rem' }}>
             {parsed.skipped} row(s) were skipped (no item name).
@@ -207,7 +241,9 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
               border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600,
             }}
           >
-            Import {parsed.items.length} items
+            {parsed.meals && parsed.meals.length > 0
+              ? `Review ${parsed.meals.length} meals & import`
+              : `Import ${parsed.items.length} items`}
           </button>
           <button
             onClick={() => { setParsed(null); setError(null); }}
