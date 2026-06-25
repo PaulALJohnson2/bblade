@@ -1,29 +1,53 @@
 rules_version = '2';
 
 // ===========================================================================
-//  Bar Blade — Firestore rules
+//  BBlade — Firestore rules
 //
-//  Stage: Google sign-in is required (request.auth != null). App-level
-//  authorization (the member email allowlist) decides who may use a given
-//  account. These rules do NOT yet enforce per-tenant isolation — any signed-in
-//  user can technically read/write any account via the API.
+//  Access model (current): a verified Google sign-in is required for all data.
+//  The member email allowlist that decides *who* may use an account is still
+//  enforced in the client (AuthContext), NOT here — so any signed-in user can
+//  technically reach this account's data via the API. These rules scope access
+//  to the real data shape and block everything else, but do not yet provide
+//  per-tenant / per-role isolation.
 //
-//  NEXT: when accounts have an `accountId` (and role) custom claim, tighten to:
-//    match /accounts/{accountId}/{document=**} {
+//  NEXT (proper lockdown): stamp an `accountId` (+ `role`) custom claim on each
+//  user via a Cloud Function when they're added as a member, then tighten to:
 //      allow read, write: if request.auth.token.accountId == accountId;
-//    }
-//  plus finer per-venue / per-role checks.
+//  with role checks (e.g. owner/manager) on member + venue writes.
 // ===========================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // A customer account and everything beneath it (members, venues, stock).
-    match /accounts/{accountId}/{document=**} {
-      allow read, write: if request.auth != null;
+    // A real, verified Google account.
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
     }
 
-    // Deny everything else by default.
+    // Customer account (name, entitlements) and everything beneath it.
+    match /accounts/{accountId} {
+      allow read, write: if signedIn();
+
+      // Staff / members (identity, role, venue access).
+      match /members/{memberId} {
+        allow read, write: if signedIn();
+      }
+
+      // Venues, and the stock data within each.
+      match /venues/{venueId} {
+        allow read, write: if signedIn();
+
+        match /stockItems/{itemId} {
+          allow read, write: if signedIn();
+        }
+
+        match /stockSessions/{sessionId} {
+          allow read, write: if signedIn();
+        }
+      }
+    }
+
+    // Deny anything outside the modelled paths above.
     match /{document=**} {
       allow read, write: if false;
     }
