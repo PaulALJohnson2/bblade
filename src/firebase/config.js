@@ -4,14 +4,24 @@ import { getAuth } from "firebase/auth";
 import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
 
 // Bar Blade — Firebase project config.
-// authDomain is set to the Hosting domain (not the default *.firebaseapp.com)
-// so the Google sign-in handler runs same-origin as the app. This avoids the
-// "missing initial state" error caused by browser storage partitioning when the
-// auth handler lives on a different domain (Safari/iOS, mobile). Firebase
-// Hosting serves the handler at /__/auth automatically.
+// authDomain must run the Google sign-in handler SAME-ORIGIN as the app, or the
+// redirect/popup loses its state and bounces back to login (storage partitioning
+// on mobile). The app is served from multiple Firebase Hosting domains
+// (bblade.live and bar-blade.web.app), each of which serves /__/auth — so we set
+// authDomain to the current host when it's one of those, and fall back to
+// bar-blade.web.app elsewhere (e.g. localhost dev, where popup works cross-domain).
+const HOSTING_AUTH_DOMAINS = new Set([
+  'bblade.live',
+  'www.bblade.live',
+  'bar-blade.web.app',
+  'bar-blade.firebaseapp.com',
+]);
+const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+const authDomain = HOSTING_AUTH_DOMAINS.has(currentHost) ? currentHost : 'bar-blade.web.app';
+
 const firebaseConfig = {
   apiKey: "AIzaSyCUD-4Vgc9y93-QadFb_9CI6z8w_C--ElI",
-  authDomain: "bar-blade.web.app",
+  authDomain,
   projectId: "bar-blade",
   storageBucket: "bar-blade.firebasestorage.app",
   messagingSenderId: "208876986340",

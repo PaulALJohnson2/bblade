@@ -23,11 +23,36 @@ function Login() {
     if (currentUser && authorized) navigate('/', { replace: true });
   }, [currentUser, authorized, navigate]);
 
+  // If sign-in succeeds, stay in the "busy" loader through the membership check
+  // and redirect — don't flash the form back. Only clear busy on failure/denial.
+  useEffect(() => {
+    if (authError) setBusy(false);
+  }, [authError]);
+
   const handleLogin = async () => {
     setBusy(true);
-    await loginWithGoogle();
-    setBusy(false);
+    const res = await loginWithGoogle();
+    if (!res?.success) setBusy(false);
   };
+
+  // While signing in / verifying access, show a loader instead of the form so it
+  // doesn't briefly bounce back to the login screen before the app loads.
+  if (busy && !authError) {
+    return (
+      <div style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: '1rem',
+        background: 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)',
+      }}>
+        <div style={{
+          width: '46px', height: '46px', border: '4px solid rgba(255,255,255,0.3)',
+          borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite',
+        }} />
+        <div style={{ color: '#fff', fontWeight: 500 }}>Signing in…</div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{

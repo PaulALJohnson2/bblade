@@ -144,18 +144,25 @@ export const AuthProvider = ({ children }) => {
 
   // ---- auth actions ----
   const loginWithGoogle = async () => {
+    setAuthError(null);
+    // Popup-first on every device. Redirect sign-in is fragile with a service
+    // worker / installed PWA (the redirect can lose its pending state and bounce
+    // back to login), so we only fall back to redirect when popups are genuinely
+    // unavailable (blocked, or an embedded webview that can't open one).
     try {
-      setAuthError(null);
-      if (isMobileDevice()) {
-        // Full-page redirect; the browser navigates away and returns to the app.
-        await signInWithRedirect(auth, googleProvider);
-        return { success: true };
-      }
       await signInWithPopup(auth, googleProvider);
       return { success: true };
     } catch (error) {
       if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
         return { success: false, error: 'cancelled' };
+      }
+      if (error?.code === 'auth/popup-blocked' || error?.code === 'auth/operation-not-supported-in-this-environment') {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return { success: true };
+        } catch (redirectErr) {
+          return { success: false, error: redirectErr.message };
+        }
       }
       return { success: false, error: error.message };
     }
