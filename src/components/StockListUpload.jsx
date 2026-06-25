@@ -14,6 +14,7 @@
 
 import React, { useRef, useState } from 'react';
 import { importStockList } from '../services/apiService';
+import { enrichItemsWithInference } from '../services/aiInference';
 import { parseStockList, STOCK_CSV_TEMPLATE } from '../utils/parseStockList';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -24,8 +25,9 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
   const fileInputRef = useRef(null);
 
   const [dragOver, setDragOver] = useState(false);
-  const [parsed, setParsed] = useState(null); // { items, skipped, fileName }
+  const [parsed, setParsed] = useState(null); // { items, skipped, fileName, summary, source }
   const [error, setError] = useState(null);
+  const [analysing, setAnalysing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(null); // { completed, total }
 
@@ -33,21 +35,22 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
     if (!file) return;
     setError(null);
     setParsed(null);
+    let result;
     try {
       const text = await file.text();
-      const result = parseStockList(text, file.name);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      if (result.items.length === 0) {
-        setError('No items were found in that file.');
-        return;
-      }
-      setParsed({ ...result, fileName: file.name });
+      result = parseStockList(text, file.name);
     } catch {
       setError('Could not read that file. Please try a CSV or JSON file.');
+      return;
     }
+    if (result.error) { setError(result.error); return; }
+    if (result.items.length === 0) { setError('No items were found in that file.'); return; }
+
+    // Gemini sorts bar/kitchen/ignore and suggests categories; keyword fallback if AI is off.
+    setAnalysing(true);
+    const enriched = await enrichItemsWithInference(result.items);
+    setAnalysing(false);
+    setParsed({ items: enriched.items, skipped: result.skipped, fileName: file.name, summary: enriched.summary, source: enriched.source });
   };
 
   const onDrop = (e) => {
@@ -112,6 +115,21 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
     );
   }
 
+  // Analysing view (Gemini sorting bar/kitchen/ignore)
+  if (analysing) {
+    return (
+      <div style={{ ...card, textAlign: 'center' }}>
+        <div style={{
+          width: '40px', height: '40px', margin: '0 auto 1rem',
+          border: `3px solid ${colors.bgLight}`, borderTopColor: colors.primary,
+          borderRadius: '50%', animation: 'spin 1s linear infinite',
+        }} />
+        <div style={{ color: colors.textPrimary, fontWeight: 600 }}>Sorting food vs drink…</div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
   // Importing / progress view
   if (importing) {
     const pct = progress && progress.total
@@ -141,8 +159,9 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
 
   // Preview view (file parsed, awaiting confirmation)
   if (parsed) {
-    const barCount = parsed.items.filter(i => i.section === 'bar').length;
-    const kitchenCount = parsed.items.filter(i => i.section === 'kitchen').length;
+    const barCount = parsed.items.filter(i => i.section === 'bar' && !i.archived).length;
+    const kitchenCount = parsed.items.filter(i => i.section === 'kitchen' && !i.archived).length;
+    const ignoreCount = parsed.items.filter(i => i.archived).length;
     return (
       <div style={card}>
         <h2 style={{ margin: '0 0 0.25rem', color: colors.textPrimary }}>Review your stock list</h2>
@@ -150,16 +169,22 @@ function StockListUpload({ venuePath, canEdit = true, onAddManually = null }) {
           From <strong>{parsed.fileName}</strong>
         </p>
 
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
-          {[['Total', parsed.items.length], ['Bar', barCount], ['Kitchen', kitchenCount]].map(([label, n]) => (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          {[['Bar', barCount, colors.primary], ['Kitchen', kitchenCount, '#d69e2e'], ['Ignore', ignoreCount, colors.textMuted]].map(([label, n, c]) => (
             <div key={label} style={{
               flex: 1, padding: '0.75rem', textAlign: 'center',
               backgroundColor: colors.bgLight, borderRadius: '8px',
             }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: colors.textPrimary }}>{n}</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: c }}>{n}</div>
               <div style={{ fontSize: '0.8rem', color: colors.textSecondary }}>{label}</div>
             </div>
           ))}
+        </div>
+        <div style={{ fontSize: '0.78rem', color: colors.textSecondary, marginBottom: '1rem' }}>
+          {parsed.items.length} items total
+          {parsed.summary && (parsed.source === 'ai'
+            ? ' · ✨ sorted by AI — check before importing.'
+            : ' · sorted by keyword rules — check before importing.')}
         </div>
 
         {parsed.skipped > 0 && (
