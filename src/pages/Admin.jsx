@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import StockListAdmin from '../components/StockListAdmin';
+import StockManager from '../components/StockManager';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
@@ -235,6 +236,11 @@ function Admin() {
       {/* Stock list — upload CSV/JSON, or delete the whole list */}
       {isAdmin && isAdmin() && selectedPub?.path && (
         <StockListAdmin venuePath={selectedPub.path} canEdit={true} />
+      )}
+
+      {/* Manage stock — edit names, sections, and categories */}
+      {isAdmin && isAdmin() && selectedPub?.path && (
+        <StockManager venuePath={selectedPub.path} canEdit={true} />
       )}
     </div>
   );

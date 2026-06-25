@@ -427,6 +427,27 @@ export async function deleteAllStockItems(venuePath) {
   }
 }
 
+/** Apply a merge-patch to many stock items at once (batched). For bulk admin
+ *  edits like renaming a category across its items, or moving a section. */
+export async function bulkPatchStockItems(venuePath, ids, patch) {
+  try {
+    let batch = writeBatch(db);
+    let inBatch = 0;
+    let count = 0;
+    for (const id of ids) {
+      batch.set(doc(db, `${venuePath}/stockItems/${id}`), { ...patch, updatedAt: Timestamp.now() }, { merge: true });
+      inBatch++;
+      count++;
+      if (inBatch === 500) { await batch.commit(); batch = writeBatch(db); inBatch = 0; }
+    }
+    if (inBatch > 0) await batch.commit();
+    return { success: true, count };
+  } catch (error) {
+    console.error('Error bulk-patching stock items:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Append items to the existing stock list (no delete). */
 export async function addStockItems(venuePath, items, onProgress = null) {
   try {

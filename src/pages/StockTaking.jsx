@@ -1623,12 +1623,15 @@ function StockTaking() {
                               }}
                             >{label}</button>
                           );
-                          const stepValue = (val, setter, delta, disabled) => {
+                          const stepValue = (val, setter, delta, disabled, max) => {
                             if (disabled) return;
                             const current = parseFloat(val) || 0;
-                            const next = Math.max(0, current + delta);
+                            let next = Math.max(0, current + delta);
+                            if (max != null) next = Math.min(max, next);
                             setter(next === 0 ? '' : next.toString());
                           };
+                          // Tenths cap at 9 (10 tenths = a whole).
+                          const partMax = unitInfo.partLabel === 'Tenths' ? 9 : undefined;
                           return (
                             <div data-entry-form style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
@@ -1660,13 +1663,17 @@ function StockTaking() {
                               {unitInfo.hasPartUnit && unitInfo.hasTenthsOption && (
                                 <>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                    {stepBtnSm(() => stepValue(tenthsQuantity, setTenthsQuantity, -1, tenthsDisabled), '−', tenthsDisabled)}
+                                    {stepBtnSm(() => stepValue(tenthsQuantity, setTenthsQuantity, -1, tenthsDisabled, 9), '−', tenthsDisabled)}
                                     <input
                                       type="text"
                                       inputMode="decimal"
                                       enterKeyHint="done"
                                       value={tenthsQuantity}
-                                      onChange={(e) => setTenthsQuantity(e.target.value.replace(/[^0-9.]/g, ''))}
+                                      onChange={(e) => {
+                                        let v = e.target.value.replace(/[^0-9.]/g, '');
+                                        if (v !== '' && parseFloat(v) > 9) v = '9';
+                                        setTenthsQuantity(v);
+                                      }}
                                       onKeyDown={handleKeyDown}
                                       disabled={tenthsDisabled}
                                       placeholder="0"
@@ -1683,7 +1690,7 @@ function StockTaking() {
                                         opacity: tenthsDisabled ? 0.4 : 1
                                       }}
                                     />
-                                    {stepBtnSm(() => stepValue(tenthsQuantity, setTenthsQuantity, 1, tenthsDisabled), '+', tenthsDisabled)}
+                                    {stepBtnSm(() => stepValue(tenthsQuantity, setTenthsQuantity, 1, tenthsDisabled, 9), '+', tenthsDisabled)}
                                     <span style={{ fontWeight: '500', color: tenthsDisabled ? colors.textSecondary : colors.textPrimary, opacity: tenthsDisabled ? 0.4 : 1, marginLeft: '0.25rem' }}>Tenths</span>
                                   </div>
                                   <span style={{ color: colors.textSecondary, fontSize: '0.85rem', fontStyle: 'italic' }}>or</span>
@@ -1718,13 +1725,17 @@ function StockTaking() {
                               )}
                               {unitInfo.hasPartUnit && !unitInfo.hasTenthsOption && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                  {stepBtnSm(() => stepValue(partQuantity, setPartQuantity, -1, false), '−', false)}
+                                  {stepBtnSm(() => stepValue(partQuantity, setPartQuantity, -1, false, partMax), '−', false)}
                                   <input
                                     type="text"
                                     inputMode="decimal"
                                     enterKeyHint="done"
                                     value={partQuantity}
-                                    onChange={(e) => setPartQuantity(e.target.value.replace(/[^0-9.]/g, ''))}
+                                    onChange={(e) => {
+                                      let v = e.target.value.replace(/[^0-9.]/g, '');
+                                      if (partMax != null && v !== '' && parseFloat(v) > partMax) v = String(partMax);
+                                      setPartQuantity(v);
+                                    }}
                                     onKeyDown={handleKeyDown}
                                     placeholder="0"
                                     style={{
@@ -1739,7 +1750,7 @@ function StockTaking() {
                                       color: colors.textPrimary
                                     }}
                                   />
-                                  {stepBtnSm(() => stepValue(partQuantity, setPartQuantity, 1, false), '+', false)}
+                                  {stepBtnSm(() => stepValue(partQuantity, setPartQuantity, 1, false, partMax), '+', false)}
                                   <span style={{ fontWeight: '500', color: colors.textPrimary, marginLeft: '0.25rem' }}>{unitInfo.partLabel}</span>
                                 </div>
                               )}
@@ -1906,10 +1917,11 @@ function StockTaking() {
                         const tenthsDisabled = !!partQuantity;
                         const partDisabled = !!tenthsQuantity;
                         const hasAnyValue = wholeQuantity || partQuantity || tenthsQuantity;
-                        const stepValue = (val, setter, delta, disabled) => {
+                        const stepValue = (val, setter, delta, disabled, max) => {
                           if (disabled) return;
                           const current = parseFloat(val) || 0;
-                          const next = Math.max(0, current + delta);
+                          let next = Math.max(0, current + delta);
+                          if (max != null) next = Math.min(max, next);
                           setter(next === 0 ? '' : next.toString());
                         };
                         const stepBtn = (onClick, label, disabled) => (
@@ -1929,14 +1941,18 @@ function StockTaking() {
                             }}
                           >{label}</button>
                         );
-                        const numInput = (value, setter, disabled, ref) => (
+                        const numInput = (value, setter, disabled, ref, max) => (
                           <input
                             ref={ref}
                             type="text"
                             inputMode="decimal"
                             enterKeyHint="done"
                             value={value}
-                            onChange={(e) => setter(e.target.value.replace(/[^0-9.]/g, ''))}
+                            onChange={(e) => {
+                              let v = e.target.value.replace(/[^0-9.]/g, '');
+                              if (max != null && v !== '' && parseFloat(v) > max) v = String(max);
+                              setter(v);
+                            }}
                             onKeyDown={handleKeyDown}
                             disabled={disabled}
                             placeholder="0"
@@ -1951,26 +1967,28 @@ function StockTaking() {
                             }}
                           />
                         );
-                        const unitRow = (label, value, setter, disabled, ref) => (
+                        const unitRow = (label, value, setter, disabled, ref, max) => (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            {stepBtn(() => stepValue(value, setter, -1, disabled), '−', disabled)}
-                            {numInput(value, setter, disabled, ref)}
-                            {stepBtn(() => stepValue(value, setter, 1, disabled), '+', disabled)}
+                            {stepBtn(() => stepValue(value, setter, -1, disabled, max), '−', disabled)}
+                            {numInput(value, setter, disabled, ref, max)}
+                            {stepBtn(() => stepValue(value, setter, 1, disabled, max), '+', disabled)}
                             <span style={{ width: '60px', flexShrink: 0, fontWeight: 500, fontSize: '0.9rem', color: disabled ? colors.textSecondary : colors.textPrimary, opacity: disabled ? 0.4 : 1 }}>{label}</span>
                           </div>
                         );
+                        // Tenths represent how full a container is — capped at 9 (10 tenths = a whole).
+                        const partMax = unitInfo.partLabel === 'Tenths' ? 9 : undefined;
                         return (
                           <div data-entry-form style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${colors.border}` }}>
                             {unitRow(unitInfo.wholeLabel, wholeQuantity, setWholeQuantity, false, wholeInputRef)}
                             {unitInfo.hasPartUnit && unitInfo.hasTenthsOption && (
                               <>
-                                {unitRow('Tenths', tenthsQuantity, setTenthsQuantity, tenthsDisabled)}
+                                {unitRow('Tenths', tenthsQuantity, setTenthsQuantity, tenthsDisabled, null, 9)}
                                 <div style={{ textAlign: 'center', color: colors.textSecondary, fontSize: '0.8rem', fontStyle: 'italic' }}>or</div>
-                                {unitRow(unitInfo.partLabel, partQuantity, setPartQuantity, partDisabled)}
+                                {unitRow(unitInfo.partLabel, partQuantity, setPartQuantity, partDisabled, null, partMax)}
                               </>
                             )}
                             {unitInfo.hasPartUnit && !unitInfo.hasTenthsOption &&
-                              unitRow(unitInfo.partLabel, partQuantity, setPartQuantity, false)
+                              unitRow(unitInfo.partLabel, partQuantity, setPartQuantity, false, null, partMax)
                             }
                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                               <button

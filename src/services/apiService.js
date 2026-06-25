@@ -18,6 +18,7 @@ export {
   importStockList,
   addStockItems,
   deleteAllStockItems,
+  bulkPatchStockItems,
   fixGallonStockItems,
 
   // Stock Sessions
