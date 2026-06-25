@@ -354,64 +354,94 @@ export function subscribeToStockSessions(venuePath, onData, onError) {
  * Import a full stock list, replacing all existing stock items for a pub.
  * Batched writes (max 500/batch).
  */
-export async function importStockList(venuePath, items, onProgress = null) {
-  try {
-    const { accountId, venueId } = idsFromVenuePath(venuePath);
-    const colRef = collection(db, `${venuePath}/stockItems`);
-    const existingSnapshot = await getDocs(colRef);
+// Shape a parsed stock-list row into the Firestore stock-item document.
+function buildStockItemData(item, accountId, venueId) {
+  return {
+    name: item.name,
+    section: item.section,
+    category: item.category || '',
+    productCode: item.productCode || '',
+    costPrice: item.costPrice || 0,
+    wholeUnit: item.wholeUnit || '',
+    partUnit: item.partUnit || '',
+    unit: item.unit || '',
+    quantity: 0,
+    unitCost: item.costPrice || 0,
+    accountId,
+    venueId,
+    updatedAt: Timestamp.now()
+  };
+}
 
-    if (!existingSnapshot.empty) {
-      let deleteBatch = writeBatch(db);
-      let deleteCount = 0;
-      for (const docSnap of existingSnapshot.docs) {
-        deleteBatch.delete(docSnap.ref);
-        deleteCount++;
-        if (deleteCount % 500 === 0) {
-          await deleteBatch.commit();
-          deleteBatch = writeBatch(db);
-        }
-      }
-      if (deleteCount % 500 !== 0) await deleteBatch.commit();
-    }
+// Write items in batches without deleting anything first (append).
+async function writeStockItems(venuePath, items, onProgress) {
+  const { accountId, venueId } = idsFromVenuePath(venuePath);
+  let batch = writeBatch(db);
+  let batchCount = 0;
+  let completed = 0;
 
-    let batch = writeBatch(db);
-    let batchCount = 0;
-    let completed = 0;
-
-    for (const item of items) {
-      const docRef = doc(collection(db, `${venuePath}/stockItems`));
-      batch.set(docRef, {
-        name: item.name,
-        section: item.section,
-        category: item.category || '',
-        productCode: item.productCode || '',
-        costPrice: item.costPrice || 0,
-        wholeUnit: item.wholeUnit || '',
-        partUnit: item.partUnit || '',
-        unit: item.unit || '',
-        quantity: 0,
-        unitCost: item.costPrice || 0,
-        accountId,
-        venueId,
-        updatedAt: Timestamp.now()
-      });
-
-      batchCount++;
-      completed++;
-
-      if (batchCount === 500) {
-        await batch.commit();
-        batch = writeBatch(db);
-        batchCount = 0;
-        if (onProgress) onProgress({ completed, total: items.length });
-      }
-    }
-
-    if (batchCount > 0) {
+  for (const item of items) {
+    const docRef = doc(collection(db, `${venuePath}/stockItems`));
+    batch.set(docRef, buildStockItemData(item, accountId, venueId));
+    batchCount++;
+    completed++;
+    if (batchCount === 500) {
       await batch.commit();
+      batch = writeBatch(db);
+      batchCount = 0;
       if (onProgress) onProgress({ completed, total: items.length });
     }
+  }
 
+  if (batchCount > 0) {
+    await batch.commit();
+    if (onProgress) onProgress({ completed, total: items.length });
+  }
+}
+
+/** Delete every stock item for a venue. Returns the number removed. */
+export async function deleteAllStockItems(venuePath) {
+  try {
+    const colRef = collection(db, `${venuePath}/stockItems`);
+    const snapshot = await getDocs(colRef);
+    let batch = writeBatch(db);
+    let inBatch = 0;
+    let count = 0;
+    for (const docSnap of snapshot.docs) {
+      batch.delete(docSnap.ref);
+      inBatch++;
+      count++;
+      if (inBatch === 500) {
+        await batch.commit();
+        batch = writeBatch(db);
+        inBatch = 0;
+      }
+    }
+    if (inBatch > 0) await batch.commit();
+    return { success: true, count };
+  } catch (error) {
+    console.error('Error deleting stock list:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Append items to the existing stock list (no delete). */
+export async function addStockItems(venuePath, items, onProgress = null) {
+  try {
+    await writeStockItems(venuePath, items, onProgress);
+    return { success: true, count: items.length };
+  } catch (error) {
+    console.error('Error adding stock items:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Replace the entire stock list: delete existing items, then write the new set. */
+export async function importStockList(venuePath, items, onProgress = null) {
+  try {
+    const delResult = await deleteAllStockItems(venuePath);
+    if (!delResult.success) return delResult;
+    await writeStockItems(venuePath, items, onProgress);
     return { success: true, count: items.length };
   } catch (error) {
     console.error('Error importing stock list:', error);

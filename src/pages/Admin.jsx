@@ -12,12 +12,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
+import StockListAdmin from '../components/StockListAdmin';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
 function Admin() {
   const navigate = useNavigate();
-  const { pubName, members, saveVenue, saveMember, deleteMember } = useAuth();
+  const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -230,6 +231,11 @@ function Admin() {
           </div>
         )}
       </div>
+
+      {/* Stock list — upload CSV/JSON, or delete the whole list */}
+      {isAdmin && isAdmin() && selectedPub?.path && (
+        <StockListAdmin venuePath={selectedPub.path} canEdit={true} />
+      )}
     </div>
   );
 }

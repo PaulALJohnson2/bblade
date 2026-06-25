@@ -17,9 +17,9 @@
 const FIELD_ALIASES = {
   name: ['name', 'product', 'productname', 'description', 'item', 'itemname'],
   section: ['section', 'area', 'location'],
-  category: ['category', 'type', 'group', 'department'],
-  productCode: ['productcode', 'code', 'sku', 'barcode', 'ref'],
-  costPrice: ['costprice', 'cost', 'price', 'unitcost', 'buyingprice'],
+  category: ['category', 'categoryid', 'categoryname', 'type', 'group', 'department', 'dept'],
+  productCode: ['productcode', 'code', 'sku', 'barcode', 'ref', 'ordercode', 'articlecode'],
+  costPrice: ['costprice', 'costpriceinctax', 'costpriceextax', 'cost', 'price', 'unitcost', 'buyingprice'],
   wholeUnit: ['wholeunit', 'pack', 'packsize', 'case', 'casesize', 'container', 'packaging'],
   partUnit: ['partunit', 'splitunit', 'split', 'subunit'],
   unit: ['unit', 'uom', 'unitofmeasure', 'measure'],
@@ -78,8 +78,24 @@ function mapObjectKeys(obj) {
   return out;
 }
 
+// Sniff the delimiter from the header line: most exports use comma, but till
+// systems often emit semicolon (European locales) or tab. Pick whichever
+// separator appears most in the first line (outside quotes); default to comma.
+function detectDelimiter(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || '';
+  const counts = { ',': 0, ';': 0, '\t': 0 };
+  let inQuotes = false;
+  for (const c of firstLine) {
+    if (c === '"') inQuotes = !inQuotes;
+    else if (!inQuotes && counts[c] !== undefined) counts[c]++;
+  }
+  let best = ',';
+  for (const d of [';', '\t']) if (counts[d] > counts[best]) best = d;
+  return best;
+}
+
 // Split CSV text into rows of fields, honouring quoted fields and "" escapes.
-function splitCsvRows(text) {
+function splitCsvRows(text, delimiter = ',') {
   const rows = [];
   let row = [];
   let field = '';
@@ -96,7 +112,7 @@ function splitCsvRows(text) {
       }
     } else if (c === '"') {
       inQuotes = true;
-    } else if (c === ',') {
+    } else if (c === delimiter) {
       row.push(field); field = '';
     } else if (c === '\n') {
       row.push(field); rows.push(row); row = []; field = '';
@@ -111,7 +127,9 @@ function splitCsvRows(text) {
 }
 
 function parseCsv(text) {
-  const rows = splitCsvRows(text);
+  const clean = text.replace(/^﻿/, '');
+  const delimiter = detectDelimiter(clean);
+  const rows = splitCsvRows(clean, delimiter);
   if (rows.length < 2) {
     return { items: [], skipped: 0, error: 'The file needs a header row and at least one item row.' };
   }

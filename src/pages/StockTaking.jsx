@@ -29,6 +29,9 @@ import {
   subscribeToStockSession
 } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
+import UnitPicker from '../components/UnitPicker';
+import CountUnitPrompt from '../components/CountUnitPrompt';
+import { itemHasUnit } from '../utils/unitTemplates';
 import useTheme from '../hooks/useTheme';
 import { parseUnitInfo, formatCountDisplay, formatCountSummary, formatItemDescription } from '../utils/stockUnitUtils';
 import StockListUpload from '../components/StockListUpload';
@@ -56,6 +59,7 @@ function StockTaking() {
   // Search and quick entry state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
+  const [assigningUnitId, setAssigningUnitId] = useState(null);
   const [wholeQuantity, setWholeQuantity] = useState('');
   const [partQuantity, setPartQuantity] = useState('');
   const [tenthsQuantity, setTenthsQuantity] = useState('');
@@ -99,6 +103,8 @@ function StockTaking() {
     section: 'bar',
     quantity: '',
     unit: '',
+    wholeUnit: '',
+    partUnit: '',
     unitCost: '',
     notes: ''
   });
@@ -379,6 +385,26 @@ function StockTaking() {
     }
   };
 
+  // Counter assigns a count method/size to an item that was imported without one.
+  // Saved back to the item (merge), so the realtime listener flips the card to steppers.
+  const handleAssignUnit = async (item, unit) => {
+    setAssigningUnitId(item.id);
+    const res = await saveOrUpdateStockItem(selectedPub.path, item.id, {
+      wholeUnit: unit.wholeUnit,
+      partUnit: unit.partUnit,
+      unit: unit.unit || unit.wholeUnit,
+    });
+    setAssigningUnitId(null);
+    if (res.success) {
+      // Reflect immediately so the desktop form (driven by selectedItem) flips to steppers.
+      setSelectedItem(prev => (prev && prev.id === item.id)
+        ? { ...prev, wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, unit: unit.unit || unit.wholeUnit }
+        : prev);
+    } else {
+      showToast('Could not save unit: ' + res.error);
+    }
+  };
+
   const handleQuantitySubmit = async () => {
     if (!selectedItem || saving || !currentSession) return;
 
@@ -506,6 +532,8 @@ function StockTaking() {
         section: formData.section,
         quantity: parseFloat(formData.quantity) || 0,
         unit: formData.unit.trim(),
+        wholeUnit: formData.wholeUnit.trim(),
+        partUnit: formData.partUnit.trim(),
         unitCost: parseFloat(formData.unitCost) || 0,
         notes: formData.notes.trim()
       }
@@ -513,7 +541,7 @@ function StockTaking() {
 
     if (result.success) {
       setShowAdminForm(false);
-      setFormData({ name: '', section: 'bar', quantity: '', unit: '', unitCost: '', notes: '' });
+      setFormData({ name: '', section: 'bar', quantity: '', unit: '', wholeUnit: '', partUnit: '', unitCost: '', notes: '' });
     } else {
       showToast('Error: ' + result.error);
     }
@@ -1520,6 +1548,17 @@ function StockTaking() {
 
                         {/* Input Fields and Submit - horizontal layout for desktop */}
                         {(() => {
+                          // Imported without a size? Ask the counter to pick one first.
+                          if (!itemHasUnit(selectedItem)) {
+                            return (
+                              <CountUnitPrompt
+                                item={selectedItem}
+                                colors={colors}
+                                saving={assigningUnitId === selectedItem.id}
+                                onAssign={(u) => handleAssignUnit(selectedItem, u)}
+                              />
+                            );
+                          }
                           const unitInfo = parseUnitInfo(selectedItem);
                           const tenthsDisabled = !!partQuantity;
                           const partDisabled = !!tenthsQuantity;
@@ -1803,6 +1842,17 @@ function StockTaking() {
                       </div>
                       {/* Inline entry panel — expands the card; steppers don't open the keyboard */}
                       {isMobile && selectedItem?.id === item.id && (() => {
+                        // Imported without a size? Ask the counter to pick one first.
+                        if (!itemHasUnit(item)) {
+                          return (
+                            <CountUnitPrompt
+                              item={item}
+                              colors={colors}
+                              saving={assigningUnitId === item.id}
+                              onAssign={(u) => handleAssignUnit(item, u)}
+                            />
+                          );
+                        }
                         const unitInfo = parseUnitInfo(item);
                         const tenthsDisabled = !!partQuantity;
                         const partDisabled = !!tenthsQuantity;
@@ -2545,45 +2595,34 @@ function StockTaking() {
                   <option value="kitchen">Kitchen</option>
                 </select>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
-                    Quantity
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({...formData, quantity: e.target.value})}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: '4px',
-                      backgroundColor: colors.bgCard,
-                      color: colors.textPrimary
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
-                    Unit
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.unit}
-                    onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                    placeholder="cases, kg..."
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: `1px solid ${colors.border}`,
-                      borderRadius: '4px',
-                      backgroundColor: colors.bgCard,
-                      color: colors.textPrimary
-                    }}
-                  />
-                </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
+                  Opening quantity
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({...formData, quantity: e.target.value})}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '4px',
+                    backgroundColor: colors.bgCard,
+                    color: colors.textPrimary
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
+                  How is it counted?
+                </label>
+                <UnitPicker
+                  value={{ wholeUnit: formData.wholeUnit, partUnit: formData.partUnit }}
+                  onChange={(next) => setFormData({ ...formData, wholeUnit: next.wholeUnit, partUnit: next.partUnit, unit: next.unit })}
+                  colors={colors}
+                />
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
