@@ -31,7 +31,12 @@ import {
 import { getThemeColors } from '../utils/theme';
 import UnitPicker from '../components/UnitPicker';
 import CountUnitPrompt from '../components/CountUnitPrompt';
+import CountCategoryPrompt from '../components/CountCategoryPrompt';
 import { itemHasUnit } from '../utils/unitTemplates';
+
+// First count of an imported-without-a-category item: confirm the AI suggestion.
+const itemNeedsCategory = (it) =>
+  !!it && !(it.category && String(it.category).trim()) && !!(it.categorySuggested && String(it.categorySuggested).trim());
 import useTheme from '../hooks/useTheme';
 import { parseUnitInfo, formatCountDisplay, formatCountSummary, formatItemDescription } from '../utils/stockUnitUtils';
 import StockListUpload from '../components/StockListUpload';
@@ -60,6 +65,7 @@ function StockTaking() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState(null);
   const [assigningUnitId, setAssigningUnitId] = useState(null);
+  const [assigningCatId, setAssigningCatId] = useState(null);
   const [wholeQuantity, setWholeQuantity] = useState('');
   const [partQuantity, setPartQuantity] = useState('');
   const [tenthsQuantity, setTenthsQuantity] = useState('');
@@ -214,12 +220,14 @@ function StockTaking() {
     const matchesSection = activeSection === 'all' || item.section === activeSection;
     // While searching, ignore the category tab so results span the whole section
     const matchesCategory = activeCategory === 'all' || !!query || item.category === activeCategory;
-    return matchesSearch && matchesSection && matchesCategory;
+    return !item.archived && matchesSearch && matchesSection && matchesCategory;
   });
 
   // Categories available within the current section, for the category tabs
-  const sectionItems = allItems.filter(item => activeSection === 'all' || item.section === activeSection);
+  const sectionItems = allItems.filter(item => !item.archived && (activeSection === 'all' || item.section === activeSection));
   const categories = [...new Set(sectionItems.map(item => item.category).filter(Boolean))].sort();
+  // All confirmed categories across the venue, for quick-pick in the category prompt.
+  const allCategories = [...new Set(allItems.filter(i => !i.archived).map(i => i.category).filter(Boolean))].sort();
 
   // Scroll to first search result when searching
   useEffect(() => {
@@ -233,8 +241,8 @@ function StockTaking() {
     setActiveCategory('all');
   }, [activeSection]);
 
-  const barItems = allItems.filter(item => item.section === 'bar');
-  const kitchenItems = allItems.filter(item => item.section === 'kitchen');
+  const barItems = allItems.filter(item => !item.archived && item.section === 'bar');
+  const kitchenItems = allItems.filter(item => !item.archived && item.section === 'kitchen');
 
   // Get count for an item from the current session
   const getSessionCount = (itemId) => {
@@ -402,6 +410,23 @@ function StockTaking() {
         : prev);
     } else {
       showToast('Could not save unit: ' + res.error);
+    }
+  };
+
+  // Counter confirms (or edits) the AI-suggested category at first count → builds the pill.
+  const handleAssignCategory = async (item, category) => {
+    setAssigningCatId(item.id);
+    const res = await saveOrUpdateStockItem(selectedPub.path, item.id, {
+      category,
+      categorySuggested: '',
+    });
+    setAssigningCatId(null);
+    if (res.success) {
+      setSelectedItem(prev => (prev && prev.id === item.id)
+        ? { ...prev, category, categorySuggested: '' }
+        : prev);
+    } else {
+      showToast('Could not save category: ' + res.error);
     }
   };
 
@@ -1548,7 +1573,19 @@ function StockTaking() {
 
                         {/* Input Fields and Submit - horizontal layout for desktop */}
                         {(() => {
-                          // Imported without a size? Ask the counter to pick one first.
+                          // Imported with an AI-suggested category? Confirm it first (builds the pill).
+                          if (itemNeedsCategory(selectedItem)) {
+                            return (
+                              <CountCategoryPrompt
+                                item={selectedItem}
+                                colors={colors}
+                                saving={assigningCatId === selectedItem.id}
+                                existingCategories={allCategories}
+                                onConfirm={(c) => handleAssignCategory(selectedItem, c)}
+                              />
+                            );
+                          }
+                          // Imported without a size? Ask the counter to pick one.
                           if (!itemHasUnit(selectedItem)) {
                             return (
                               <CountUnitPrompt
@@ -1842,7 +1879,19 @@ function StockTaking() {
                       </div>
                       {/* Inline entry panel — expands the card; steppers don't open the keyboard */}
                       {isMobile && selectedItem?.id === item.id && (() => {
-                        // Imported without a size? Ask the counter to pick one first.
+                        // Imported with an AI-suggested category? Confirm it first (builds the pill).
+                        if (itemNeedsCategory(item)) {
+                          return (
+                            <CountCategoryPrompt
+                              item={item}
+                              colors={colors}
+                              saving={assigningCatId === item.id}
+                              existingCategories={allCategories}
+                              onConfirm={(c) => handleAssignCategory(item, c)}
+                            />
+                          );
+                        }
+                        // Imported without a size? Ask the counter to pick one.
                         if (!itemHasUnit(item)) {
                           return (
                             <CountUnitPrompt

@@ -13,6 +13,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { addStockItems, deleteAllStockItems, getAllStockItems } from '../services/apiService';
+import { enrichItemsWithInference } from '../services/aiInference';
 import { parseStockList, STOCK_CSV_TEMPLATE } from '../utils/parseStockList';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -23,8 +24,9 @@ function StockListAdmin({ venuePath, canEdit = true }) {
   const fileInputRef = useRef(null);
 
   const [currentCount, setCurrentCount] = useState(null);
-  const [parsed, setParsed] = useState(null);   // { items, skipped, fileNames }
+  const [parsed, setParsed] = useState(null);   // { items, skipped, fileNames, summary, source }
   const [error, setError] = useState(null);
+  const [analysing, setAnalysing] = useState(false);
   const [busy, setBusy] = useState(null);       // 'adding' | 'deleting' | null
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -61,9 +63,17 @@ function StockListAdmin({ venuePath, canEdit = true }) {
     }
 
     if (fileErrors.length) setError(fileErrors.join(' · '));
-    if (allItems.length) setParsed({ items: allItems, skipped, fileNames });
     // reset the input so re-selecting the same file fires onChange again
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    if (allItems.length) {
+      // Gemini batch-infers section (bar/kitchen/ignore) + suggests categories for
+      // items that arrived without one. Falls back to keyword sorting if AI is off.
+      setAnalysing(true);
+      const enriched = await enrichItemsWithInference(allItems);
+      setAnalysing(false);
+      setParsed({ items: enriched.items, skipped, fileNames, summary: enriched.summary, source: enriched.source });
+    }
   };
 
   const handleAdd = async () => {
@@ -137,7 +147,17 @@ function StockListAdmin({ venuePath, canEdit = true }) {
       )}
 
       {/* Upload + preview */}
-      {parsed ? (
+      {analysing ? (
+        <div style={{
+          padding: '0.85rem 1rem', backgroundColor: colors.bgLight, borderRadius: '8px',
+          marginBottom: '0.75rem', color: colors.textSecondary, fontSize: '0.9rem',
+          display: 'flex', alignItems: 'center', gap: '0.6rem',
+        }}>
+          <div style={{ width: '18px', height: '18px', border: `3px solid ${colors.bgCard}`, borderTopColor: colors.primary, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          Sorting food vs drink…
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : parsed ? (
         <div style={{ marginBottom: '1rem' }}>
           <div style={{
             padding: '0.85rem 1rem', backgroundColor: colors.bgLight, borderRadius: '8px',
@@ -148,6 +168,21 @@ function StockListAdmin({ venuePath, canEdit = true }) {
             {parsed.skipped > 0 && (
               <span style={{ color: colors.warning }}> · {parsed.skipped} row(s) skipped</span>
             )}
+          </div>
+          {parsed.summary && (
+            <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
+              {[['Bar', parsed.summary.bar, colors.primary], ['Kitchen', parsed.summary.kitchen, '#d69e2e'], ['Ignore', parsed.summary.ignore, colors.textMuted]].map(([label, n, c]) => (
+                <div key={label} style={{ flex: 1, textAlign: 'center', padding: '0.5rem', backgroundColor: colors.bgLight, borderRadius: '8px' }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 700, color: c }}>{n || 0}</div>
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginBottom: '0.75rem' }}>
+            {parsed.source === 'ai'
+              ? '✨ Sorted by AI — check the split before importing.'
+              : 'Sorted by keyword rules (AI off) — check the split before importing.'}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button onClick={handleAdd} disabled={busy === 'adding'} style={{ ...primaryBtn, flex: 1, opacity: busy === 'adding' ? 0.6 : 1 }}>

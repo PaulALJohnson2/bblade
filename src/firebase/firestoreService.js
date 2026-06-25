@@ -367,6 +367,8 @@ function buildStockItemData(item, accountId, venueId) {
     unit: item.unit || '',
     quantity: 0,
     unitCost: item.costPrice || 0,
+    archived: item.archived || false,
+    categorySuggested: item.categorySuggested || '',
     accountId,
     venueId,
     updatedAt: Timestamp.now()
