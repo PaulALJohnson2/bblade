@@ -32,6 +32,8 @@ export default defineConfig({
         // Never intercept the Firebase auth handler (/__/auth) — must hit the network.
         navigateFallbackDenylist: [/^\/__/],
         cleanupOutdatedCaches: true,
+        // Always fetch the SW + app shell fresh on update so installed PWAs don't
+        // get stuck on a stale build after a deploy.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
     }),
@@ -48,7 +50,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-firebase': ['firebase/app', 'firebase/firestore'],
+          'vendor-amplify': ['aws-amplify'],
         },
       },
     },
