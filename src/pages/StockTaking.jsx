@@ -13,7 +13,7 @@
  * Access: Requires 'stock', 'admin', or 'superadmin' role
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -44,7 +44,21 @@ import StockListUpload from '../components/StockListUpload';
 import StockBuilder from '../components/StockBuilder';
 
 function StockTaking() {
-  const { currentUser, userProfile, selectedPub, canAccessStock, canEdit, isSuperAdmin, isAdmin } = useAuth();
+  const { currentUser, userProfile, members, selectedPub, canAccessStock, canEdit, isSuperAdmin, isAdmin } = useAuth();
+
+  // Resolve a stored name/email to the member's real name. Older sessions stored
+  // the email as createdByName; map it back to a display name where we can.
+  const nameByEmail = useMemo(() => {
+    const map = {};
+    for (const m of members || []) {
+      if (m.email && m.displayName) map[m.email.toLowerCase()] = m.displayName;
+    }
+    return map;
+  }, [members]);
+  const resolveName = (stored) => {
+    if (!stored) return stored;
+    return nameByEmail[String(stored).toLowerCase()] || stored;
+  };
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const navigate = useNavigate();
@@ -110,6 +124,7 @@ function StockTaking() {
   const [formData, setFormData] = useState({
     name: '',
     section: 'bar',
+    category: '',
     quantity: '',
     unit: '',
     wholeUnit: '',
@@ -580,6 +595,7 @@ function StockTaking() {
       {
         name: formData.name.trim(),
         section: formData.section,
+        category: formData.category.trim(),
         quantity: parseFloat(formData.quantity) || 0,
         unit: formData.unit.trim(),
         wholeUnit: formData.wholeUnit.trim(),
@@ -591,7 +607,7 @@ function StockTaking() {
 
     if (result.success) {
       setShowAdminForm(false);
-      setFormData({ name: '', section: 'bar', quantity: '', unit: '', wholeUnit: '', partUnit: '', unitCost: '', notes: '' });
+      setFormData({ name: '', section: 'bar', category: '', quantity: '', unit: '', wholeUnit: '', partUnit: '', unitCost: '', notes: '' });
     } else {
       showToast('Error: ' + result.error);
     }
@@ -727,7 +743,7 @@ function StockTaking() {
 
     let text = `STOCK TAKE\n`;
     text += `${dateStr}\n`;
-    text += `By: ${session.createdByName}\n`;
+    text += `By: ${resolveName(session.createdByName)}\n`;
     text += `${'='.repeat(40)}\n\n`;
 
     const buildCounted = (section) => Object.entries(session.counts || {})
@@ -965,7 +981,7 @@ function StockTaking() {
         <div class="header">
           <h1>${selectedPub?.name || 'Stock'} Stock Take</h1>
           <div class="date">${dateStr}</div>
-          <div class="by">Completed by ${session.createdByName}</div>
+          <div class="by">Completed by ${resolveName(session.createdByName)}</div>
         </div>
 
         ${barCounted.length > 0 ? `
@@ -1282,7 +1298,7 @@ function StockTaking() {
                     </span>
                   </div>
                   <div style={{ fontSize: '0.8rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
-                    {session.createdByName} • {itemCount} items
+                    {resolveName(session.createdByName)} • {itemCount} items
                   </div>
                   <div style={{
                     display: 'flex',
@@ -1393,7 +1409,7 @@ function StockTaking() {
                 {currentSession?.section === 'kitchen' ? 'Kitchen' : 'Bar'} Stock Take In Progress
               </div>
               <div style={{ fontSize: '0.85rem', color: colors.textSecondary }}>
-                Started {formatSessionDate(currentSession.createdAt)} by {currentSession.createdByName}
+                Started {formatSessionDate(currentSession.createdAt)} by {resolveName(currentSession.createdByName)}
               </div>
               <div style={{ fontSize: '0.85rem', color: colors.textSecondary }}>
                 {countedItemsCount} of {filteredItems.length} items counted
@@ -2110,7 +2126,7 @@ function StockTaking() {
                 <h3 style={{ margin: 0, color: colors.textPrimary, fontSize: '1.25rem' }}>Stock Summary</h3>
                 {summarySession && (
                   <div style={{ fontSize: '0.85rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
-                    {formatSessionDate(summarySession.createdAt)} • {summarySession.createdByName}
+                    {formatSessionDate(summarySession.createdAt)} • {resolveName(summarySession.createdByName)}
                   </div>
                 )}
               </div>
@@ -2356,7 +2372,7 @@ function StockTaking() {
               <div>
                 <h3 style={{ margin: 0, color: colors.textPrimary }}>Stock Take</h3>
                 <div style={{ fontSize: '0.85rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
-                  {formatSessionDate(viewingSession.createdAt)} • {viewingSession.createdByName}
+                  {formatSessionDate(viewingSession.createdAt)} • {resolveName(viewingSession.createdByName)}
                 </div>
               </div>
               <button
@@ -2717,6 +2733,51 @@ function StockTaking() {
                   <option value="bar">Bar</option>
                   <option value="kitchen">Kitchen</option>
                 </select>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
+                  Category
+                </label>
+                <input
+                  type="text"
+                  value={formData.category}
+                  onChange={(e) => setFormData({...formData, category: e.target.value})}
+                  placeholder="e.g. Lager, Red Wine, Mains"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '4px',
+                    backgroundColor: colors.bgCard,
+                    color: colors.textPrimary
+                  }}
+                />
+                {allCategories.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                    {allCategories.map(c => {
+                      const active = c === formData.category.trim();
+                      return (
+                        <button
+                          type="button"
+                          key={c}
+                          onClick={() => setFormData({...formData, category: active ? '' : c})}
+                          style={{
+                            padding: '0.35rem 0.7rem',
+                            borderRadius: '9999px',
+                            border: `1px solid ${active ? colors.primary : colors.border}`,
+                            backgroundColor: active ? colors.primarySoft : colors.bgCard,
+                            color: active ? colors.primary : colors.textPrimary,
+                            fontWeight: active ? 700 : 500,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>

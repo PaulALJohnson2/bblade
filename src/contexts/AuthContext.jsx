@@ -79,7 +79,6 @@ export const AuthProvider = ({ children }) => {
       const attrs = await fetchUserAttributes();
       const { userId } = await getCurrentUser();
       const email = attrs.email || '';
-      const user = { uid: userId, email, displayName: email };
 
       const res = await getMembers(ACCOUNT_ID);
       if (!res.success) {
@@ -91,6 +90,9 @@ export const AuthProvider = ({ children }) => {
       const match = list.find(
         (m) => m.email && email && m.email.toLowerCase() === email.toLowerCase()
       );
+
+      // Prefer the member's real name; fall back to email only if none is set.
+      const user = { uid: userId, email, displayName: match?.displayName || email };
 
       if (withEmail.length === 0 || match) {
         // Authorized (matched member, or bootstrap when no allowlist exists yet)
