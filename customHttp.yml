@@ -1,0 +1,21 @@
+# Amplify Hosting custom headers — ports the cache rules from the old
+# firebase.json so the PWA updates cleanly (the service worker, registration
+# shim, app shell and manifest must never be served stale, or an installed PWA
+# can get stuck half-updated — see the reload safeguard in main.jsx).
+customHeaders:
+  - pattern: '/sw.js'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate'
+  - pattern: '/registerSW.js'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate'
+  - pattern: '/index.html'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache, no-store, must-revalidate'
+  - pattern: '/manifest.webmanifest'
+    headers:
+      - key: 'Cache-Control'
+        value: 'no-cache'
