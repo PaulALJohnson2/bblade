@@ -1,9 +1,9 @@
 /**
- * apiService.js — thin re-export layer over firestoreService.
+ * apiService.js — thin re-export layer over the stock data service.
  *
  * Kept so page/components can import from a stable "services" path
  * (matches the original app's structure). All stock data access lives in
- * ../firebase/firestoreService.
+ * ../data/stockService (AWS Amplify; formerly ../firebase/firestoreService).
  */
 
 export {
@@ -48,4 +48,4 @@ export {
   getMembers,
   saveMember,
   deleteMember,
-} from '../firebase/firestoreService';
+} from '../data/stockService';

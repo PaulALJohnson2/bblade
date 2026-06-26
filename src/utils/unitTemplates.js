@@ -18,12 +18,11 @@ export const UNIT_TEMPLATES = [
   // ---- Bar (drinks) ----
   {
     key: 'keg', label: '🛢 Keg', sections: ['bar'], sizes: [
-      { label: '50L', wholeUnit: 'Keg 1*50ltr', partUnit: 'Litre' },
-      { label: '30L', wholeUnit: 'Keg 1*30ltr', partUnit: 'Litre' },
-      { label: '11G (50L)', wholeUnit: 'Keg 1*50ltr', partUnit: 'Litre' },
-      { label: '20L', wholeUnit: 'Keg 1*20ltr', partUnit: 'Litre' },
-      { label: '88L', wholeUnit: 'Keg 1*88ltr', partUnit: 'Litre' },
-      { label: '100L', wholeUnit: 'Keg 1*100ltr', partUnit: 'Litre' },
+      { label: '50L (11G)', wholeUnit: 'Keg 1*50ltr', partUnit: 'Litre' },
+      { label: '30L (6.6G)', wholeUnit: 'Keg 1*30ltr', partUnit: 'Litre' },
+      { label: '20L (4.4G)', wholeUnit: 'Keg 1*20ltr', partUnit: 'Litre' },
+      { label: '88L (19.4G)', wholeUnit: 'Keg 1*88ltr', partUnit: 'Litre' },
+      { label: '100L (22G)', wholeUnit: 'Keg 1*100ltr', partUnit: 'Litre' },
     ],
   },
   {

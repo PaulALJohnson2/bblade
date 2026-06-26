@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './amplifyConfig'; // configure Amplify before anything uses Auth/Data
 import App from './App';
 import './index.css';
 

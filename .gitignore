@@ -5,3 +5,8 @@ dist
 .DS_Store
 .env
 .env.local
+
+# amplify
+.amplify
+amplify_outputs*
+amplifyconfiguration*
