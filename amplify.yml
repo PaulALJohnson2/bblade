@@ -6,13 +6,16 @@ backend:
   phases:
     build:
       commands:
-        - npm ci --cache .npm --prefer-offline
+        # npm install (not ci): @aws-amplify/backend-cli bundles deps that npm
+        # omits from the lockfile, so `npm ci` rejects the lock. --legacy-peer-deps
+        # avoids the zod peer-dependency conflict in the Amplify backend packages.
+        - npm install --legacy-peer-deps --cache .npm --prefer-offline
         - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
 frontend:
   phases:
     preBuild:
       commands:
-        - npm ci --cache .npm --prefer-offline
+        - npm install --legacy-peer-deps --cache .npm --prefer-offline
     build:
       commands:
         - npm run build
