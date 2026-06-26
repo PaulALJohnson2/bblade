@@ -25,7 +25,9 @@
  * ISO strings, not Firestore Timestamps.
  */
 import { generateClient } from 'aws-amplify/data';
+import { Hub } from 'aws-amplify/utils';
 import { idsFromVenuePath } from '../config/app';
+import { cacheGet, cacheSet, outboxAdd, outboxAll, outboxDelete, isOnline } from './offline';
 
 // Lazily create the data client so Amplify.configure() (in amplifyConfig.js) is
 // guaranteed to have run by the time any function is actually called.
@@ -47,6 +49,146 @@ const decodeJSON = (v, fallback) => {
 const hydrateSession = (s) => (s ? { ...s, counts: decodeJSON(s.counts, {}) } : s);
 const hydrateAccount = (a) => (a ? { ...a, entitlements: decodeJSON(a.entitlements, {}) } : a);
 const hydrateMember = (m) => (m ? { ...m, venueAccess: decodeJSON(m.venueAccess, undefined) } : m);
+
+// ============================================
+// OFFLINE-FIRST COUNTING  (see offline.js)
+//
+// Firestore queued writes + cached reads for free; Amplify Gen 2 doesn't, so the
+// counting path is built here:
+//   - reads (items / sessions) cache their last result and fall back to it with
+//     no signal, so the count screen loads in a dead cellar;
+//   - saveStockCount appends to a durable IndexedDB outbox and returns instantly
+//     (fire-and-forget, like the old Firestore write), then syncs when online.
+// Starting / completing a session stays online-only (done with signal).
+// ============================================
+
+const ck = {
+  items: (venueId, section) => `items:${venueId}:${section || 'all'}`,
+  sessions: (venueId) => `sessions:${venueId}`,
+  session: (sessionId) => `session:${sessionId}`,
+};
+
+// Shape a queued count into the session.counts entry shape (for optimistic display).
+const countEntryFromQueued = (countData, countedAt) => ({
+  wholeCount: countData.wholeCount,
+  partCount: countData.partCount,
+  quantity: countData.quantity,
+  itemName: countData.itemName,
+  wholeLabel: countData.wholeLabel,
+  partLabel: countData.partLabel,
+  countedBy: countData.countedBy ? [countData.countedBy] : [],
+  countedAt,
+  pending: true, // marks a not-yet-synced count
+});
+
+// Overlay any queued (unsynced) counts for a session on top of its server counts.
+function overlayOutbox(session, entries) {
+  if (!session) return session;
+  const mine = entries.filter((e) => e.sessionId === session.id);
+  if (!mine.length) return session;
+  const counts = { ...(session.counts || {}) };
+  for (const e of mine) counts[e.itemId] = countEntryFromQueued(e.countData, e.countedAt);
+  return { ...session, counts };
+}
+
+// Live subscriptions go quiet offline (observeQuery only emits with a network),
+// so session subscribers register a refresher here; saveStockCount calls them
+// after queuing a count so the screen reflects it immediately, online or off.
+const offlineRefreshers = new Set();
+function notifyOfflineRefresh() {
+  offlineRefreshers.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
+}
+
+// The actual server write for one count: read-merge-write the session's counts
+// JSON (used both for online saves and when flushing the offline queue).
+async function commitCountToServer(sessionId, itemId, countData, countedAt) {
+  const session = unwrap(await db().models.StockSession.get({ id: sessionId }));
+  if (!session) throw new Error('Session not found');
+
+  const counts = { ...decodeJSON(session.counts, {}) };
+  const existing = counts[itemId];
+
+  let contributors = [];
+  if (existing?.countedBy) {
+    contributors = Array.isArray(existing.countedBy) ? [...existing.countedBy] : [existing.countedBy];
+  }
+  if (Array.isArray(existing?.entries)) {
+    existing.entries.forEach((e) => {
+      if (e.countedBy && !contributors.includes(e.countedBy)) contributors.push(e.countedBy);
+    });
+  }
+  if (countData.countedBy && !contributors.includes(countData.countedBy)) {
+    contributors.push(countData.countedBy);
+  }
+
+  const history = Array.isArray(existing?.history) ? [...existing.history] : [];
+  if (history.length === 0 && existing?.countedAt) {
+    history.push({
+      wholeCount: existing.wholeCount,
+      partCount: existing.partCount,
+      quantity: existing.quantity,
+      countedBy: Array.isArray(existing.countedBy) ? existing.countedBy[0] : existing.countedBy || '',
+      countedAt: existing.countedAt,
+    });
+  }
+  history.push({
+    wholeCount: countData.wholeCount,
+    partCount: countData.partCount,
+    quantity: countData.quantity,
+    countedBy: countData.countedBy || '',
+    countedAt,
+  });
+
+  counts[itemId] = {
+    wholeCount: countData.wholeCount,
+    partCount: countData.partCount,
+    quantity: countData.quantity,
+    itemName: countData.itemName,
+    wholeLabel: countData.wholeLabel,
+    partLabel: countData.partLabel,
+    countedBy: contributors,
+    countedAt,
+    history,
+  };
+
+  unwrap(await db().models.StockSession.update({ id: sessionId, counts: encodeJSON(counts) }));
+}
+
+let flushing = false;
+/** Flush queued offline counts to the server, oldest first. Stops on the first
+ *  failure (e.g. still offline / not yet signed in) and retries on the next trigger. */
+export async function flushOutbox() {
+  if (flushing || !isOnline()) return;
+  flushing = true;
+  try {
+    const entries = await outboxAll(); // FIFO by autoincrement id
+    for (const e of entries) {
+      try {
+        await commitCountToServer(e.sessionId, e.itemId, e.countData, e.countedAt);
+        await outboxDelete(e.id);
+      } catch (err) {
+        console.warn('[offline] flush paused (will retry):', err?.message || err);
+        break;
+      }
+    }
+  } finally {
+    flushing = false;
+  }
+}
+
+let offlineInited = false;
+/** Wire up automatic flushing: on reconnect, on sign-in, and once at startup. */
+export function initOfflineSync() {
+  if (offlineInited) return;
+  offlineInited = true;
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => { flushOutbox(); });
+  }
+  Hub.listen('auth', ({ payload }) => {
+    if (payload.event === 'signedIn' || payload.event === 'tokenRefresh') flushOutbox();
+  });
+  flushOutbox(); // catch anything queued from a previous session
+}
 
 /** Flatten an Amplify { data, errors } result; throw on errors. */
 function unwrap({ data, errors }) {
@@ -150,17 +292,28 @@ export async function deleteStockItem(venuePath, itemId) {
 /** Subscribe to stock items for real-time updates. Optionally filter by section. */
 export function subscribeToStockItems(venuePath, onData, onError, section = null) {
   const { venueId } = idsFromVenuePath(venuePath);
+  const key = ck.items(venueId, section);
   const filter = section
     ? { and: [{ venueId: { eq: venueId } }, { section: { eq: section } }] }
     : { venueId: { eq: venueId } };
+  let gotLive = false;
+  // Serve cached items first so the screen loads instantly / with no signal.
+  cacheGet(key).then((cached) => { if (cached && !gotLive) onData(cached); }).catch(() => {});
   const sub = db().models.StockItem.observeQuery({ filter }).subscribe({
     next: ({ items }) => {
+      gotLive = true;
       const sorted = [...items].sort(section ? byName : bySectionThenName);
+      cacheSet(key, sorted).catch(() => {});
       onData(sorted);
     },
     error: (error) => {
       console.error('Error in stock items listener:', error);
-      if (onError) onError(error.message || String(error));
+      cacheGet(key)
+        .then((cached) => {
+          if (cached) onData(cached);
+          else if (onError) onError(error.message || String(error));
+        })
+        .catch(() => { if (onError) onError(error.message || String(error)); });
     },
   });
   return () => sub.unsubscribe();
@@ -220,76 +373,51 @@ export async function getStockSession(venuePath, sessionId) {
 }
 
 /**
- * Save a count to a stock session (multi-entry support).
- * Reads the session, merges contributors + appends history, writes back.
+ * Save a count to a stock session — OFFLINE-FIRST.
  *
- * OFFLINE CAVEAT: the old Firestore version fired this write without awaiting so
- * it worked in dead-signal cellars. Amplify has no offline queue, so this is now
- * an awaited online write. Restoring offline counting is a tracked follow-up.
+ * Appends the count to a durable IndexedDB outbox and returns success
+ * immediately (like the old fire-and-forget Firestore write, so the counter
+ * never blocks in a dead-signal cellar), optimistically updates the cached
+ * session so a reload still shows it, then triggers a sync. The real
+ * read-merge-write happens in commitCountToServer when the queue flushes.
+ *
+ * Conflict model (unchanged): different items never conflict; the same item
+ * across two offline devices is last-write-wins on sync.
  */
 export async function saveStockCount(venuePath, sessionId, itemId, countData) {
+  const countedAt = now();
   try {
-    const session = unwrap(await db().models.StockSession.get({ id: sessionId }));
-    if (!session) return { success: false, error: 'Session not found' };
-
-    const counts = { ...decodeJSON(session.counts, {}) };
-    const existing = counts[itemId];
-
-    let contributors = [];
-    if (existing?.countedBy) {
-      contributors = Array.isArray(existing.countedBy) ? [...existing.countedBy] : [existing.countedBy];
+    await outboxAdd({ venuePath, sessionId, itemId, countData, countedAt });
+  } catch (err) {
+    // IndexedDB unavailable — fall back to a direct online write.
+    try {
+      await commitCountToServer(sessionId, itemId, countData, countedAt);
+      return { success: true };
+    } catch (e) {
+      console.error('Error saving stock count:', e);
+      return { success: false, error: e.message };
     }
-    if (Array.isArray(existing?.entries)) {
-      existing.entries.forEach((e) => {
-        if (e.countedBy && !contributors.includes(e.countedBy)) contributors.push(e.countedBy);
-      });
-    }
-    if (countData.countedBy && !contributors.includes(countData.countedBy)) {
-      contributors.push(countData.countedBy);
-    }
-
-    const history = Array.isArray(existing?.history) ? [...existing.history] : [];
-    if (history.length === 0 && existing?.countedAt) {
-      history.push({
-        wholeCount: existing.wholeCount,
-        partCount: existing.partCount,
-        quantity: existing.quantity,
-        countedBy: Array.isArray(existing.countedBy) ? existing.countedBy[0] : existing.countedBy || '',
-        countedAt: existing.countedAt,
-      });
-    }
-    const stamp = now();
-    history.push({
-      wholeCount: countData.wholeCount,
-      partCount: countData.partCount,
-      quantity: countData.quantity,
-      countedBy: countData.countedBy || '',
-      countedAt: stamp,
-    });
-
-    counts[itemId] = {
-      wholeCount: countData.wholeCount,
-      partCount: countData.partCount,
-      quantity: countData.quantity,
-      itemName: countData.itemName,
-      wholeLabel: countData.wholeLabel,
-      partLabel: countData.partLabel,
-      countedBy: contributors,
-      countedAt: stamp,
-      history,
-    };
-
-    unwrap(await db().models.StockSession.update({ id: sessionId, counts: encodeJSON(counts) }));
-    return { success: true };
-  } catch (error) {
-    console.error('Error saving stock count:', error);
-    return { success: false, error: error.message };
   }
+
+  // Optimistically reflect the count in the cached session (survives reload).
+  try {
+    const cached = await cacheGet(ck.session(sessionId));
+    if (cached) {
+      const counts = { ...(cached.counts || {}) };
+      counts[itemId] = countEntryFromQueued(countData, countedAt);
+      await cacheSet(ck.session(sessionId), { ...cached, counts });
+    }
+  } catch { /* best-effort */ }
+
+  notifyOfflineRefresh(); // update any open session views right away
+  flushOutbox(); // fire-and-forget; syncs now if online, later when reconnected
+  return { success: true };
 }
 
 /** Complete a session and write final counted quantities back to stock items. */
 export async function completeStockSession(venuePath, sessionId) {
   try {
+    await flushOutbox(); // ensure any offline-queued counts are committed first
     const session = unwrap(await db().models.StockSession.get({ id: sessionId }));
     if (!session) return { success: false, error: 'Session not found' };
 
@@ -348,26 +476,88 @@ export async function getAllStockSessions(venuePath) {
 /** Subscribe to all sessions for a venue. */
 export function subscribeToStockSessions(venuePath, onData, onError) {
   const { venueId } = idsFromVenuePath(venuePath);
+  const key = ck.sessions(venueId);
+  let gotLive = false;
+  const refresh = async () => {
+    const cached = await cacheGet(key);
+    if (cached) {
+      const entries = await outboxAll();
+      onData(cached.map((s) => overlayOutbox(s, entries)));
+    }
+  };
+  offlineRefreshers.add(refresh);
+  cacheGet(key)
+    .then(async (cached) => {
+      if (cached && !gotLive) {
+        const entries = await outboxAll();
+        onData(cached.map((s) => overlayOutbox(s, entries)));
+      }
+    })
+    .catch(() => {});
   const sub = db().models.StockSession.observeQuery({ filter: { venueId: { eq: venueId } } }).subscribe({
-    next: ({ items }) => onData([...items].sort(byCreatedDesc).map(hydrateSession)),
+    next: async ({ items }) => {
+      gotLive = true;
+      const sorted = [...items].sort(byCreatedDesc).map(hydrateSession);
+      cacheSet(key, sorted).catch(() => {}); // cache server truth (pre-overlay)
+      const entries = await outboxAll();
+      onData(sorted.map((s) => overlayOutbox(s, entries)));
+    },
     error: (error) => {
       console.error('Error in stock sessions listener:', error);
-      if (onError) onError(error.message || String(error));
+      cacheGet(key)
+        .then(async (cached) => {
+          if (cached) {
+            const entries = await outboxAll();
+            onData(cached.map((s) => overlayOutbox(s, entries)));
+          } else if (onError) onError(error.message || String(error));
+        })
+        .catch(() => { if (onError) onError(error.message || String(error)); });
     },
   });
-  return () => sub.unsubscribe();
+  return () => { offlineRefreshers.delete(refresh); sub.unsubscribe(); };
 }
 
 /** Subscribe to a single stock session. */
 export function subscribeToStockSession(venuePath, sessionId, onData, onError) {
+  const key = ck.session(sessionId);
+  let gotLive = false;
+  const refresh = async () => {
+    const cached = await cacheGet(key);
+    if (cached) {
+      const entries = await outboxAll();
+      onData(overlayOutbox(cached, entries) || null);
+    }
+  };
+  offlineRefreshers.add(refresh);
+  cacheGet(key)
+    .then(async (cached) => {
+      if (cached && !gotLive) {
+        const entries = await outboxAll();
+        onData(overlayOutbox(cached, entries) || null);
+      }
+    })
+    .catch(() => {});
   const sub = db().models.StockSession.observeQuery({ filter: { id: { eq: sessionId } } }).subscribe({
-    next: ({ items }) => onData(hydrateSession(items[0]) || null),
+    next: async ({ items }) => {
+      gotLive = true;
+      const s = hydrateSession(items[0]) || null;
+      if (s) cacheSet(key, s).catch(() => {}); // cache server truth (pre-overlay)
+      const entries = await outboxAll();
+      onData(s ? overlayOutbox(s, entries) : null);
+    },
     error: (error) => {
       console.error('Error in stock session listener:', error);
-      if (onError) onError(error.message || String(error));
+      cacheGet(key)
+        .then(async (cached) => {
+          if (cached) {
+            const entries = await outboxAll();
+            onData(overlayOutbox(cached, entries));
+          } else if (onError) onError(error.message || String(error));
+        })
+        .catch(() => { if (onError) onError(error.message || String(error)); });
     },
   });
-  return () => sub.unsubscribe();
+  return () => { offlineRefreshers.delete(refresh); sub.unsubscribe(); };
 }
 
 // ============================================

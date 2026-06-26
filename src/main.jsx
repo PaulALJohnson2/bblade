@@ -1,8 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './amplifyConfig'; // configure Amplify before anything uses Auth/Data
+import { initOfflineSync } from './data/stockService';
 import App from './App';
 import './index.css';
+
+// Flush any offline-queued stock counts on reconnect / sign-in / startup.
+initOfflineSync();
 
 // PWA safeguard: after a deploy the new service worker (autoUpdate → skipWaiting)
 // claims this already-open page, which left the app running half-swapped against
