@@ -161,7 +161,7 @@ function Shell() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <div className={`header-left${isPlatformAdmin ? ' header-left--admin' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+          <div className={`header-left${isPlatformAdmin ? ' header-left--admin' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: '1 1 auto' }}>
             {isPlatformAdmin && <AccountSwitcher />}
             <div
               className="header-title"
