@@ -116,6 +116,30 @@ export function wastageUnitsFor(item) {
   return { mode: 'packaged', baseLabel: 'Each', rows };
 }
 
+/**
+ * Human summary of wasted sale-units, combining whole Bottle + Tenths into
+ * decimal bottles ("1.5 Bottles") for consistency with the stock screens.
+ * @param {Array} units - [{ label, count }]
+ */
+export function summariseWastageUnits(units = []) {
+  let bottles = 0;
+  let tenths = 0;
+  const others = [];
+  for (const u of units) {
+    const l = (u.label || '').toLowerCase();
+    const n = Number(u.count) || 0;
+    if (l === 'bottle' || l === 'bottles') bottles += n;
+    else if (l === 'tenth' || l === 'tenths') tenths += n;
+    else others.push(`${u.count} ${u.label}`);
+  }
+  const parts = [...others];
+  if (bottles > 0 || tenths > 0) {
+    const dec = bottles + tenths / 10;
+    parts.push(`${String(Number(dec.toFixed(1)))} ${dec === 1 ? 'Bottle' : 'Bottles'}`);
+  }
+  return parts.join(', ');
+}
+
 /** Base-unit total wasted, summed at full precision then rounded once. */
 export function computeWastageQuantity(rows, values) {
   let total = 0;

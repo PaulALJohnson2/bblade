@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { logWastage, subscribeToWastageLog, deleteWastageEntry } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
-import { wastageUnitsFor, computeWastageQuantity } from '../utils/wastageUnits';
+import { wastageUnitsFor, computeWastageQuantity, summariseWastageUnits } from '../utils/wastageUnits';
 import { WASTAGE_REASONS } from '../utils/wastageReasons';
 import WastageEntry from '../components/WastageEntry';
 import { getThemeColors } from '../utils/theme';
@@ -23,7 +23,7 @@ const sectionOf = (it) => (it.section === 'kitchen' ? 'kitchen' : 'bar');
 // Human summary of a wastage entry from its stored sale-unit breakdown.
 function wasteSummary(e) {
   if (Array.isArray(e.units) && e.units.length) {
-    return e.units.map((u) => `${u.count} ${u.label}`).join(', ');
+    return summariseWastageUnits(e.units);
   }
   return `${e.quantity || 0}`;
 }

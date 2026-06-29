@@ -503,7 +503,7 @@ function StockTaking() {
         partCount: savedPartCount,
         wholeLabel: unitInfo.wholeLabel,
         partLabel: savedPartLabel
-      });
+      }, unitInfo);
       setLastSaved({ name: selectedItem.name, quantity: display.detail });
       // Collapse the card and stay put in the list. Keep the current tab/search
       // filter, and don't touch focus so the keyboard stays closed.
@@ -1954,7 +1954,7 @@ function StockTaking() {
                           textAlign: 'center',
                           whiteSpace: 'nowrap'
                         }}>
-                          {isCounted ? formatCountDisplay(sessionCount).short : '—'}
+                          {isCounted ? formatCountDisplay(sessionCount, parseUnitInfo(item)).short : '—'}
                         </div>
                         {isAdmin() && (
                           <button

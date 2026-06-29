@@ -11,6 +11,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { subscribeToWastageLog, deleteWastageEntry } from '../services/apiService';
+import { summariseWastageUnits } from '../utils/wastageUnits';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -69,7 +70,7 @@ function WastageReport({ venuePath, canEdit = true }) {
 
   const card = { backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`, borderRadius: '12px', padding: '1.5rem', marginBottom: '1.5rem', boxShadow: `0 2px 12px ${colors.shadow}` };
   const chip = (active) => ({ padding: '0.35rem 0.8rem', borderRadius: '9999px', border: `1px solid ${active ? accent : colors.border}`, backgroundColor: active ? colors.wastageSoft : colors.bgCard, color: active ? accent : colors.textPrimary, fontWeight: active ? 700 : 500, fontSize: '0.82rem', cursor: 'pointer' });
-  const rollup = (units) => Object.entries(units).map(([l, c]) => `${c} ${l}`).join(', ');
+  const rollup = (units) => summariseWastageUnits(Object.entries(units).map(([label, count]) => ({ label, count })));
   const fmtWhen = (e) => e.wastedAt?.toDate ? e.wastedAt.toDate().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 
   if (!canEdit) return null;
@@ -114,7 +115,7 @@ function WastageReport({ venuePath, canEdit = true }) {
                       <div key={e.id} style={{ padding: '0.55rem 0.75rem', borderBottom: `1px solid ${colors.borderLight}`, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '0.85rem', color: colors.textPrimary }}>
-                            {(e.units || []).map((u) => `${u.count} ${u.label}`).join(', ')}{e.reason ? ` · ${e.reason}` : ''}
+                            {summariseWastageUnits(e.units || [])}{e.reason ? ` · ${e.reason}` : ''}
                           </div>
                           {e.note && <div style={{ fontSize: '0.76rem', color: colors.textSecondary }}>{e.note}</div>}
                           <div style={{ fontSize: '0.72rem', color: colors.textMuted }}>{[e.wastedBy, fmtWhen(e)].filter(Boolean).join(' · ')}</div>

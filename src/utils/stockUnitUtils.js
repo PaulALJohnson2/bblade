@@ -351,18 +351,28 @@ function descriptionUnit(qty, suffix) {
   return `${qty}${suffix}`;
 }
 
+/** One-decimal-place string with trailing ".0" trimmed (1.5 → "1.5", 2.0 → "2"). */
+const oneDp = (n) => String(Number(n.toFixed(1)));
+/** Singularise a plural label when the value is exactly 1 ("Bottles" → "Bottle"). */
+const singularLabel = (label, n) => (n === 1 ? label.replace(/s$/i, '') : label);
+/** True for spirits/wine — counted natively in tenths of a bottle (not kegs). */
+const isNativeTenths = (count, unitInfo) =>
+  (count?.partLabel || '').toLowerCase() === 'tenths' &&
+  unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption;
+
 /**
  * Format a saved count for display.
  * Handles both new format (wholeCount/partCount/wholeLabel/partLabel)
  * and old format (cases/bottles) for backward compatibility.
  *
  * @param {Object} count - Saved count data
+ * @param {Object} [unitInfo] - parseUnitInfo(item); enables decimal-bottle display
  * @returns {Object} { short, detail }
  */
-export function formatCountDisplay(count) {
+export function formatCountDisplay(count, unitInfo) {
   if (!count) return { short: '', detail: '' };
 
-  const base = formatCountDisplayBase(count);
+  const base = formatCountDisplayBase(count, unitInfo);
 
   // Prefix whole cases (the orthogonal "case of N" dimension) when present.
   const caseVal = count.caseCount ?? 0;
@@ -378,12 +388,19 @@ export function formatCountDisplay(count) {
   return base;
 }
 
-function formatCountDisplayBase(count) {
+function formatCountDisplayBase(count, unitInfo) {
   // New format
   const wholeVal = count.wholeCount ?? count.cases ?? 0;
   let partVal = count.partCount ?? count.bottles ?? 0;
   const wholeLabel = count.wholeLabel || 'cases';
   const partLabel = count.partLabel || 'bottles';
+
+  // Spirits/wine: combine bottles + tenths into decimal bottles ("1.5 Bottles").
+  if (isNativeTenths(count, unitInfo)) {
+    const dec = wholeVal + Math.round(partVal) / 10;
+    if (dec === 0) return { short: '0', detail: '0' };
+    return { short: `${oneDp(dec)}${abbreviateLabel(wholeLabel)}`, detail: `${oneDp(dec)} ${singularLabel(wholeLabel, dec)}` };
+  }
 
   // Tenths should always display as integers
   if (partLabel.toLowerCase() === 'tenths') partVal = Math.round(partVal);
@@ -473,13 +490,11 @@ function formatCountSummaryBase(count, unitInfo) {
     return `0 ${bracketTotal}`;
   }
 
-  // Native tenths (spirits — partUnit is "Tenth", no hasTenthsOption)
+  // Native tenths (spirits/wine) — show decimal bottles, e.g. "1.5 Bottles".
   if (partLabel === 'Tenths') {
-    const tv = Math.round(partVal);
-    if (wholeVal > 0 && tv > 0) return `${wholeVal} ${wholeLabel}, ${tv} Tenths`;
-    if (wholeVal > 0) return `${wholeVal} ${wholeLabel}`;
-    if (tv > 0) return `${tv} Tenths`;
-    return '0';
+    const dec = wholeVal + Math.round(partVal) / 10;
+    if (dec === 0) return '0';
+    return `${oneDp(dec)} ${singularLabel(wholeLabel, dec)}`;
   }
 
   // Non-measurement parts (cases + loose, etc.)
