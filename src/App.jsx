@@ -128,19 +128,21 @@ function Shell() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <div
-            className="header-title"
-            onClick={() => navigate('/')}
-            style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', cursor: 'pointer' }}
-            title="Home"
-          >
-            <h1>BBlade</h1>
-            <span style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85 }}>
-              {pubName || 'Stock'}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
+            {isPlatformAdmin && <AccountSwitcher />}
+            <div
+              className="header-title"
+              onClick={() => navigate('/')}
+              style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', cursor: 'pointer' }}
+              title="Home"
+            >
+              <h1>BBlade</h1>
+              <span style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85 }}>
+                {pubName || 'Stock'}
+              </span>
+            </div>
           </div>
           <div className="header-controls">
-            {isPlatformAdmin && <AccountSwitcher />}
             {!onHome && (
               <button onClick={() => navigate('/')} className="theme-toggle" aria-label="Home" title="Home">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
