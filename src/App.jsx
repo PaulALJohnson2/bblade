@@ -100,7 +100,7 @@ function UserMenu() {
                 borderBottom: `1px solid ${colors.borderLight}`,
               }}
             >
-              Settings
+              Admin
             </button>
             <button
               onClick={() => { setOpen(false); logout(); }}

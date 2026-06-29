@@ -125,7 +125,7 @@ function Admin() {
   if (!view) {
     return (
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-        <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Settings</h1>
+        <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Admin</h1>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           {TILES.map((t) => (
             <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => setView(t.key)} />
@@ -159,7 +159,7 @@ function Admin() {
         onClick={() => setView(null)}
         style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}
       >
-        ← Settings
+        ← Admin
       </button>
       <h1 style={{ margin: 0, fontSize: '1.5rem', color: colors.textPrimary }}>{SECTION_TITLES[view]}</h1>
     </div>
