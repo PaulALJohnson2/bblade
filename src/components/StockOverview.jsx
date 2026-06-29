@@ -14,6 +14,25 @@ import useTheme from '../hooks/useTheme';
 
 const sectionColor = (section, colors) => (section === 'kitchen' ? '#d69e2e' : colors.primary);
 const ts = (t) => (t?.toDate ? t.toDate().getTime() : 0);
+const fmtDec = (n) => String(Number(n.toFixed(1)));
+
+// Summarise a count. Spirits/wine (native tenths) read as decimal bottles —
+// "1.5 Bottles", not "1 Bottles, 5 Tenths". Everything else uses the shared formatter.
+function summarize(count, unitInfo) {
+  const nativeTenths = unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption;
+  if (nativeTenths) {
+    const whole = Number(count.wholeCount) || 0;
+    const tenths = Math.round(Number(count.partCount) || 0);
+    const dec = whole + tenths / 10;
+    const wl = unitInfo.wholeLabel || count.wholeLabel || 'Bottles';
+    const label = dec === 1 ? wl.replace(/s$/i, '') : wl;
+    let s = `${fmtDec(dec)} ${label}`;
+    const caseVal = Number(count.caseCount) || 0;
+    if (caseVal > 0) s = `${caseVal} ${caseVal === 1 ? 'Case' : (count.caseLabel || 'Cases')}, ${s}`;
+    return s;
+  }
+  return formatCountSummary(count, unitInfo);
+}
 
 function StockOverview({ venuePath, canEdit = true }) {
   const { isDark } = useTheme();
@@ -97,7 +116,7 @@ function StockOverview({ venuePath, canEdit = true }) {
                     ) : (
                       Object.entries(counts).map(([itemId, count]) => {
                         const item = itemsById[itemId];
-                        const summary = formatCountSummary(count, item ? parseUnitInfo(item) : { hasPartUnit: !!count.partLabel, hasTenthsOption: false, partLabel: count.partLabel, wholeLabel: count.wholeLabel, unitsPerWhole: 1 });
+                        const summary = summarize(count, item ? parseUnitInfo(item) : { hasPartUnit: !!count.partLabel, hasTenthsOption: false, partLabel: count.partLabel, wholeLabel: count.wholeLabel, unitsPerWhole: 1 });
                         return (
                           <div key={itemId} style={{ padding: '0.5rem 0.75rem', borderBottom: `1px solid ${colors.borderLight}`, display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
                             <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>{count.itemName || item?.name || 'Item'}</span>
