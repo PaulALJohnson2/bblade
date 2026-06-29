@@ -37,6 +37,17 @@ import {
 import { db } from './config';
 import { idsFromVenuePath } from '../config/app';
 
+/** Reject a promise if it doesn't settle within `ms` — guards offline hot paths. */
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
+    );
+  });
+}
+
 // ============================================
 // STOCK ITEMS  (under {venuePath}/stockItems)
 // ============================================
@@ -210,18 +221,30 @@ export async function saveStockCount(venuePath, sessionId, itemId, countData) {
     // falling back — that's the mid-count "freeze". The session is actively
     // subscribed while counting, so it's always warm in the cache; only fall
     // back to a (server) getDoc if it somehow isn't cached yet.
-    let docSnap;
+    //
+    // Hard guard: each read is time-bounded so the save can NEVER hang the
+    // counter's screen. If both reads time out we proceed without the prior
+    // data — the new count still writes (we just can't merge this item's
+    // existing contributors/history that one time). Registering the count
+    // matters more than the merge.
+    let sessionData = null;
+    let sessionMissing = false;
     try {
-      docSnap = await getDocFromCache(docRef);
+      const snap = await withTimeout(getDocFromCache(docRef), 2500);
+      if (snap.exists()) sessionData = snap.data(); else sessionMissing = true;
     } catch {
-      docSnap = await getDoc(docRef);
+      try {
+        const snap = await withTimeout(getDoc(docRef), 2500);
+        if (snap.exists()) sessionData = snap.data(); else sessionMissing = true;
+      } catch {
+        sessionData = null; // timed out / unreadable — proceed without merge
+      }
     }
-    if (!docSnap.exists()) {
+    if (sessionMissing) {
       return { success: false, error: 'Session not found' };
     }
 
-    const sessionData = docSnap.data();
-    const existing = sessionData.counts?.[itemId];
+    const existing = sessionData?.counts?.[itemId];
 
     let contributors = [];
     if (existing?.countedBy) {
