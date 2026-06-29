@@ -545,9 +545,8 @@ export async function fixGallonStockItems(venuePath) {
  * stock write is offline-first (applies to the local cache immediately, syncs on
  * reconnect) — we use increment() so concurrent edits from other devices merge.
  *
- * @param {Object} data - { itemId, itemName, section, caseCount, caseLabel,
- *   wholeCount, wholeLabel, partCount, partLabel, quantity (base units wasted),
- *   reason, note, wastedBy }
+ * @param {Object} data - { itemName, section, units: [{label, count}],
+ *   quantity (base units wasted), baseLabel, reason, note, wastedBy }
  */
 export async function logWastage(venuePath, itemId, data) {
   try {
@@ -560,13 +559,9 @@ export async function logWastage(venuePath, itemId, data) {
       itemId,
       itemName: data.itemName || '',
       section: data.section || 'bar',
-      caseCount: data.caseCount ?? 0,
-      caseLabel: data.caseLabel ?? 'Cases',
-      wholeCount: data.wholeCount ?? 0,
-      wholeLabel: data.wholeLabel ?? '',
-      partCount: data.partCount ?? 0,
-      partLabel: data.partLabel ?? '',
+      units: Array.isArray(data.units) ? data.units : [],
       quantity: wasted,
+      baseLabel: data.baseLabel || '',
       reason: data.reason || '',
       note: data.note || '',
       wastedBy: data.wastedBy || '',

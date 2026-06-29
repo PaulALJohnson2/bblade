@@ -11,22 +11,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToStockItems, logWastage, subscribeToWastageLog, deleteWastageEntry } from '../services/apiService';
-import { parseUnitInfo } from '../utils/stockUnitUtils';
-import { computeCount } from '../utils/countMath';
+import { wastageUnitsFor, computeWastageQuantity } from '../utils/wastageUnits';
 import { WASTAGE_REASONS } from '../utils/wastageReasons';
-import CountEntry from '../components/CountEntry';
+import WastageEntry from '../components/WastageEntry';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
 const sectionOf = (it) => (it.section === 'kitchen' ? 'kitchen' : 'bar');
 
-// Human summary of a wastage entry from its stored fields (no unitInfo needed).
+// Human summary of a wastage entry from its stored sale-unit breakdown.
 function wasteSummary(e) {
-  const parts = [];
-  if (e.caseCount > 0) parts.push(`${e.caseCount} ${e.caseLabel || 'Cases'}`);
-  if (e.wholeCount > 0) parts.push(`${e.wholeCount} ${e.wholeLabel || ''}`.trim());
-  if (e.partCount > 0) parts.push(`${e.partCount} ${e.partLabel || ''}`.trim());
-  return parts.join(', ') || `${e.quantity || 0}`;
+  if (Array.isArray(e.units) && e.units.length) {
+    return e.units.map((u) => `${u.count} ${u.label}`).join(', ');
+  }
+  return `${e.quantity || 0}`;
 }
 
 function Wastage() {
@@ -42,12 +40,10 @@ function Wastage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
 
-  const [caseQuantity, setCaseQuantity] = useState('');
-  const [wholeQuantity, setWholeQuantity] = useState('');
-  const [partQuantity, setPartQuantity] = useState('');
-  const [tenthsQuantity, setTenthsQuantity] = useState('');
+  const [values, setValues] = useState({}); // sale-unit counts keyed by row.key
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+  const setValue = (key, val) => setValues((v) => ({ ...v, [key]: val }));
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -64,15 +60,13 @@ function Wastage() {
 
   const resetEntry = () => {
     setSelectedId(null);
-    setCaseQuantity(''); setWholeQuantity(''); setPartQuantity(''); setTenthsQuantity('');
-    setReason(''); setNote('');
+    setValues({}); setReason(''); setNote('');
   };
 
   const selectItem = (it) => {
     if (selectedId === it.id) { resetEntry(); return; }
     setSelectedId(it.id);
-    setCaseQuantity(''); setWholeQuantity(''); setPartQuantity(''); setTenthsQuantity('');
-    setReason(''); setNote('');
+    setValues({}); setReason(''); setNote('');
   };
 
   const q = search.trim().toLowerCase();
@@ -82,26 +76,22 @@ function Wastage() {
     [items, section, q]);
 
   const selectedItem = items.find((i) => i.id === selectedId) || null;
-  const computed = selectedItem
-    ? computeCount(parseUnitInfo(selectedItem), { cases: caseQuantity, whole: wholeQuantity, tenths: tenthsQuantity, part: partQuantity })
-    : null;
-  const canLog = !!selectedItem && computed && !computed.empty && !!reason && !saving;
+  const wUnits = selectedItem ? wastageUnitsFor(selectedItem) : null;
+  const quantity = wUnits ? computeWastageQuantity(wUnits.rows, values) : 0;
+  const canLog = !!selectedItem && quantity > 0 && !!reason && !saving;
 
   const handleLog = async () => {
     if (!canLog) return;
     setSaving(true);
-    const info = parseUnitInfo(selectedItem);
-    const c = computed;
+    const units = wUnits.rows
+      .filter((r) => (parseFloat(values[r.key]) || 0) > 0)
+      .map((r) => ({ label: r.label, count: Number(values[r.key]) }));
     const res = await logWastage(selectedPub.path, selectedItem.id, {
       itemName: selectedItem.name,
       section: sectionOf(selectedItem),
-      caseCount: c.caseCount,
-      caseLabel: info.caseLabel,
-      wholeCount: c.wholeCount,
-      wholeLabel: info.wholeLabel,
-      partCount: c.partCount,
-      partLabel: c.partLabel,
-      quantity: c.quantity,
+      units,
+      quantity,
+      baseLabel: wUnits.baseLabel,
       reason,
       note: note.trim(),
       wastedBy: userProfile?.displayName || currentUser?.email || '',
@@ -152,12 +142,12 @@ function Wastage() {
               </button>
               {open && (
                 <div style={{ padding: '0.85rem', borderTop: `1px solid ${colors.borderLight}`, display: 'flex', flexDirection: 'column', gap: '0.85rem', backgroundColor: colors.bgCard }}>
-                  <CountEntry
+                  <WastageEntry
                     item={it}
                     colors={colors}
                     accent={accent}
-                    values={{ caseQuantity, wholeQuantity, partQuantity, tenthsQuantity }}
-                    set={{ setCaseQuantity, setWholeQuantity, setPartQuantity, setTenthsQuantity }}
+                    values={values}
+                    setValue={setValue}
                     onEnter={handleLog}
                   />
 
