@@ -13,6 +13,7 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import StockListAdmin from '../components/StockListAdmin';
 import StockManager from '../components/StockManager';
+import StockOverview from '../components/StockOverview';
 import WastageReport from '../components/WastageReport';
 import Tile from '../components/Tile';
 
@@ -110,9 +111,9 @@ function Admin() {
   const TILES = [
     { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, show: true,
       icon: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'] },
-    { key: 'overview', label: 'Stock overview', desc: 'Import or replace the list', accent: colors.primary, show: admin,
-      icon: ['M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z', 'M3.27 6.96 12 12.01l8.73-5.05', 'M12 22.08V12'] },
-    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & sections', accent: colors.primary, show: admin,
+    { key: 'overview', label: 'Stock overview', desc: 'Current & completed stock takes', accent: colors.primary, show: admin,
+      icon: ['M3 3v18h18', 'M18 9l-5 5-3-3-4 4'] },
+    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & import list', accent: colors.primary, show: admin,
       icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
     { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, show: admin,
       icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
@@ -151,7 +152,7 @@ function Admin() {
     return (
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>
         {sectionHeader}
-        {selectedPub?.path && <StockListAdmin venuePath={selectedPub.path} canEdit={true} />}
+        {selectedPub?.path && <StockOverview venuePath={selectedPub.path} canEdit={true} />}
       </div>
     );
   }
@@ -160,6 +161,7 @@ function Admin() {
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>
         {sectionHeader}
         {selectedPub?.path && <StockManager venuePath={selectedPub.path} canEdit={true} />}
+        {selectedPub?.path && <StockListAdmin venuePath={selectedPub.path} canEdit={true} />}
       </div>
     );
   }
