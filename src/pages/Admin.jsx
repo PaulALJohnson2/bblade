@@ -14,6 +14,7 @@ import useTheme from '../hooks/useTheme';
 import StockListAdmin from '../components/StockListAdmin';
 import StockManager from '../components/StockManager';
 import WastageReport from '../components/WastageReport';
+import Tile from '../components/Tile';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
@@ -107,34 +108,26 @@ function Admin() {
 
   const admin = !!(isAdmin && isAdmin());
   const TILES = [
-    { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, on: colors.onPrimary, show: true },
-    { key: 'overview', label: 'Stock overview', desc: 'Import or replace the list', accent: colors.primary, on: colors.onPrimary, show: admin },
-    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & sections', accent: colors.primary, on: colors.onPrimary, show: admin },
-    { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, on: colors.onWastage, show: admin },
+    { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, show: true,
+      icon: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'] },
+    { key: 'overview', label: 'Stock overview', desc: 'Import or replace the list', accent: colors.primary, show: admin,
+      icon: ['M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z', 'M3.27 6.96 12 12.01l8.73-5.05', 'M12 22.08V12'] },
+    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & sections', accent: colors.primary, show: admin,
+      icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
+    { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, show: admin,
+      icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
   ].filter((t) => t.show);
 
   const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview' };
 
-  // ---- Hub: a grid of tiles into each settings section ----
+  // ---- Hub: a 2-column grid of tiles into each settings section ----
   if (!view) {
     return (
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>
         <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Settings</h1>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           {TILES.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setView(t.key)}
-              style={{
-                textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.5rem',
-                padding: '1.25rem', borderRadius: '14px', border: `1px solid ${colors.borderLight}`,
-                backgroundColor: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}`, cursor: 'pointer', minHeight: '110px',
-              }}
-            >
-              <div style={{ width: '40px', height: '8px', borderRadius: '9999px', backgroundColor: t.accent }} />
-              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>{t.label}</div>
-              <div style={{ fontSize: '0.82rem', color: colors.textSecondary }}>{t.desc}</div>
-            </button>
+            <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => setView(t.key)} />
           ))}
         </div>
       </div>
