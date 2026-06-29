@@ -14,6 +14,7 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import StockListAdmin from '../components/StockListAdmin';
 import StockManager from '../components/StockManager';
+import WastageReport from '../components/WastageReport';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
@@ -118,6 +119,22 @@ function Admin() {
           ← Back
         </button>
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: colors.textPrimary }}>Settings</h1>
+      </div>
+
+      {/* Quick entry into the main flows */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
+        <button
+          onClick={() => navigate('/stock')}
+          style={{ padding: '1rem', borderRadius: '12px', border: 'none', backgroundColor: colors.primary, color: colors.onPrimary, fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
+        >
+          Stock Count
+        </button>
+        <button
+          onClick={() => navigate('/wastage')}
+          style={{ padding: '1rem', borderRadius: '12px', border: 'none', backgroundColor: colors.wastage, color: colors.onWastage, fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
+        >
+          Wastage
+        </button>
       </div>
 
       {error && (
@@ -241,6 +258,11 @@ function Admin() {
       {/* Manage stock — edit names, sections, and categories */}
       {isAdmin && isAdmin() && selectedPub?.path && (
         <StockManager venuePath={selectedPub.path} canEdit={true} />
+      )}
+
+      {/* Wastage overview — totals with drill-down */}
+      {isAdmin && isAdmin() && selectedPub?.path && (
+        <WastageReport venuePath={selectedPub.path} canEdit={true} />
       )}
     </div>
   );

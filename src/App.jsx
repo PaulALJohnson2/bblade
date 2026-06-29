@@ -7,7 +7,7 @@
  */
 
 import React, { Suspense, lazy, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import useTheme from './hooks/useTheme';
@@ -100,6 +100,8 @@ function Shell() {
   const { pubName } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+  const onHome = location.pathname === '/';
 
   return (
     <div className="app">
@@ -117,6 +119,14 @@ function Shell() {
             </span>
           </div>
           <div className="header-controls">
+            {!onHome && (
+              <button onClick={() => navigate('/')} className="theme-toggle" aria-label="Home" title="Home">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 11l9-8 9 8" />
+                  <path d="M5 10v10a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1V10" />
+                </svg>
+              </button>
+            )}
             <button onClick={() => navigate('/admin')} className="theme-toggle" aria-label="Settings" title="Settings">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />

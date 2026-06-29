@@ -585,12 +585,12 @@ export async function logWastage(venuePath, itemId, data) {
   }
 }
 
-/** Live list of recent wastage entries (newest first, capped at 100). */
-export function subscribeToWastageLog(venuePath, onData, onError) {
+/** Live list of recent wastage entries (newest first, capped at `max`). */
+export function subscribeToWastageLog(venuePath, onData, onError, max = 100) {
   const q = query(
     collection(db, `${venuePath}/wastageLog`),
     orderBy('wastedAt', 'desc'),
-    limit(100)
+    limit(max)
   );
   return onSnapshot(
     q,
