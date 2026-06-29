@@ -185,9 +185,33 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
           list="sb-cats" value={category}
           onChange={(e) => setCategory(e.target.value)}
           placeholder="e.g. Draught Ale"
-          style={{ ...input, margin: '0.3rem 0 1rem' }}
+          style={{ ...input, margin: '0.3rem 0 0.5rem' }}
         />
         <datalist id="sb-cats">{cats.map((c) => <option key={c} value={c} />)}</datalist>
+        {/* Tap an existing category instead of retyping it. */}
+        {cats.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', margin: '0 0 1rem' }}>
+            {cats.map((c) => {
+              const active = category.trim().toLowerCase() === c.toLowerCase();
+              return (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setCategory(active ? '' : c)}
+                  style={{
+                    padding: '0.35rem 0.7rem', borderRadius: '9999px',
+                    border: `1px solid ${active ? colors.primary : colors.border}`,
+                    backgroundColor: active ? colors.primarySoft : colors.bgCard,
+                    color: active ? colors.primary : colors.textPrimary,
+                    fontWeight: active ? 700 : 500, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <label style={{ fontSize: '0.8rem', fontWeight: 600, color: colors.textSecondary }}>Volume / how it's counted</label>
         <div style={{ marginTop: '0.4rem' }}>
