@@ -21,7 +21,7 @@ const ROLES = ['owner', 'manager', 'staff'];
 
 function Admin() {
   const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark, toggleTheme } = useTheme();
   const colors = getThemeColors(isDark);
 
   const [view, setView] = useState(null); // null=hub | account | overview | edit | wastage
@@ -130,6 +130,23 @@ function Admin() {
           {TILES.map((t) => (
             <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => setView(t.key)} />
           ))}
+        </div>
+
+        {/* Appearance */}
+        <div style={{ ...card, marginTop: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary }}>Dark mode</div>
+            <div style={{ fontSize: '0.82rem', color: colors.textSecondary }}>{isDark ? 'On' : 'Off'}</div>
+          </div>
+          <button
+            onClick={toggleTheme}
+            role="switch"
+            aria-checked={isDark}
+            aria-label="Toggle dark mode"
+            style={{ width: '52px', height: '30px', borderRadius: '9999px', border: 'none', cursor: 'pointer', padding: '3px', backgroundColor: isDark ? colors.primary : colors.border, display: 'flex', justifyContent: isDark ? 'flex-end' : 'flex-start', transition: 'background-color 0.15s' }}
+          >
+            <span style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: isDark ? colors.onPrimary : '#fff', boxShadow: `0 1px 3px ${colors.shadow}` }} />
+          </button>
         </div>
       </div>
     );
