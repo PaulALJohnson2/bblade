@@ -145,13 +145,33 @@ function Wastage() {
       {/* Search */}
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items…" style={{ ...input, marginBottom: '0.6rem' }} />
 
-      {/* Category filter pills */}
+      {/* Category filter pills — same layout as the stock-taking pills */}
       {categories.length > 0 && (
-        <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.25rem', marginBottom: '0.75rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
-          <button onClick={() => setCategoryFilter('')} style={reasonChip(categoryFilter === '')}>All</button>
-          {categories.map((c) => (
-            <button key={c} onClick={() => { setCategoryFilter(c); resetEntry(); }} style={{ ...reasonChip(categoryFilter === c), whiteSpace: 'nowrap' }}>{c}</button>
-          ))}
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '0.25rem', scrollbarWidth: 'none' }}>
+          {['all', ...categories].map((c) => {
+            const isActive = (c === 'all' && !categoryFilter) || categoryFilter === c;
+            const count = c === 'all' ? sectionItems.length : sectionItems.filter((i) => i.category === c).length;
+            return (
+              <button
+                key={c}
+                onClick={(e) => {
+                  setCategoryFilter(c === 'all' ? '' : c);
+                  resetEntry();
+                  const el = e.currentTarget, row = el.parentElement;
+                  row.scrollBy({ left: el.getBoundingClientRect().left - row.getBoundingClientRect().left, behavior: 'smooth' });
+                }}
+                style={{
+                  flexShrink: 0, padding: '0.5rem 1rem',
+                  backgroundColor: isActive ? accent : colors.bgLight,
+                  color: isActive ? colors.onWastage : colors.textPrimary,
+                  border: 'none', borderRadius: '9999px', cursor: 'pointer',
+                  fontWeight: 500, fontSize: '0.85rem', whiteSpace: 'nowrap',
+                }}
+              >
+                {c === 'all' ? 'All' : c} ({count})
+              </button>
+            );
+          })}
         </div>
       )}
 
