@@ -11,6 +11,7 @@ import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { StockDataProvider } from './contexts/StockDataContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import AccountSwitcher from './components/AccountSwitcher';
 import useTheme from './hooks/useTheme';
 import { getThemeColors } from './utils/theme';
 import Home from './pages/Home';
@@ -107,7 +108,7 @@ function UserMenu() {
 }
 
 function Shell() {
-  const { pubName, isPlatformAdmin, accountName } = useAuth();
+  const { pubName, isPlatformAdmin } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -139,16 +140,7 @@ function Shell() {
             </span>
           </div>
           <div className="header-controls">
-            {isPlatformAdmin && (
-              <button
-                onClick={() => navigate('/super')}
-                title="Platform admin — switch account"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', maxWidth: '180px', padding: '0.35rem 0.6rem', borderRadius: '9999px', border: '1px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-              >
-                <span aria-hidden="true">⚑</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{accountName || 'Accounts'}</span>
-              </button>
-            )}
+            {isPlatformAdmin && <AccountSwitcher />}
             {!onHome && (
               <button onClick={() => navigate('/')} className="theme-toggle" aria-label="Home" title="Home">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
