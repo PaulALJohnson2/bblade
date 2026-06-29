@@ -9,9 +9,18 @@
  * Parse a stock item's unit info to determine counting configuration.
  *
  * @param {Object} item - Stock item with wholeUnit, partUnit fields
- * @returns {Object} { wholeLabel, partLabel, hasPartUnit, unitsPerWhole, hasTenthsOption }
+ * @returns {Object} { wholeLabel, partLabel, hasPartUnit, unitsPerWhole, hasTenthsOption, casePack, caseLabel }
  */
 export function parseUnitInfo(item) {
+  // casePack is an orthogonal "comes in a case of N (whole units)" multiplier that
+  // composes with every unit type — so we compute the base unit info and just
+  // attach it. casePack === 0 means the item has no case size (unchanged behaviour).
+  const info = parseUnitInfoBase(item);
+  const casePack = Number(item.casePack) || 0;
+  return { ...info, casePack, caseLabel: 'Cases' };
+}
+
+function parseUnitInfoBase(item) {
   const whole = (item.wholeUnit || '').trim();
   const part = (item.partUnit || '').trim();
 
@@ -353,6 +362,23 @@ function descriptionUnit(qty, suffix) {
 export function formatCountDisplay(count) {
   if (!count) return { short: '', detail: '' };
 
+  const base = formatCountDisplayBase(count);
+
+  // Prefix whole cases (the orthogonal "case of N" dimension) when present.
+  const caseVal = count.caseCount ?? 0;
+  if (caseVal > 0) {
+    const label = count.caseLabel || 'Cases';
+    const caseLabel = caseVal === 1 && label === 'Cases' ? 'Case' : label;
+    const zero = base.detail === '0' || base.detail === '';
+    return {
+      short: zero ? `${caseVal}cs` : `${caseVal}cs + ${base.short}`,
+      detail: zero ? `${caseVal} ${caseLabel}` : `${caseVal} ${caseLabel} + ${base.detail}`,
+    };
+  }
+  return base;
+}
+
+function formatCountDisplayBase(count) {
   // New format
   const wholeVal = count.wholeCount ?? count.cases ?? 0;
   let partVal = count.partCount ?? count.bottles ?? 0;
@@ -397,6 +423,18 @@ export function formatCountDisplay(count) {
 export function formatCountSummary(count, unitInfo) {
   if (!count) return '0';
 
+  // Prefix whole cases (the orthogonal "case of N" dimension) when present.
+  const caseVal = count.caseCount ?? 0;
+  const base = formatCountSummaryBase(count, unitInfo);
+  if (caseVal > 0) {
+    const label = count.caseLabel || 'Cases';
+    const caseStr = `${caseVal} ${caseVal === 1 && label === 'Cases' ? 'Case' : label}`;
+    return base === '0' ? caseStr : `${caseStr}, ${base}`;
+  }
+  return base;
+}
+
+function formatCountSummaryBase(count, unitInfo) {
   const wholeVal = count.wholeCount ?? count.cases ?? 0;
   let partVal = count.partCount ?? count.bottles ?? 0;
   const wholeLabel = count.wholeLabel || 'Cases';

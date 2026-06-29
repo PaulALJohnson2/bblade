@@ -232,6 +232,7 @@ export async function saveStockCount(venuePath, sessionId, itemId, countData) {
       : [];
     if (history.length === 0 && existing?.countedAt) {
       history.push({
+        caseCount: existing.caseCount ?? 0,
         wholeCount: existing.wholeCount,
         partCount: existing.partCount,
         quantity: existing.quantity,
@@ -241,6 +242,7 @@ export async function saveStockCount(venuePath, sessionId, itemId, countData) {
     }
     const now = Timestamp.now();
     history.push({
+      caseCount: countData.caseCount ?? 0,
       wholeCount: countData.wholeCount,
       partCount: countData.partCount,
       quantity: countData.quantity,
@@ -252,6 +254,8 @@ export async function saveStockCount(venuePath, sessionId, itemId, countData) {
     // on sync and are logged. This is what lets the count "save" with no signal.
     updateDoc(docRef, {
       [`counts.${itemId}`]: {
+        caseCount: countData.caseCount ?? 0,
+        caseLabel: countData.caseLabel ?? 'Cases',
         wholeCount: countData.wholeCount,
         partCount: countData.partCount,
         quantity: countData.quantity,

@@ -34,7 +34,8 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
   const [section, setSection] = useState(initialSection);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
-  const [unit, setUnit] = useState({ wholeUnit: '', partUnit: '', unit: '' });
+  const [unit, setUnit] = useState({ wholeUnit: '', partUnit: '', unit: '', casePack: 0 });
+  const [cases, setCases] = useState('');
   const [whole, setWhole] = useState('');
   const [tenths, setTenths] = useState('');
   const [part, setPart] = useState('');
@@ -46,7 +47,7 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
   const unitInfo = parseUnitInfo({ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit });
   const useTenths = unitInfo.hasPartUnit && unitInfo.hasTenthsOption;
   const usePart = unitInfo.hasPartUnit && !unitInfo.hasTenthsOption;
-  const hasCount = !computeCount(unitInfo, { whole, tenths, part }).empty;
+  const hasCount = !computeCount(unitInfo, { cases, whole, tenths, part }).empty;
 
   // Name+volume already in the saved list or added this session?
   const taken = new Set([
@@ -60,7 +61,7 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
 
   const resetEntry = () => {
     setName('');           // keep section / category / unit for fast repeat
-    setWhole(''); setTenths(''); setPart('');
+    setCases(''); setWhole(''); setTenths(''); setPart('');
     nameRef.current?.focus();
   };
 
@@ -78,6 +79,7 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
       wholeUnit: unit.wholeUnit || '',
       partUnit: unit.partUnit || '',
       unit: unit.unit || '',
+      casePack: unit.casePack || 0,
       quantity: 0,
       archived: false,
       categorySuggested: '',
@@ -90,13 +92,15 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
     }
 
     // Optional count → record it into this section's stock take (create on demand).
-    const c = computeCount(unitInfo, { whole, tenths, part });
+    const c = computeCount(unitInfo, { cases, whole, tenths, part });
     let counted = false;
     if (!c.empty) {
       try {
         const sid = await getSessionId(section);
         if (!sid) throw new Error('no stock take session');
         await saveStockCount(venuePath, sid, res.id, {
+          caseCount: c.caseCount,
+          caseLabel: unitInfo.caseLabel,
           wholeCount: c.wholeCount,
           partCount: c.partCount,
           quantity: c.quantity,
@@ -187,7 +191,7 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
 
         <label style={{ fontSize: '0.8rem', fontWeight: 600, color: colors.textSecondary }}>Volume / how it's counted</label>
         <div style={{ marginTop: '0.4rem' }}>
-          <UnitPicker section={section} value={{ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit }} onChange={setUnit} colors={colors} />
+          <UnitPicker section={section} value={{ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, unit: unit.unit, casePack: unit.casePack }} onChange={setUnit} colors={colors} />
         </div>
 
         {/* Optional count */}
@@ -196,6 +200,12 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
             Count now <span style={{ fontWeight: 400 }}>(optional — leave blank to just add it)</span>
           </label>
           <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.5rem' }}>
+            {unitInfo.casePack > 0 && (
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.72rem', color: colors.textSecondary, marginBottom: '0.2rem', textAlign: 'center' }}>Cases (×{unitInfo.casePack})</div>
+                <input type="number" inputMode="numeric" min="0" value={cases} onChange={(e) => setCases(e.target.value)} placeholder="0" style={qtyField} />
+              </div>
+            )}
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.72rem', color: colors.textSecondary, marginBottom: '0.2rem', textAlign: 'center' }}>{unitInfo.wholeLabel}</div>
               <input type="number" inputMode="decimal" min="0" value={whole} onChange={(e) => setWhole(e.target.value)} placeholder="0" style={qtyField} />

@@ -22,6 +22,8 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
   const [custom, setCustom] = useState({ wholeUnit: '', partUnit: '' });
   const [customSizeMode, setCustomSizeMode] = useState(false);
   const [customSize, setCustomSize] = useState('');
+  const [casePack, setCasePack] = useState('');
+  const cp = () => { const n = parseInt(casePack, 10); return n > 0 ? n : 0; };
 
   // Only show measures that fit the item's section (no kegs for food, etc.).
   const TEMPLATES = templatesForSection(item.section);
@@ -71,6 +73,22 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
         <option value="__custom">✎ Custom…</option>
       </select>
 
+      {/* Optional "comes in a case of N" — set before picking a size */}
+      {(template || isCustom) && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: colors.textSecondary, whiteSpace: 'nowrap' }}>Comes in a case of</span>
+          <input
+            type="number" inputMode="numeric" min="0" step="1"
+            value={casePack}
+            onChange={(e) => setCasePack(e.target.value)}
+            placeholder="optional"
+            style={{ ...select, flex: 1 }}
+            disabled={saving}
+          />
+          <span style={{ fontSize: '0.85rem', color: colors.textSecondary }}>singles</span>
+        </div>
+      )}
+
       {/* Size — appears once a method is chosen */}
       {template && (
         <select
@@ -79,7 +97,7 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
             if (e.target.value === '__customsize') { setCustomSizeMode(true); return; }
             setCustomSizeMode(false);
             const s = template.sizes.find(x => x.label === e.target.value);
-            if (s) onAssign({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label });
+            if (s) onAssign({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label, casePack: cp() });
           }}
           style={select}
           disabled={saving}
@@ -114,7 +132,7 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
             disabled={saving || !(parseFloat(customSize) > 0)}
             onClick={() => {
               const u = customSizeFor(template.key, customSize);
-              if (u) onAssign(u);
+              if (u) onAssign({ ...u, casePack: cp() });
             }}
             style={{
               padding: '0.7rem 1rem', backgroundColor: colors.primary, color: colors.onPrimary,
@@ -146,7 +164,7 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
           <button
             type="button"
             disabled={saving || !custom.wholeUnit.trim()}
-            onClick={() => onAssign({ wholeUnit: custom.wholeUnit.trim(), partUnit: custom.partUnit.trim(), unit: custom.wholeUnit.trim() })}
+            onClick={() => onAssign({ wholeUnit: custom.wholeUnit.trim(), partUnit: custom.partUnit.trim(), unit: custom.wholeUnit.trim(), casePack: cp() })}
             style={{
               padding: '0.7rem', backgroundColor: colors.primary, color: colors.onPrimary,
               border: 'none', borderRadius: '8px', fontWeight: 600,

@@ -82,6 +82,7 @@ function StockTaking() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [assigningUnitId, setAssigningUnitId] = useState(null);
   const [assigningCatId, setAssigningCatId] = useState(null);
+  const [caseQuantity, setCaseQuantity] = useState('');
   const [wholeQuantity, setWholeQuantity] = useState('');
   const [partQuantity, setPartQuantity] = useState('');
   const [tenthsQuantity, setTenthsQuantity] = useState('');
@@ -405,6 +406,7 @@ function StockTaking() {
     // Pre-fill with existing count if any
     const existingCount = getSessionCount(item.id);
     if (existingCount) {
+      setCaseQuantity(existingCount.caseCount ? existingCount.caseCount.toString() : '');
       setWholeQuantity((existingCount.wholeCount ?? existingCount.cases)?.toString() || '');
       if (existingCount.partLabel === 'Tenths') {
         setTenthsQuantity(Math.round(existingCount.partCount ?? existingCount.bottles ?? 0)?.toString() || '');
@@ -414,6 +416,7 @@ function StockTaking() {
         setTenthsQuantity('');
       }
     } else {
+      setCaseQuantity('');
       setWholeQuantity('');
       setPartQuantity('');
       setTenthsQuantity('');
@@ -437,12 +440,13 @@ function StockTaking() {
       wholeUnit: unit.wholeUnit,
       partUnit: unit.partUnit,
       unit: unit.unit || unit.wholeUnit,
+      casePack: unit.casePack || 0,
     });
     setAssigningUnitId(null);
     if (res.success) {
       // Reflect immediately so the desktop form (driven by selectedItem) flips to steppers.
       setSelectedItem(prev => (prev && prev.id === item.id)
-        ? { ...prev, wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, unit: unit.unit || unit.wholeUnit }
+        ? { ...prev, wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, unit: unit.unit || unit.wholeUnit, casePack: unit.casePack || 0 }
         : prev);
     } else {
       showToast('Could not save unit: ' + res.error);
@@ -470,6 +474,7 @@ function StockTaking() {
     if (!selectedItem || saving || !currentSession) return;
 
     const unitInfo = parseUnitInfo(selectedItem);
+    const caseVal = parseFloat(caseQuantity) || 0;
     const wholeVal = parseFloat(wholeQuantity) || 0;
     let tenthsVal = parseFloat(tenthsQuantity) || 0;
     // ".3" or "0.3" means 3 tenths, not 0.3 tenths
@@ -477,7 +482,7 @@ function StockTaking() {
     const partVal = parseFloat(partQuantity) || 0;
     const usedTenths = unitInfo.hasTenthsOption && tenthsVal > 0;
 
-    if (wholeVal === 0 && partVal === 0 && tenthsVal === 0) return;
+    if (caseVal === 0 && wholeVal === 0 && partVal === 0 && tenthsVal === 0) return;
 
     setSaving(true);
 
@@ -490,13 +495,17 @@ function StockTaking() {
     const savedPartCount = usedTenths ? tenthsVal : partVal;
     const savedPartLabel = usedTenths ? 'Tenths' : unitInfo.partLabel;
 
-    const newQuantity = Math.round(((wholeVal * unitInfo.unitsPerWhole) + partContribution) * 100) / 100;
+    // A case holds `casePack` whole units; fold it into the whole-unit total.
+    const wholeUnits = caseVal * (unitInfo.casePack || 0) + wholeVal;
+    const newQuantity = Math.round(((wholeUnits * unitInfo.unitsPerWhole) + partContribution) * 100) / 100;
 
     const result = await saveStockCount(
       selectedPub.path,
       currentSession.id,
       selectedItem.id,
       {
+        caseCount: caseVal,
+        caseLabel: unitInfo.caseLabel,
         wholeCount: wholeVal,
         partCount: savedPartCount,
         quantity: newQuantity,
@@ -511,6 +520,8 @@ function StockTaking() {
 
     if (result.success) {
       const display = formatCountDisplay({
+        caseCount: caseVal,
+        caseLabel: unitInfo.caseLabel,
         wholeCount: wholeVal,
         partCount: savedPartCount,
         wholeLabel: unitInfo.wholeLabel,
@@ -520,6 +531,7 @@ function StockTaking() {
       // Collapse the card and stay put in the list. Keep the current tab/search
       // filter, and don't touch focus so the keyboard stays closed.
       setSelectedItem(null);
+      setCaseQuantity('');
       setWholeQuantity('');
       setPartQuantity('');
       setTenthsQuantity('');
@@ -554,6 +566,7 @@ function StockTaking() {
 
   const handleCancelEntry = () => {
     setSelectedItem(null);
+    setCaseQuantity('');
     setWholeQuantity('');
     setPartQuantity('');
     setTenthsQuantity('');
@@ -1671,7 +1684,7 @@ function StockTaking() {
                           const unitInfo = parseUnitInfo(selectedItem);
                           const tenthsDisabled = !!partQuantity;
                           const partDisabled = !!tenthsQuantity;
-                          const hasAnyValue = wholeQuantity || partQuantity || tenthsQuantity;
+                          const hasAnyValue = caseQuantity || wholeQuantity || partQuantity || tenthsQuantity;
                           const stepBtnSm = (onClick, label, disabled) => (
                             <button
                               onClick={onClick}
@@ -1706,6 +1719,33 @@ function StockTaking() {
                           const partMax = unitInfo.partLabel === 'Tenths' ? 9 : undefined;
                           return (
                             <div data-entry-form style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                              {unitInfo.casePack > 0 && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  {stepBtnSm(() => stepValue(caseQuantity, setCaseQuantity, -1, false), '−', false)}
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    enterKeyHint="next"
+                                    value={caseQuantity}
+                                    onChange={(e) => setCaseQuantity(e.target.value.replace(/[^0-9]/g, ''))}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="0"
+                                    style={{
+                                      width: '60px',
+                                      padding: '0.5rem',
+                                      fontSize: '1.25rem',
+                                      fontWeight: 'bold',
+                                      textAlign: 'center',
+                                      border: `2px solid ${colors.border}`,
+                                      borderRadius: '4px',
+                                      backgroundColor: isDark ? '#2d3748' : '#ffffff',
+                                      color: colors.textPrimary
+                                    }}
+                                  />
+                                  {stepBtnSm(() => stepValue(caseQuantity, setCaseQuantity, 1, false), '+', false)}
+                                  <span style={{ fontWeight: '500', color: colors.textPrimary, marginLeft: '0.25rem' }}>Cases (×{unitInfo.casePack})</span>
+                                </div>
+                              )}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                 {stepBtnSm(() => stepValue(wholeQuantity, setWholeQuantity, -1, false), '−', false)}
                                 <input
@@ -1988,7 +2028,7 @@ function StockTaking() {
                         const unitInfo = parseUnitInfo(item);
                         const tenthsDisabled = !!partQuantity;
                         const partDisabled = !!tenthsQuantity;
-                        const hasAnyValue = wholeQuantity || partQuantity || tenthsQuantity;
+                        const hasAnyValue = caseQuantity || wholeQuantity || partQuantity || tenthsQuantity;
                         const stepValue = (val, setter, delta, disabled, max) => {
                           if (disabled) return;
                           const current = parseFloat(val) || 0;
@@ -2051,6 +2091,7 @@ function StockTaking() {
                         const partMax = unitInfo.partLabel === 'Tenths' ? 9 : undefined;
                         return (
                           <div data-entry-form style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem', paddingTop: '1rem', borderTop: `1px solid ${colors.border}` }}>
+                            {unitInfo.casePack > 0 && unitRow(`Cases (×${unitInfo.casePack})`, caseQuantity, setCaseQuantity, false)}
                             {unitRow(unitInfo.wholeLabel, wholeQuantity, setWholeQuantity, false, wholeInputRef)}
                             {unitInfo.hasPartUnit && unitInfo.hasTenthsOption && (
                               <>

@@ -6,10 +6,11 @@
 
 /**
  * @param unitInfo - from parseUnitInfo(item)
- * @param {object} entry - { whole, tenths, part } raw string/number inputs
- * @returns { empty, wholeCount, partCount, partLabel, quantity }
+ * @param {object} entry - { cases, whole, tenths, part } raw string/number inputs
+ * @returns { empty, caseCount, wholeCount, partCount, partLabel, quantity }
  */
-export function computeCount(unitInfo, { whole, tenths, part } = {}) {
+export function computeCount(unitInfo, { cases, whole, tenths, part } = {}) {
+  const caseVal = parseFloat(cases) || 0;
   const wholeVal = parseFloat(whole) || 0;
   let tenthsVal = parseFloat(tenths) || 0;
   // ".3" or "0.3" means 3 tenths, not 0.3 tenths
@@ -20,10 +21,14 @@ export function computeCount(unitInfo, { whole, tenths, part } = {}) {
   const partContribution = usedTenths ? tenthsVal * (unitInfo.unitsPerWhole / 10) : partVal;
   const partCount = usedTenths ? tenthsVal : partVal;
   const partLabel = usedTenths ? 'Tenths' : unitInfo.partLabel;
-  const quantity = Math.round(((wholeVal * unitInfo.unitsPerWhole) + partContribution) * 100) / 100;
+  // A case holds `casePack` whole units; fold it into the whole-unit total.
+  const casePack = unitInfo.casePack || 0;
+  const wholeUnits = caseVal * casePack + wholeVal;
+  const quantity = Math.round(((wholeUnits * unitInfo.unitsPerWhole) + partContribution) * 100) / 100;
 
   return {
-    empty: wholeVal === 0 && partVal === 0 && tenthsVal === 0,
+    empty: caseVal === 0 && wholeVal === 0 && partVal === 0 && tenthsVal === 0,
+    caseCount: caseVal,
     wholeCount: wholeVal,
     partCount,
     partLabel,

@@ -38,17 +38,23 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
     setTemplateKey(t.key);
     // Auto-select the first size so a tap on the template already counts.
     const s = t.sizes[0];
-    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: `${t.label.replace(/^\S+\s/, '')} ${s.label}`.trim() });
+    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: `${t.label.replace(/^\S+\s/, '')} ${s.label}`.trim(), casePack: value.casePack || 0 });
   };
 
   const pickSize = (s) => {
     setCustomSizeOpen(false);
-    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label });
+    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label, casePack: value.casePack || 0 });
   };
 
   const applyCustomSize = () => {
     const u = template ? customSizeFor(template.key, customSize) : null;
-    if (u) onChange(u);
+    if (u) onChange({ ...u, casePack: value.casePack || 0 });
+  };
+
+  // The orthogonal "comes in a case of N" size — preserves the chosen unit/label.
+  const setCasePack = (v) => {
+    const n = parseInt(v, 10);
+    onChange({ wholeUnit: value.wholeUnit || '', partUnit: value.partUnit || '', unit: value.unit || '', casePack: n > 0 ? n : 0 });
   };
 
   const chip = (active) => ({
@@ -133,25 +139,41 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
           <input
             type="text"
             value={value.wholeUnit || ''}
-            onChange={(e) => onChange({ wholeUnit: e.target.value, partUnit: value.partUnit || '', unit: e.target.value })}
+            onChange={(e) => onChange({ wholeUnit: e.target.value, partUnit: value.partUnit || '', unit: e.target.value, casePack: value.casePack || 0 })}
             placeholder="Whole unit e.g. Keg 1*50ltr"
             style={{ padding: '0.6rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: colors.bgCard, color: colors.textPrimary, fontSize: '0.85rem' }}
           />
           <input
             type="text"
             value={value.partUnit || ''}
-            onChange={(e) => onChange({ wholeUnit: value.wholeUnit || '', partUnit: e.target.value, unit: value.wholeUnit || '' })}
+            onChange={(e) => onChange({ wholeUnit: value.wholeUnit || '', partUnit: e.target.value, unit: value.wholeUnit || '', casePack: value.casePack || 0 })}
             placeholder="Part unit e.g. Litre"
             style={{ padding: '0.6rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: colors.bgCard, color: colors.textPrimary, fontSize: '0.85rem' }}
           />
         </div>
       )}
 
+      {/* Optional "comes in a case of N" — adds a Cases dimension when counting */}
+      {value.wholeUnit && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.6rem' }}>
+          <span style={{ fontSize: '0.82rem', color: colors.textSecondary, whiteSpace: 'nowrap' }}>Comes in a case of</span>
+          <input
+            type="number" inputMode="numeric" min="0" step="1"
+            value={value.casePack ? String(value.casePack) : ''}
+            onChange={(e) => setCasePack(e.target.value)}
+            placeholder="optional"
+            style={{ width: '6rem', padding: '0.45rem 0.5rem', fontSize: '0.9rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: colors.bgCard, color: colors.textPrimary }}
+          />
+          <span style={{ fontSize: '0.82rem', color: colors.textSecondary }}>singles</span>
+        </div>
+      )}
+
       {/* Live preview */}
       {preview && (
         <div style={{ marginTop: '0.6rem', padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, borderRadius: '6px', fontSize: '0.8rem', color: colors.textSecondary }}>
-          Counts as <strong style={{ color: colors.textPrimary }}>{preview.counts}</strong>
+          Counts as <strong style={{ color: colors.textPrimary }}>{value.casePack > 0 ? `Cases + ${preview.counts}` : preview.counts}</strong>
           {preview.desc && <> · {preview.desc}</>}
+          {value.casePack > 0 && <> · case of {value.casePack}</>}
         </div>
       )}
     </div>
