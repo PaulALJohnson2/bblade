@@ -235,7 +235,7 @@ function StockOverview({ venuePath, canEdit = true }) {
                       Object.entries(counts).map(([itemId, count]) => (
                         <div key={itemId} style={{ padding: '0.5rem 0.75rem', borderTop: `1px solid ${colors.borderLight}`, display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>{count.itemName || itemsById[itemId]?.name || 'Item'}</span>
-                          <span style={{ fontSize: '0.82rem', color: colors.textSecondary, textAlign: 'right' }}>{formatCountOverview(count, unitInfoFor(itemsById[itemId], count))}</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: colors.textPrimary, textAlign: 'right' }}>{formatCountOverview(count, unitInfoFor(itemsById[itemId], count))}</span>
                         </div>
                       ))
                     )}
