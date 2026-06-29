@@ -62,14 +62,14 @@ export function wastageUnitsFor(item) {
       // Keep perBase at full precision; only the final total is rounded.
       const perMl = (ml) => (ml / bottleMl) * unitsPerWhole;
       if (isWine) {
-        WINE_GLASSES_ML.forEach((ml) => rows.push({ key: `g${ml}`, label: `${ml}ml`, perBase: perMl(ml), integer: true }));
+        WINE_GLASSES_ML.forEach((ml) => rows.push({ key: `g${ml}`, label: 'Glass', hint: `${ml}ml`, perBase: perMl(ml), integer: true }));
       } else {
-        rows.push({ key: 'single', label: 'Single', perBase: perMl(SINGLE_ML), integer: true });
-        rows.push({ key: 'double', label: 'Double', perBase: perMl(DOUBLE_ML), integer: true });
+        rows.push({ key: 'single', label: 'Single', hint: `${SINGLE_ML}ml`, perBase: perMl(SINGLE_ML), integer: true });
+        rows.push({ key: 'double', label: 'Double', hint: `${DOUBLE_ML}ml`, perBase: perMl(DOUBLE_ML), integer: true });
       }
     }
     rows.push({ key: 'bottle', label: 'Bottle', perBase: unitsPerWhole, integer: true });
-    rows.push({ key: 'tenth', label: 'Tenths', perBase: 1, integer: true });
+    rows.push({ key: 'tenth', label: 'Tenths', perBase: 1, integer: true, counter: true });
     return { mode: isWine ? 'wine' : 'spirit', baseLabel: 'Tenths', rows };
   }
 
@@ -83,8 +83,8 @@ export function wastageUnitsFor(item) {
       mode: 'draught', baseLabel: info.partLabel,
       rows: [
         { key: 'whole', label: info.wholeLabel, perBase: unitsPerWhole, integer: true },
-        { key: 'pint', label: 'Pints', perBase: pint, integer: true },
-        { key: 'half', label: 'Half pints', perBase: half, integer: true },
+        { key: 'pint', label: 'Pint', hint: `${PINT_ML}ml`, perBase: pint, integer: true },
+        { key: 'half', label: 'Half', hint: `${HALF_PINT_ML}ml`, perBase: half, integer: true },
       ],
     };
   }
@@ -95,9 +95,9 @@ export function wastageUnitsFor(item) {
     return {
       mode: 'weight', baseLabel: baseIsKg ? 'Kg' : 'Grams',
       rows: [
-        { key: 'whole', label: info.wholeLabel, perBase: unitsPerWhole, integer: false },
-        { key: 'kg', label: 'Kg', perBase: baseIsKg ? 1 : 1000, integer: false },
-        { key: 'g', label: 'Grams', perBase: baseIsKg ? 0.001 : 1, integer: false },
+        { key: 'whole', label: info.wholeLabel, perBase: unitsPerWhole, integer: true },
+        { key: 'kg', label: 'Kg', perBase: baseIsKg ? 1 : 1000, integer: false, counter: true },
+        { key: 'g', label: 'Grams', perBase: baseIsKg ? 0.001 : 1, integer: false, counter: true },
       ],
     };
   }

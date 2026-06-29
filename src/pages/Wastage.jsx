@@ -78,6 +78,12 @@ function Wastage() {
   const selectedItem = items.find((i) => i.id === selectedId) || null;
   const wUnits = selectedItem ? wastageUnitsFor(selectedItem) : null;
   const quantity = wUnits ? computeWastageQuantity(wUnits.rows, values) : 0;
+  const capturedSummary = wUnits
+    ? wUnits.rows
+        .filter((r) => (parseFloat(values[r.key]) || 0) > 0)
+        .map((r) => `${values[r.key]} ${r.label}`)
+        .join(', ')
+    : '';
   const canLog = !!selectedItem && quantity > 0 && !!reason && !saving;
 
   const handleLog = async () => {
@@ -148,7 +154,6 @@ function Wastage() {
                     accent={accent}
                     values={values}
                     setValue={setValue}
-                    onEnter={handleLog}
                   />
 
                   {/* Reason */}
@@ -163,6 +168,13 @@ function Wastage() {
 
                   {/* Note */}
                   <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" style={input} />
+
+                  {/* Captured summary */}
+                  {capturedSummary && (
+                    <div style={{ fontSize: '0.85rem', color: colors.textPrimary, backgroundColor: colors.wastageSoft, borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+                      Wasting: <strong>{capturedSummary}</strong>
+                    </div>
+                  )}
 
                   {/* Actions */}
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
