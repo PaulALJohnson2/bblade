@@ -445,8 +445,15 @@ function formatCountDisplayBase(count, unitInfo) {
  */
 export function formatCountOverview(count, unitInfo) {
   if (!count) return '0';
-  const isNative = unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption;
-  if (isNative || unitInfo?.hasTenthsOption) return formatCountSummary(count, unitInfo);
+  // Spirits/wine → total decimal bottles, derived from the base quantity (which
+  // already folds in any cases) so "1 case + 14 bottles" reads as "26 Bottles".
+  if (unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption) {
+    const dec = (count.quantity || 0) / (unitInfo.unitsPerWhole || 10);
+    const wl = unitInfo.wholeLabel || count.wholeLabel || 'Bottles';
+    return `${oneDp(dec)} ${singularLabel(wl, dec)}`;
+  }
+  // Kegs/casks (measurement) → keep the litres/gallons summary.
+  if (unitInfo?.hasTenthsOption) return formatCountSummary(count, unitInfo);
   // Discrete / packaged → just the total number of items (singles).
   const total = Math.round((count.quantity || 0) * 100) / 100;
   const label = unitInfo?.hasPartUnit ? 'items' : (unitInfo?.wholeLabel || count.wholeLabel || 'items');
