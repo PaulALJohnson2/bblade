@@ -25,6 +25,17 @@ const RANGES = [{ key: '30', label: '30 days', days: 30 }, { key: '90', label: '
 const unitInfoFor = (item, count) => (item ? parseUnitInfo(item)
   : { hasPartUnit: !!count.partLabel, hasTenthsOption: false, partLabel: count.partLabel, wholeLabel: count.wholeLabel, unitsPerWhole: 1 });
 
+// A history entry only stores `quantity` (base units) + counts, no labels — so
+// format it straight from the total, matching the overview's "total" style.
+function fmtQty(quantity, unitInfo) {
+  const qn = Math.round((quantity || 0) * 100) / 100;
+  if (unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption) {
+    return `${oneDp(qn / (unitInfo.unitsPerWhole || 10))} ${unitInfo.wholeLabel || 'Bottles'}`;
+  }
+  if (unitInfo && unitInfo.hasTenthsOption) return `${qn} ${unitInfo.partLabel || ''}`.trim();
+  return `${qn} ${unitInfo?.hasPartUnit ? 'items' : (unitInfo?.wholeLabel || 'items')}`;
+}
+
 // Signed change between two base-unit quantities, in the item's display terms.
 function formatDelta(fromQty, toQty, unitInfo) {
   const dq = Math.round(((toQty || 0) - (fromQty || 0)) * 100) / 100;
@@ -57,6 +68,7 @@ function StockOverview({ venuePath, canEdit = true }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
+  const [openItem, setOpenItem] = useState(null); // `${sessionId}:${itemId}`
   const [showVariance, setShowVariance] = useState(false);
   const [sectionFilter, setSectionFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -76,7 +88,7 @@ function StockOverview({ venuePath, canEdit = true }) {
     return m;
   }, [items]);
 
-  const toggle = (id) => { setExpanded(expanded === id ? null : id); setShowVariance(false); };
+  const toggle = (id) => { setExpanded(expanded === id ? null : id); setShowVariance(false); setOpenItem(null); };
 
   const q = search.trim().toLowerCase();
   const rangeDays = RANGES.find((r) => r.key === rangeKey)?.days;
@@ -263,20 +275,48 @@ function StockOverview({ venuePath, canEdit = true }) {
                     ) : (
                       Object.entries(counts)
                         .filter(([itemId, count]) => !itemFilterActive || matchItem(itemId, count))
-                        .map(([itemId, count]) => (
-                        <div key={itemId} style={{ padding: '0.5rem 0.75rem', borderTop: `1px solid ${colors.borderLight}`, display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
-                          <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>{count.itemName || itemsById[itemId]?.name || 'Item'}</span>
-                          {(() => {
-                            const s = formatCountOverview(count, unitInfoFor(itemsById[itemId], count));
-                            const m = s.match(/^([\d.]+)(.*)$/);
-                            return (
-                              <span style={{ fontSize: '0.85rem', color: colors.textSecondary, textAlign: 'right' }}>
-                                {m ? <><strong style={{ color: colors.textPrimary }}>{m[1]}</strong>{m[2]}</> : s}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                      ))
+                        .map(([itemId, count]) => {
+                          const unitInfo = unitInfoFor(itemsById[itemId], count);
+                          const itemOpen = openItem === `${s.id}:${itemId}`;
+                          const hist = Array.isArray(count.history) ? count.history : [];
+                          const contributors = Array.isArray(count.countedBy) ? count.countedBy.filter(Boolean).join(', ') : (count.countedBy || '');
+                          const summary = formatCountOverview(count, unitInfo);
+                          const m = summary.match(/^([\d.]+)(.*)$/);
+                          return (
+                            <div key={itemId} style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+                              <button
+                                onClick={() => setOpenItem(itemOpen ? null : `${s.id}:${itemId}`)}
+                                style={{ width: '100%', textAlign: 'left', background: itemOpen ? colors.bgLight : 'none', border: 'none', cursor: 'pointer', padding: '0.5rem 0.75rem', display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}
+                              >
+                                <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>{count.itemName || itemsById[itemId]?.name || 'Item'}</span>
+                                <span style={{ fontSize: '0.85rem', color: colors.textSecondary }}>
+                                  {m ? <><strong style={{ color: colors.textPrimary }}>{m[1]}</strong>{m[2]}</> : summary}
+                                </span>
+                                <span style={{ color: colors.textSecondary, fontSize: '0.75rem' }}>{itemOpen ? '▾' : '▸'}</span>
+                              </button>
+                              {itemOpen && (
+                                <div style={{ padding: '0 0.75rem 0.6rem', fontSize: '0.78rem', color: colors.textSecondary }}>
+                                  <div>Counted by <strong style={{ color: colors.textPrimary }}>{contributors || '—'}</strong>{count.countedAt ? ` · ${fmtDate(count.countedAt)}` : ''}</div>
+                                  {hist.length > 0 && (
+                                    <div style={{ marginTop: '0.4rem' }}>
+                                      <div style={{ fontWeight: 600, color: colors.textPrimary, marginBottom: '0.2rem' }}>History</div>
+                                      {hist.map((e, i) => {
+                                        const delta = i > 0 ? formatDelta(hist[i - 1].quantity, e.quantity, unitInfo) : null;
+                                        return (
+                                          <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', padding: '0.1rem 0' }}>
+                                            <span style={{ flex: 1, minWidth: 0 }}>{fmtDate(e.countedAt)}{e.countedBy ? ` · ${e.countedBy}` : ''}</span>
+                                            <span style={{ color: colors.textPrimary }}>{fmtQty(e.quantity, unitInfo)}</span>
+                                            {delta && <span style={{ fontWeight: 700, color: delta.positive ? colors.success : colors.error, minWidth: '60px', textAlign: 'right' }}>{delta.text}</span>}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
                     )}
                   </div>
                 )}
