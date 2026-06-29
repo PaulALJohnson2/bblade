@@ -6,10 +6,5 @@ dist
 .env
 .env.local
 
-# amplify
-.amplify
-amplify_outputs*
-amplifyconfiguration*
-
 # build artifact for manual Amplify deploys
 bblade-dist.zip

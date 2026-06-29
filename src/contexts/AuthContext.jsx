@@ -1,18 +1,12 @@
 /**
- * AuthContext — passwordless email-OTP sign-in + per-account authorization.
- *
- * (Migrated from Firebase Google sign-in to AWS Cognito via Amplify.)
+ * AuthContext — Google sign-in + per-account authorization.
  *
  * Flow:
- *   1. User enters their email → we send a one-time code (requestLoginCode).
- *      Existing Cognito users get an EMAIL_OTP sign-in challenge; brand-new
- *      emails are self-signed-up (random password they never see) with autoSignIn,
- *      so both new and returning users complete with a single emailed code.
- *   2. User enters the code (confirmLoginCode) → Cognito signs them in → the Hub
- *      'signedIn' event fires → we check the account's `members` for one whose
- *      `email` matches (the allowlist). Match → authorized with that role. No
- *      match → access denied + signed out. (Bootstrap: if no member has an email
- *      yet, the first signed-in user is allowed, so you can't lock yourself out.)
+ *   1. User signs in with Google (Firebase Auth).
+ *   2. We check the account's `members` for one whose `email` matches — that's
+ *      the allowlist. Match → authorized (with the member's role). No match →
+ *      access denied + signed out. (Bootstrap: if no member has an email yet,
+ *      the first signed-in user is allowed, so you can't lock yourself out.)
  *   3. Once authorized, the tenant's live data (venue, account, members) loads.
  *
  * Tenant is still the hardcoded ACCOUNT_ID/VENUE_ID (single pub, no switcher).
@@ -22,16 +16,14 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
-  signIn,
-  confirmSignIn,
-  signUp,
-  confirmSignUp,
-  autoSignIn,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
-  getCurrentUser,
-  fetchUserAttributes,
-} from 'aws-amplify/auth';
-import { Hub } from 'aws-amplify/utils';
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { auth } from '../firebase/config';
 import { ACCOUNT_ID, VENUE_ID, venuePath } from '../config/app';
 import {
   subscribeToVenue,
@@ -48,14 +40,15 @@ const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
 
-// Cognito requires a password on self-sign-up even for passwordless users; we
-// generate a strong random one the user never needs (they always sign in by OTP).
-const randomPassword = () => {
-  const bytes = new Uint8Array(24);
-  (globalThis.crypto || window.crypto).getRandomValues(bytes);
-  const base = btoa(String.fromCharCode(...bytes)).replace(/[^a-zA-Z0-9]/g, '');
-  return `Aa1!${base}`; // guarantees upper/lower/number/symbol for the default policy
-};
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+// Popups are unreliable on mobile (iOS Safari blocks them); use a full-page
+// redirect there instead. The auth handler is same-origin (authDomain = the
+// Hosting domain), so redirect completes without the storage-partition error.
+const isMobileDevice = () =>
+  typeof navigator !== 'undefined' &&
+  /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
 
 export const AuthProvider = ({ children }) => {
   const PATH = venuePath(ACCOUNT_ID, VENUE_ID);
@@ -66,6 +59,9 @@ export const AuthProvider = ({ children }) => {
   const [role, setRole] = useState('staff');
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  // Preferred display name resolved from the matched Member record (falls back
+  // to the Google profile name / email). Drives count attribution + the header.
+  const [memberName, setMemberName] = useState('');
 
   // ---- tenant data (loaded once authorized) ----
   const [venueName, setVenueName] = useState('');
@@ -73,79 +69,68 @@ export const AuthProvider = ({ children }) => {
   const [entitlements, setEntitlements] = useState({});
   const [members, setMembers] = useState([]);
 
-  // Check the signed-in Cognito user against the member allowlist.
-  const authorizeUser = async () => {
-    try {
-      const attrs = await fetchUserAttributes();
-      const { userId } = await getCurrentUser();
-      const email = attrs.email || '';
-
-      const res = await getMembers(ACCOUNT_ID);
-      if (!res.success) {
-        // Don't silently treat a failed access check as a bootstrap; surface it.
-        throw new Error(res.error || 'permission-denied');
-      }
-      const list = res.data;
-      const withEmail = list.filter((m) => m.email);
-      const match = list.find(
-        (m) => m.email && email && m.email.toLowerCase() === email.toLowerCase()
-      );
-
-      // Prefer the member's real name; fall back to email only if none is set.
-      const user = { uid: userId, email, displayName: match?.displayName || email };
-
-      if (withEmail.length === 0 || match) {
-        // Authorized (matched member, or bootstrap when no allowlist exists yet)
-        setRole(match?.role || 'owner');
-        setCurrentUser(user);
-        setAuthorized(true);
-        setAuthError(null);
-      } else {
-        setAuthError(
-          'Access denied — this email is not authorised. Ask an administrator to add you.'
-        );
-        await signOut();
-        setCurrentUser(null);
-        setAuthorized(false);
-      }
-    } catch (err) {
-      console.error('Authorization error:', err);
-      setAuthError('Could not verify access. Please try again.');
-      try { await signOut(); } catch { /* already signed out */ }
-      setCurrentUser(null);
-      setAuthorized(false);
-    }
-  };
-
-  // Resume an existing session on load, and react to sign-in / sign-out events.
+  // Listen for Google sign-in / sign-out and authorize against members.
   useEffect(() => {
-    let active = true;
+    // Complete a redirect sign-in (mobile) and surface any error from it.
+    getRedirectResult(auth).catch((err) => {
+      console.error('Redirect sign-in error:', err);
+      setAuthError('Sign-in failed. Please try again.');
+    });
 
-    (async () => {
-      try {
-        await getCurrentUser(); // throws if not signed in
-        if (active) await authorizeUser();
-      } catch {
-        if (active) {
-          setCurrentUser(null);
-          setAuthorized(false);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    const stopListen = Hub.listen('auth', ({ payload }) => {
-      if (payload.event === 'signedIn') {
-        authorizeUser();
-      } else if (payload.event === 'signedOut') {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
         setCurrentUser(null);
         setAuthorized(false);
         setRole('staff');
+        setMemberName('');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Ensure the auth token is minted before any Firestore read, otherwise
+        // a redirect sign-in can fire reads before the token attaches and get
+        // permission-denied.
+        await user.getIdToken();
+
+        const res = await getMembers(ACCOUNT_ID);
+        if (!res.success) {
+          // Don't silently treat a failed access check as a bootstrap; surface it.
+          throw new Error(res.error || 'permission-denied');
+        }
+        const list = res.data;
+        const withEmail = list.filter((m) => m.email);
+        const match = list.find(
+          (m) => m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase()
+        );
+
+        if (withEmail.length === 0 || match) {
+          // Authorized (matched member, or bootstrap when no allowlist exists yet)
+          setRole(match?.role || 'owner');
+          // Prefer the member's real name; fall back to Google name / email.
+          setMemberName(match?.displayName || '');
+          setCurrentUser(user);
+          setAuthorized(true);
+          setAuthError(null);
+        } else {
+          setAuthError(
+            'Access denied — this Google account is not authorised. Ask an administrator to add you.'
+          );
+          await signOut(auth);
+          setCurrentUser(null);
+          setAuthorized(false);
+        }
+      } catch (err) {
+        console.error('Authorization error:', err);
+        setAuthError('Could not verify access. Please try again.');
+        await signOut(auth);
+        setCurrentUser(null);
+        setAuthorized(false);
+      } finally {
+        setLoading(false);
       }
     });
-
-    return () => { active = false; stopListen(); };
+    return () => unsub();
   }, []);
 
   // Live tenant data — only while authorized.
@@ -164,62 +149,33 @@ export const AuthProvider = ({ children }) => {
   }, [authorized, PATH]);
 
   // ---- auth actions ----
-
-  // Step 1: email the user a one-time code. Returns { success, mode } where mode
-  // is 'signup' (new user) or 'signin' (existing user) — confirmLoginCode needs it.
-  //
-  // We sign up FIRST: Cognito's "prevent user existence errors" makes signIn
-  // silently return a fake challenge for unknown emails (no email sent), whereas
-  // signUp gives a deterministic UsernameExistsException for known ones. So we
-  // try to create the user (emails a verification code), and only fall back to a
-  // sign-in OTP challenge when the account already exists.
-  const requestLoginCode = async (email) => {
+  const loginWithGoogle = async () => {
     setAuthError(null);
-    const username = email.trim().toLowerCase();
+    // Popup-first on every device. Redirect sign-in is fragile with a service
+    // worker / installed PWA (the redirect can lose its pending state and bounce
+    // back to login), so we only fall back to redirect when popups are genuinely
+    // unavailable (blocked, or an embedded webview that can't open one).
     try {
-      await signUp({
-        username,
-        password: randomPassword(),
-        options: { userAttributes: { email: username }, autoSignIn: true },
-      });
-      return { success: true, mode: 'signup' };
+      await signInWithPopup(auth, googleProvider);
+      return { success: true };
     } catch (error) {
-      // Already registered → send a sign-in one-time code instead.
-      if (error?.name === 'UsernameExistsException') {
+      if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+        return { success: false, error: 'cancelled' };
+      }
+      if (error?.code === 'auth/popup-blocked' || error?.code === 'auth/operation-not-supported-in-this-environment') {
         try {
-          const out = await signIn({
-            username,
-            options: { authFlowType: 'USER_AUTH', preferredChallenge: 'EMAIL_OTP' },
-          });
-          return { success: true, mode: 'signin', nextStep: out?.nextStep?.signInStep };
-        } catch (siErr) {
-          return { success: false, error: siErr.message };
+          await signInWithRedirect(auth, googleProvider);
+          return { success: true };
+        } catch (redirectErr) {
+          return { success: false, error: redirectErr.message };
         }
       }
       return { success: false, error: error.message };
     }
   };
 
-  // Step 2: verify the code. `mode` comes from requestLoginCode. On success the
-  // Hub 'signedIn' event triggers authorizeUser().
-  const confirmLoginCode = async (email, code, mode) => {
-    setAuthError(null);
-    const username = email.trim().toLowerCase();
-    try {
-      if (mode === 'signup') {
-        await confirmSignUp({ username, confirmationCode: code });
-        await autoSignIn();
-      } else {
-        await confirmSignIn({ challengeResponse: code });
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message };
-    }
-  };
-
   const logout = async () => {
-    await signOut();
+    await signOut(auth);
   };
 
   // ---- bound writers for the current tenant ----
@@ -228,8 +184,9 @@ export const AuthProvider = ({ children }) => {
   const saveMember = (memberId, data) => saveMemberSvc(ACCOUNT_ID, memberId, data);
   const deleteMember = (memberId) => deleteMemberSvc(ACCOUNT_ID, memberId);
 
-  // Counts are attributed to the signed-in user.
-  const displayName = currentUser?.displayName || currentUser?.email || 'Staff';
+  // Counts are attributed to the signed-in user. Prefer the member record's name
+  // (set by an admin) over the Google profile name so attribution shows real names.
+  const displayName = memberName || currentUser?.displayName || currentUser?.email || 'Staff';
 
   const value = {
     currentUser,
@@ -238,8 +195,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     authError,
     clearAuthError: () => setAuthError(null),
-    requestLoginCode,
-    confirmLoginCode,
+    loginWithGoogle,
     logout,
 
     // Tenant context
