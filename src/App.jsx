@@ -13,6 +13,7 @@ import { StockDataProvider } from './contexts/StockDataContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import useTheme from './hooks/useTheme';
 import { getThemeColors } from './utils/theme';
+import Home from './pages/Home';
 import './App.css';
 
 // Keep the import factories so we can both lazy-render and preload the chunks.
@@ -20,8 +21,9 @@ const importStock = () => import('./pages/StockTaking');
 const importWastage = () => import('./pages/Wastage');
 const importAdmin = () => import('./pages/Admin');
 
+// Home is the landing hub — eager (in the main bundle) so it never shows a
+// loading fallback. The heavier feature pages stay code-split + preloaded.
 const Login = lazy(() => import('./pages/Login'));
-const Home = lazy(() => import('./pages/Home'));
 const StockTaking = lazy(importStock);
 const Wastage = lazy(importWastage);
 const Admin = lazy(importAdmin);
