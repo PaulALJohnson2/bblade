@@ -12,7 +12,7 @@ import Tile from '../components/Tile';
 
 function Home() {
   const navigate = useNavigate();
-  const { pubName, isPlatformAdmin } = useAuth();
+  const { pubName } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -32,12 +32,7 @@ function Home() {
       accent: colors.textMuted,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
     },
-    isPlatformAdmin && {
-      key: 'super', label: 'Platform', desc: 'Manage accounts',
-      to: '/super', accent: colors.success,
-      icon: ['M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z', 'M9 12l2 2 4-4'],
-    },
-  ].filter(Boolean);
+  ];
 
   return (
     <div style={{ maxWidth: '560px', margin: '0 auto' }}>
