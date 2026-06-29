@@ -1,0 +1,36 @@
+name: Deploy to Firebase Hosting
+
+# Auto-deploy the app to Firebase Hosting (project bar-blade, live channel)
+# on every push to main. Replaces the old Amplify CI/CD that was removed when
+# the app moved back to Firebase.
+#
+# Requires one repo secret: FIREBASE_SERVICE_ACCOUNT_BAR_BLADE
+#   (a Firebase service-account JSON key — see repo setup notes / README).
+#
+# NOTE: this deploys Hosting only. Firestore rules/indexes are deployed
+# separately with `npx firebase deploy --only firestore` when they change.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BAR_BLADE }}
+          channelId: live
+          projectId: bar-blade
