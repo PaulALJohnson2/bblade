@@ -20,6 +20,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromCache,
   getDocs,
   query,
   where,
@@ -204,7 +205,17 @@ export async function saveStockCount(venuePath, sessionId, itemId, countData) {
   // they're separate field paths).
   try {
     const docRef = doc(db, `${venuePath}/stockSessions/${sessionId}`);
-    const docSnap = await getDoc(docRef); // resolves from cache when offline
+    // Read from the LOCAL CACHE, never the server. On a flaky signal a plain
+    // getDoc() tries the server first and can hang for many seconds before
+    // falling back — that's the mid-count "freeze". The session is actively
+    // subscribed while counting, so it's always warm in the cache; only fall
+    // back to a (server) getDoc if it somehow isn't cached yet.
+    let docSnap;
+    try {
+      docSnap = await getDocFromCache(docRef);
+    } catch {
+      docSnap = await getDoc(docRef);
+    }
     if (!docSnap.exists()) {
       return { success: false, error: 'Session not found' };
     }
