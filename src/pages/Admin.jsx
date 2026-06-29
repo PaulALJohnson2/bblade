@@ -8,7 +8,6 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -19,11 +18,11 @@ import WastageReport from '../components/WastageReport';
 const ROLES = ['owner', 'manager', 'staff'];
 
 function Admin() {
-  const navigate = useNavigate();
   const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
+  const [view, setView] = useState(null); // null=hub | account | overview | edit | wastage
   const [nameInput, setNameInput] = useState(pubName || '');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -106,36 +105,84 @@ function Admin() {
     whiteSpace: 'nowrap',
   };
 
+  const admin = !!(isAdmin && isAdmin());
+  const TILES = [
+    { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, on: colors.onPrimary, show: true },
+    { key: 'overview', label: 'Stock overview', desc: 'Import or replace the list', accent: colors.primary, on: colors.onPrimary, show: admin },
+    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & sections', accent: colors.primary, on: colors.onPrimary, show: admin },
+    { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, on: colors.onWastage, show: admin },
+  ].filter((t) => t.show);
+
+  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview' };
+
+  // ---- Hub: a grid of tiles into each settings section ----
+  if (!view) {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Settings</h1>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+          {TILES.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setView(t.key)}
+              style={{
+                textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                padding: '1.25rem', borderRadius: '14px', border: `1px solid ${colors.borderLight}`,
+                backgroundColor: colors.bgCard, boxShadow: `0 2px 12px ${colors.shadow}`, cursor: 'pointer', minHeight: '110px',
+              }}
+            >
+              <div style={{ width: '40px', height: '8px', borderRadius: '9999px', backgroundColor: t.accent }} />
+              <div style={{ fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>{t.label}</div>
+              <div style={{ fontSize: '0.82rem', color: colors.textSecondary }}>{t.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- A single section, with a back-to-hub header ----
+  const sectionHeader = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <button
+        onClick={() => setView(null)}
+        style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}
+      >
+        ← Settings
+      </button>
+      <h1 style={{ margin: 0, fontSize: '1.5rem', color: colors.textPrimary }}>{SECTION_TITLES[view]}</h1>
+    </div>
+  );
+
+  if (view === 'overview') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        {selectedPub?.path && <StockListAdmin venuePath={selectedPub.path} canEdit={true} />}
+      </div>
+    );
+  }
+  if (view === 'edit') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        {selectedPub?.path && <StockManager venuePath={selectedPub.path} canEdit={true} />}
+      </div>
+    );
+  }
+  if (view === 'wastage') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        {selectedPub?.path && <WastageReport venuePath={selectedPub.path} canEdit={true} />}
+      </div>
+    );
+  }
+
+  // view === 'account'
   return (
     <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <button
-          onClick={() => navigate('/')}
-          style={{
-            padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary,
-            border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem',
-          }}
-        >
-          ← Back
-        </button>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', color: colors.textPrimary }}>Settings</h1>
-      </div>
-
-      {/* Quick entry into the main flows */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <button
-          onClick={() => navigate('/stock')}
-          style={{ padding: '1rem', borderRadius: '12px', border: 'none', backgroundColor: colors.primary, color: colors.onPrimary, fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
-        >
-          Stock Count
-        </button>
-        <button
-          onClick={() => navigate('/wastage')}
-          style={{ padding: '1rem', borderRadius: '12px', border: 'none', backgroundColor: colors.wastage, color: colors.onWastage, fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
-        >
-          Wastage
-        </button>
-      </div>
+      {sectionHeader}
 
       {error && (
         <div style={{
@@ -249,21 +296,6 @@ function Admin() {
           </div>
         )}
       </div>
-
-      {/* Stock list — upload CSV/JSON, or delete the whole list */}
-      {isAdmin && isAdmin() && selectedPub?.path && (
-        <StockListAdmin venuePath={selectedPub.path} canEdit={true} />
-      )}
-
-      {/* Manage stock — edit names, sections, and categories */}
-      {isAdmin && isAdmin() && selectedPub?.path && (
-        <StockManager venuePath={selectedPub.path} canEdit={true} />
-      )}
-
-      {/* Wastage overview — totals with drill-down */}
-      {isAdmin && isAdmin() && selectedPub?.path && (
-        <WastageReport venuePath={selectedPub.path} canEdit={true} />
-      )}
     </div>
   );
 }
