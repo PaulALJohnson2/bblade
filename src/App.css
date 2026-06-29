@@ -50,6 +50,15 @@
   display: flex;
   align-items: center;
   gap: 2rem;
+  flex-shrink: 0;
+}
+
+.account-switcher {
+  max-width: 190px;
+}
+.account-switcher > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .year-selector {
@@ -425,14 +434,27 @@ tr:hover {
   }
 
   .header-title {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.4rem;
   }
 
   .header-title h1 {
-    font-size: 1.25rem;
+    font-size: 1.15rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
+
+  /* The venue name is shown by the page/account switcher — drop the duplicate
+     in the header so it doesn't wrap or collide with the controls. */
+  .header-venue { display: none; }
+
+  /* Super-admins identify the venue via the account switcher, so the brand
+     can step aside on small screens to make room. */
+  .header-left--admin .header-title { display: none; }
+
+  .account-switcher { max-width: 46vw; }
 
   .pub-selector {
     font-size: 0.75rem;
@@ -441,8 +463,14 @@ tr:hover {
 
   .header-controls {
     flex-direction: row;
-    gap: 0.5rem;
+    gap: 0.4rem;
     width: auto;
+    flex-shrink: 0;
+  }
+
+  .theme-toggle {
+    width: 36px;
+    height: 36px;
   }
 
   .year-selector {

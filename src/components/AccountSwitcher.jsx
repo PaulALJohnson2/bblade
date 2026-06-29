@@ -42,9 +42,10 @@ function AccountSwitcher() {
   return (
     <div style={{ position: 'relative' }}>
       <button
+        className="account-switcher"
         onClick={() => setOpen((o) => !o)}
         title="Switch account"
-        style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', maxWidth: '190px', padding: '0.35rem 0.6rem', borderRadius: '9999px', border: '1px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+        style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0, padding: '0.35rem 0.6rem', borderRadius: '9999px', border: '1px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
       >
         <span aria-hidden="true">⚑</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{accountName || 'Accounts'}</span>

@@ -128,16 +128,16 @@ function Shell() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0 }}>
+          <div className={`header-left${isPlatformAdmin ? ' header-left--admin' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
             {isPlatformAdmin && <AccountSwitcher />}
             <div
               className="header-title"
               onClick={() => navigate('/')}
-              style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', cursor: 'pointer' }}
+              style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', cursor: 'pointer', minWidth: 0, overflow: 'hidden' }}
               title="Home"
             >
               <h1>BBlade</h1>
-              <span style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85 }}>
+              <span className="header-venue" style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {pubName || 'Stock'}
               </span>
             </div>
