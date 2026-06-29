@@ -10,7 +10,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToStockItems, logWastage, subscribeToWastageLog, deleteWastageEntry } from '../services/apiService';
+import { logWastage, subscribeToWastageLog, deleteWastageEntry } from '../services/apiService';
+import { useStockData } from '../contexts/StockDataContext';
 import { wastageUnitsFor, computeWastageQuantity } from '../utils/wastageUnits';
 import { WASTAGE_REASONS } from '../utils/wastageReasons';
 import WastageEntry from '../components/WastageEntry';
@@ -34,7 +35,7 @@ function Wastage() {
   const colors = getThemeColors(isDark);
   const accent = colors.wastage;
 
-  const [items, setItems] = useState([]);
+  const { items } = useStockData();
   const [recent, setRecent] = useState([]);
   const [section, setSection] = useState('bar');
   const [search, setSearch] = useState('');
@@ -53,9 +54,8 @@ function Wastage() {
 
   useEffect(() => {
     if (!selectedPub) return;
-    const unsubItems = subscribeToStockItems(selectedPub.path, (list) => setItems(list || []));
     const unsubLog = subscribeToWastageLog(selectedPub.path, (list) => setRecent(list || []));
-    return () => { unsubItems(); unsubLog(); };
+    return () => unsubLog();
   }, [selectedPub]);
 
   const resetEntry = () => {

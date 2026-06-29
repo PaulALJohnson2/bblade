@@ -6,19 +6,25 @@
  * menu (sign out).
  */
 
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { StockDataProvider } from './contexts/StockDataContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import useTheme from './hooks/useTheme';
 import { getThemeColors } from './utils/theme';
 import './App.css';
 
+// Keep the import factories so we can both lazy-render and preload the chunks.
+const importStock = () => import('./pages/StockTaking');
+const importWastage = () => import('./pages/Wastage');
+const importAdmin = () => import('./pages/Admin');
+
 const Login = lazy(() => import('./pages/Login'));
 const Home = lazy(() => import('./pages/Home'));
-const StockTaking = lazy(() => import('./pages/StockTaking'));
-const Wastage = lazy(() => import('./pages/Wastage'));
-const Admin = lazy(() => import('./pages/Admin'));
+const StockTaking = lazy(importStock);
+const Wastage = lazy(importWastage);
+const Admin = lazy(importAdmin);
 
 const PageLoader = () => (
   <div
@@ -103,6 +109,16 @@ function Shell() {
   const location = useLocation();
   const onHome = location.pathname === '/';
 
+  // Warm the route chunks once the shell is up, so the first tap into Stock
+  // Count / Wastage / Settings doesn't wait on a JS download.
+  useEffect(() => {
+    const preload = () => { importStock(); importWastage(); importAdmin(); };
+    const ric = window.requestIdleCallback;
+    if (ric) { const id = ric(preload); return () => window.cancelIdleCallback?.(id); }
+    const t = setTimeout(preload, 1200);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -183,7 +199,9 @@ function App() {
               path="/*"
               element={
                 <ProtectedRoute>
-                  <Shell />
+                  <StockDataProvider>
+                    <Shell />
+                  </StockDataProvider>
                 </ProtectedRoute>
               }
             />

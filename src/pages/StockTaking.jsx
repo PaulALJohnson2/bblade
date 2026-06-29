@@ -16,8 +16,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useStockData } from '../contexts/StockDataContext';
 import {
-  subscribeToStockItems,
   saveOrUpdateStockItem,
   deleteStockItem,
   createStockSession,
@@ -67,9 +67,9 @@ function StockTaking() {
   const firstResultRef = useRef(null);
   const selectedCardRef = useRef(null);
 
-  const [allItems, setAllItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Stock items come from the app-wide StockDataProvider (warm on app load), so
+  // opening this page is instant instead of re-subscribing on every navigation.
+  const { items: allItems, itemsLoading: loading, itemsError: error } = useStockData();
 
   // Session state
   const [allSessions, setAllSessions] = useState([]);
@@ -140,29 +140,6 @@ function StockTaking() {
       navigate('/');
     }
   }, [canAccessStock, navigate]);
-
-  // Subscribe to real-time stock items updates
-  useEffect(() => {
-    if (!currentUser || !selectedPub) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-
-    const unsubscribe = subscribeToStockItems(
-      selectedPub.path,
-      (items) => {
-        setAllItems(items);
-        setLoading(false);
-      },
-      (err) => {
-        setError(err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [currentUser, selectedPub]);
 
   // Subscribe to all sessions for real-time updates
   useEffect(() => {
