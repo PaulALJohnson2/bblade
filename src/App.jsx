@@ -20,6 +20,7 @@ import './App.css';
 const importStock = () => import('./pages/StockTaking');
 const importWastage = () => import('./pages/Wastage');
 const importAdmin = () => import('./pages/Admin');
+const importSuper = () => import('./pages/SuperAdmin');
 
 // Home is the landing hub — eager (in the main bundle) so it never shows a
 // loading fallback. The heavier feature pages stay code-split + preloaded.
@@ -27,6 +28,7 @@ const Login = lazy(() => import('./pages/Login'));
 const StockTaking = lazy(importStock);
 const Wastage = lazy(importWastage);
 const Admin = lazy(importAdmin);
+const SuperAdmin = lazy(importSuper);
 
 const PageLoader = () => (
   <div
@@ -105,7 +107,7 @@ function UserMenu() {
 }
 
 function Shell() {
-  const { pubName } = useAuth();
+  const { pubName, isPlatformAdmin, accountName } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -137,6 +139,16 @@ function Shell() {
             </span>
           </div>
           <div className="header-controls">
+            {isPlatformAdmin && (
+              <button
+                onClick={() => navigate('/super')}
+                title="Platform admin — switch account"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', maxWidth: '180px', padding: '0.35rem 0.6rem', borderRadius: '9999px', border: '1px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.18)', color: '#fff', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
+                <span aria-hidden="true">⚑</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{accountName || 'Accounts'}</span>
+              </button>
+            )}
             {!onHome && (
               <button onClick={() => navigate('/')} className="theme-toggle" aria-label="Home" title="Home">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -183,6 +195,7 @@ function Shell() {
             <Route path="/stock" element={<StockTaking />} />
             <Route path="/wastage" element={<Wastage />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/super" element={<SuperAdmin />} />
           </Routes>
         </Suspense>
       </main>

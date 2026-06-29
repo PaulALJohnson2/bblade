@@ -24,7 +24,7 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { auth } from '../firebase/config';
-import { ACCOUNT_ID, VENUE_ID, venuePath } from '../config/app';
+import { ACCOUNT_ID, VENUE_ID, venuePath, isSuperAdminEmail } from '../config/app';
 import {
   subscribeToVenue,
   saveVenue as saveVenueSvc,
@@ -51,7 +51,12 @@ const isMobileDevice = () =>
   /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
 
 export const AuthProvider = ({ children }) => {
-  const PATH = venuePath(ACCOUNT_ID, VENUE_ID);
+  // ---- active tenant (super-admins can switch; everyone else stays on the
+  // default account/venue). Derived path drives every tenant subscription. ----
+  const [activeAccountId, setActiveAccountId] = useState(ACCOUNT_ID);
+  const [activeVenueId, setActiveVenueId] = useState(VENUE_ID);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const PATH = venuePath(activeAccountId, activeVenueId);
 
   // ---- auth state ----
   const [currentUser, setCurrentUser] = useState(null);
@@ -83,6 +88,7 @@ export const AuthProvider = ({ children }) => {
         setAuthorized(false);
         setRole('staff');
         setMemberName('');
+        setIsPlatformAdmin(false);
         setLoading(false);
         return;
       }
@@ -93,6 +99,29 @@ export const AuthProvider = ({ children }) => {
         // permission-denied.
         await user.getIdToken();
 
+        // Platform super-admins: full access to any account, no member check.
+        // They land on their last-opened account (localStorage), else the default.
+        if (isSuperAdminEmail(user.email)) {
+          setIsPlatformAdmin(true);
+          try {
+            const saved = JSON.parse(localStorage.getItem('bb_active_tenant') || 'null');
+            if (saved?.accountId && saved?.venueId) {
+              setActiveAccountId(saved.accountId);
+              setActiveVenueId(saved.venueId);
+            }
+          } catch { /* ignore bad localStorage */ }
+          setRole('owner');
+          setMemberName('');
+          setCurrentUser(user);
+          setAuthorized(true);
+          setAuthError(null);
+          return; // finally{} clears loading
+        }
+
+        // Normal user → default account, authorize against its members.
+        setIsPlatformAdmin(false);
+        setActiveAccountId(ACCOUNT_ID);
+        setActiveVenueId(VENUE_ID);
         const res = await getMembers(ACCOUNT_ID);
         if (!res.success) {
           // Don't silently treat a failed access check as a bootstrap; surface it.
@@ -140,13 +169,13 @@ export const AuthProvider = ({ children }) => {
       return;
     }
     const unsubVenue = subscribeToVenue(PATH, (d) => setVenueName(d?.name || ''), (e) => console.error(e));
-    const unsubAcct = subscribeToAccount(ACCOUNT_ID, (d) => {
+    const unsubAcct = subscribeToAccount(activeAccountId, (d) => {
       setAccountName(d?.name || '');
       setEntitlements(d?.entitlements || {});
     }, (e) => console.error(e));
-    const unsubMembers = subscribeToMembers(ACCOUNT_ID, (list) => setMembers(list || []), (e) => console.error(e));
+    const unsubMembers = subscribeToMembers(activeAccountId, (list) => setMembers(list || []), (e) => console.error(e));
     return () => { unsubVenue(); unsubAcct(); unsubMembers(); };
-  }, [authorized, PATH]);
+  }, [authorized, PATH, activeAccountId]);
 
   // ---- auth actions ----
   const loginWithGoogle = async () => {
@@ -178,11 +207,19 @@ export const AuthProvider = ({ children }) => {
     await signOut(auth);
   };
 
-  // ---- bound writers for the current tenant ----
+  // ---- bound writers for the current (active) tenant ----
   const saveVenue = (data) => saveVenueSvc(PATH, data);
-  const saveAccount = (data) => saveAccountSvc(ACCOUNT_ID, data);
-  const saveMember = (memberId, data) => saveMemberSvc(ACCOUNT_ID, memberId, data);
-  const deleteMember = (memberId) => deleteMemberSvc(ACCOUNT_ID, memberId);
+  const saveAccount = (data) => saveAccountSvc(activeAccountId, data);
+  const saveMember = (memberId, data) => saveMemberSvc(activeAccountId, memberId, data);
+  const deleteMember = (memberId) => deleteMemberSvc(activeAccountId, memberId);
+
+  // ---- super-admin: switch which account/venue the app is operating on ----
+  const switchTenant = (accountId, venueId) => {
+    if (!isPlatformAdmin || !accountId || !venueId) return;
+    setActiveAccountId(accountId);
+    setActiveVenueId(venueId);
+    try { localStorage.setItem('bb_active_tenant', JSON.stringify({ accountId, venueId })); } catch { /* ignore */ }
+  };
 
   // Counts are attributed to the signed-in user. Prefer the member record's name
   // (set by an admin) over the Google profile name so attribution shows real names.
@@ -198,12 +235,18 @@ export const AuthProvider = ({ children }) => {
     loginWithGoogle,
     logout,
 
-    // Tenant context
-    accountId: ACCOUNT_ID,
+    // Tenant context (active account/venue — switchable by super-admins)
+    accountId: activeAccountId,
     accountName,
     entitlements,
-    selectedPub: { id: VENUE_ID, accountId: ACCOUNT_ID, name: venueName, path: PATH },
-    accessiblePubs: [{ id: VENUE_ID, accountId: ACCOUNT_ID, name: venueName, path: PATH }],
+    selectedPub: { id: activeVenueId, accountId: activeAccountId, name: venueName, path: PATH },
+    accessiblePubs: [{ id: activeVenueId, accountId: activeAccountId, name: venueName, path: PATH }],
+
+    // Platform (super-admin)
+    isPlatformAdmin,
+    switchTenant,
+    activeAccountId,
+    activeVenueId,
 
     // Venue + account settings
     pubName: venueName,

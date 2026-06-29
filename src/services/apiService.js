@@ -48,6 +48,11 @@ export {
   getAccount,
   saveAccount,
 
+  // Platform (super-admin)
+  subscribeToAccounts,
+  getVenues,
+  createAccountWithOwner,
+
   // Members (account-level staff identity + access)
   subscribeToMembers,
   getMembers,

@@ -736,6 +736,81 @@ export async function saveAccount(accountId, data) {
   }
 }
 
+// ---- Platform (super-admin) ----
+
+/** Subscribe to ALL accounts (super-admin console). */
+export function subscribeToAccounts(onData, onError) {
+  const q = query(collection(db, 'accounts'), orderBy('name'));
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      // 'name' may be missing on older docs; fall back to an unordered read.
+      if (error?.code === 'failed-precondition') {
+        return onSnapshot(collection(db, 'accounts'),
+          (s) => onData(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
+          (e) => { console.error('Error in accounts listener:', e); if (onError) onError(e.message); });
+      }
+      console.error('Error in accounts listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Venues under an account, once. */
+export async function getVenues(accountId) {
+  try {
+    const snap = await getDocs(collection(db, `accounts/${accountId}/venues`));
+    return { success: true, data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error getting venues:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Create a new customer account with its first venue and a single owner member.
+ * @returns { success, accountId, venueId }
+ */
+export async function createAccountWithOwner({ accountName, venueName, ownerName, ownerEmail }) {
+  try {
+    const now = Timestamp.now();
+    const accountRef = doc(collection(db, 'accounts'));
+    await setDoc(accountRef, {
+      name: (accountName || '').trim() || 'New account',
+      entitlements: { stock: true },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const venueRef = doc(collection(db, `accounts/${accountRef.id}/venues`));
+    await setDoc(venueRef, {
+      name: (venueName || '').trim() || 'Main venue',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const email = (ownerEmail || '').trim().toLowerCase();
+    if (email || ownerName) {
+      const memberRef = doc(collection(db, `accounts/${accountRef.id}/members`));
+      await setDoc(memberRef, {
+        displayName: (ownerName || '').trim() || email,
+        email,
+        role: 'owner',
+        venueAccess: 'all',
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, accountId: accountRef.id, venueId: venueRef.id };
+  } catch (error) {
+    console.error('Error creating account:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ============================================
 // MEMBERS  (account-level staff identity + access)
 //   accounts/{accountId}/members/{memberId}
