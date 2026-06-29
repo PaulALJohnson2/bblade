@@ -8,43 +8,43 @@
  * everything updates from one place. JS inline styles mirror these in utils/theme.js.
  */
 :root {
-  /* ===== Canonical tokens — Light ===== */
-  --bg: #F5F7FA;
+  /* ===== Canonical tokens — Light ("Champagne" black & gold) ===== */
+  --bg: #FAF7EF;
   --surface: #FFFFFF;
-  --surface-sunken: #EEF1F6;
+  --surface-sunken: #F1EADB;
 
-  --text-primary: #131A24;
-  --text-secondary: #5A6675;
-  --text-muted: #8A93A3;
+  --text-primary: #1B1813;
+  --text-secondary: #6A6151;
+  --text-muted: #9C927F;
 
-  --border: #E2E7EE;
-  --border-strong: #CFD6E0;
+  --border: #E8DFCB;
+  --border-strong: #D9CDB0;
 
-  --primary: #2563EB;
-  --primary-hover: #1D4ED8;
-  --primary-soft: #EAF0FE;
-  --on-primary: #FFFFFF;
+  --primary: #A98521;
+  --primary-hover: #8E6E16;
+  --primary-soft: #F6EDCF;
+  --on-primary: #1A1505;
 
   --success: #197A4B;  --success-soft: #E6F4EC;
   --warning: #C77A18;  --warning-soft: #FBF0DE;
-  --danger:  #DC3B40;  --danger-soft:  #FCEAEA;
+  --danger:  #C0392F;  --danger-soft:  #F7E7E4;
 
-  --header-bg: #2563EB; --header-text: #FFFFFF; --header-sub: #C8D8FB; --header-btn: #3D77EE;
+  --header-bg: #14110A; --header-text: #E5C45C; --header-sub: #C2AC75; --header-btn: #2A2417;
 
-  --shadow-sm: 0 1px 2px rgba(16,24,40,.06);
-  --shadow-md: 0 6px 16px rgba(16,24,40,.10);
+  --shadow-sm: 0 1px 2px rgba(20,15,5,.08);
+  --shadow-md: 0 6px 16px rgba(20,15,5,.12);
 
   /* ===== Back-compat aliases (consumed by existing app code) ===== */
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-light: var(--primary-soft);
-  --color-primary-dark: #1E40AF;
-  --color-primary-darker: #1E3A8A;
+  --color-primary-dark: #7E6310;
+  --color-primary-darker: #5C480B;
 
   --color-success: var(--success);
   --color-success-dark: #14613B;
   --color-error: var(--danger);
-  --color-error-dark: #C32F34;
+  --color-error-dark: #9E2B23;
   --color-warning: var(--warning);
 
   --color-text-primary: var(--text-primary);
@@ -59,42 +59,42 @@
   --color-bg-card: var(--surface);
   --color-bg-header: var(--header-bg);
 
-  --color-shadow: rgba(16,24,40,.10);
+  --color-shadow: rgba(20,15,5,.12);
 }
 
-/* ===== Dark mode ===== */
+/* ===== Dark mode ("Onyx & gold") ===== */
 [data-theme="dark"] {
-  --bg: #0C1016;
-  --surface: #161C26;
-  --surface-sunken: #11161E;
+  --bg: #0A0A0B;
+  --surface: #18150F;
+  --surface-sunken: #100E09;
 
-  --text-primary: #EAEEF5;
-  --text-secondary: #93A0B2;
-  --text-muted: #6B7686;
+  --text-primary: #F2EBD9;
+  --text-secondary: #A89E86;
+  --text-muted: #79715A;
 
-  --border: #283242;
-  --border-strong: #36425A;
+  --border: #2B2618;
+  --border-strong: #3B331F;
 
-  --primary: #4F8BFF;
-  --primary-hover: #6B9DFF;
-  --primary-soft: #1B2740;
-  --on-primary: #08152E;
+  --primary: #E3B341;
+  --primary-hover: #EFC766;
+  --primary-soft: #2A2110;
+  --on-primary: #191300;
 
   --success: #34B27B;  --success-soft: #143025;
   --warning: #E0A038;  --warning-soft: #2E2614;
   --danger:  #F0716E;  --danger-soft:  #2A1719;
 
-  --header-bg: #1B3A82; --header-text: #FFFFFF; --header-sub: #A7C2F5; --header-btn: #27488F;
+  --header-bg: #0A0A0B; --header-text: #E3B341; --header-sub: #BCA771; --header-btn: #241F12;
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.30);
-  --shadow-md: 0 8px 20px rgba(0,0,0,.45);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.40);
+  --shadow-md: 0 8px 20px rgba(0,0,0,.55);
 
   /* Back-compat literals that don't alias a canonical token */
-  --color-primary-dark: #27488F;
-  --color-primary-darker: #1B3A82;
+  --color-primary-dark: #B98F22;
+  --color-primary-darker: #8C6C18;
   --color-success-dark: #2A8B5F;
   --color-error-dark: #D85C59;
-  --color-shadow: rgba(0,0,0,.45);
+  --color-shadow: rgba(0,0,0,.5);
 }
 
 * {

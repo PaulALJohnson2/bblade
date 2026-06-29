@@ -42,7 +42,7 @@ function Login() {
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: '1rem',
-        background: 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)',
+        background: 'linear-gradient(135deg, #14110A 0%, #3A2E14 100%)',
       }}>
         <div style={{
           width: '46px', height: '46px', border: '4px solid rgba(255,255,255,0.3)',
@@ -61,7 +61,7 @@ function Login() {
       alignItems: 'center',
       justifyContent: 'center',
       padding: '1rem',
-      background: 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)',
+      background: 'linear-gradient(135deg, #14110A 0%, #3A2E14 100%)',
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     }}>
       <div style={{

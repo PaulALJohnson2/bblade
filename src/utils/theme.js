@@ -13,100 +13,100 @@
  * per-mode here via getThemeColors(isDark).
  */
 
-// Light mode
+// Light mode — "Champagne" (black & gold, light surfaces)
 const lightTokens = {
-  // Brand
-  primary: '#2563EB',
-  primaryHover: '#1D4ED8',
-  primarySoft: '#EAF0FE',
-  onPrimary: '#FFFFFF',
-  primaryDark: '#1E40AF',     // legacy gradient stop
-  primaryDarker: '#1E3A8A',   // legacy
-  primaryLight: '#EAF0FE',    // legacy → primarySoft
+  // Brand — gold
+  primary: '#A98521',
+  primaryHover: '#8E6E16',
+  primarySoft: '#F6EDCF',
+  onPrimary: '#1A1505',
+  primaryDark: '#7E6310',     // legacy gradient stop
+  primaryDarker: '#5C480B',   // legacy
+  primaryLight: '#F6EDCF',    // legacy → primarySoft
 
   // Status
   success: '#197A4B', successSoft: '#E6F4EC', successDark: '#14613B',
   warning: '#C77A18', warningSoft: '#FBF0DE',
-  error: '#DC3B40',   dangerSoft: '#FCEAEA',   errorDark: '#C32F34',
+  error: '#C0392F',   dangerSoft: '#F7E7E4',   errorDark: '#9E2B23',
 
-  // Wastage accent (distinct from primary-blue and kitchen-amber)
-  wastage: '#C2410C', wastageSoft: '#FBEDE5', onWastage: '#FFFFFF',
+  // Wastage accent (distinct from gold + kitchen-amber)
+  wastage: '#B23A18', wastageSoft: '#F6E6DE', onWastage: '#FFFFFF',
 
   // Text
-  textPrimary: '#131A24',
-  textSecondary: '#5A6675',
-  textMuted: '#8A93A3',
+  textPrimary: '#1B1813',
+  textSecondary: '#6A6151',
+  textMuted: '#9C927F',
 
   // Borders
-  border: '#CFD6E0',        // the prominent line (legacy "border")
-  borderLight: '#E2E7EE',   // the subtle line
-  borderStrong: '#CFD6E0',
+  border: '#D9CDB0',        // the prominent line (legacy "border")
+  borderLight: '#E8DFCB',   // the subtle line
+  borderStrong: '#D9CDB0',
 
   // Surfaces
-  bg: '#F5F7FA',
+  bg: '#FAF7EF',
   surface: '#FFFFFF',
-  surfaceSunken: '#EEF1F6',
-  bgPage: '#F5F7FA',   // legacy → bg
+  surfaceSunken: '#F1EADB',
+  bgPage: '#FAF7EF',   // legacy → bg
   bgCard: '#FFFFFF',   // legacy → surface
-  bgLight: '#EEF1F6',  // legacy → surfaceSunken
+  bgLight: '#F1EADB',  // legacy → surfaceSunken
 
-  // Header
-  headerBg: '#2563EB', headerText: '#FFFFFF', headerSub: '#C8D8FB', headerBtn: '#3D77EE',
+  // Header — black with gold lettering
+  headerBg: '#14110A', headerText: '#E5C45C', headerSub: '#C2AC75', headerBtn: '#2A2417',
 
   // Elevation
-  shadow: 'rgba(16,24,40,.10)',           // legacy shadow color
-  shadowSm: '0 1px 2px rgba(16,24,40,.06)',
-  shadowMd: '0 6px 16px rgba(16,24,40,.10)',
+  shadow: 'rgba(20,15,5,.12)',            // legacy shadow color
+  shadowSm: '0 1px 2px rgba(20,15,5,.08)',
+  shadowMd: '0 6px 16px rgba(20,15,5,.12)',
 
-  disabled: '#CFD6E0',
+  disabled: '#D9CDB0',
 };
 
-// Dark mode
+// Dark mode — "Onyx & gold" (black surfaces, gold accents)
 const darkTokens = {
-  // Brand
-  primary: '#4F8BFF',
-  primaryHover: '#6B9DFF',
-  primarySoft: '#1B2740',
-  onPrimary: '#08152E',
-  primaryDark: '#27488F',
-  primaryDarker: '#1B3A82',
-  primaryLight: '#1B2740',
+  // Brand — bright gold
+  primary: '#E3B341',
+  primaryHover: '#EFC766',
+  primarySoft: '#2A2110',
+  onPrimary: '#191300',
+  primaryDark: '#B98F22',
+  primaryDarker: '#8C6C18',
+  primaryLight: '#2A2110',
 
   // Status
   success: '#34B27B', successSoft: '#143025', successDark: '#2A8B5F',
   warning: '#E0A038', warningSoft: '#2E2614',
   error: '#F0716E',   dangerSoft: '#2A1719',   errorDark: '#D85C59',
 
-  // Wastage accent (distinct from primary-blue and kitchen-amber)
+  // Wastage accent (distinct from gold + kitchen-amber)
   wastage: '#FB7C42', wastageSoft: '#2A1B12', onWastage: '#1A0E06',
 
   // Text
-  textPrimary: '#EAEEF5',
-  textSecondary: '#93A0B2',
-  textMuted: '#6B7686',
+  textPrimary: '#F2EBD9',
+  textSecondary: '#A89E86',
+  textMuted: '#79715A',
 
   // Borders
-  border: '#36425A',
-  borderLight: '#283242',
-  borderStrong: '#36425A',
+  border: '#3B331F',
+  borderLight: '#2B2618',
+  borderStrong: '#3B331F',
 
   // Surfaces
-  bg: '#0C1016',
-  surface: '#161C26',
-  surfaceSunken: '#11161E',
-  bgPage: '#0C1016',
-  bgCard: '#161C26',
-  bgLight: '#11161E',
+  bg: '#0A0A0B',
+  surface: '#18150F',
+  surfaceSunken: '#100E09',
+  bgPage: '#0A0A0B',
+  bgCard: '#18150F',
+  bgLight: '#100E09',
 
-  // Header
-  headerBg: '#1B3A82', headerText: '#FFFFFF', headerSub: '#A7C2F5', headerBtn: '#27488F',
+  // Header — black with gold lettering
+  headerBg: '#0A0A0B', headerText: '#E3B341', headerSub: '#BCA771', headerBtn: '#241F12',
 
   // Elevation
-  shadow: 'rgba(0,0,0,.45)',
-  shadowSm: '0 1px 2px rgba(0,0,0,.30)',
-  shadowMd: '0 8px 20px rgba(0,0,0,.45)',
+  shadow: 'rgba(0,0,0,.5)',
+  shadowSm: '0 1px 2px rgba(0,0,0,.40)',
+  shadowMd: '0 8px 20px rgba(0,0,0,.55)',
 
-  disabled: '#36425A',
+  disabled: '#3B331F',
 };
 
 // Default theme (light mode) for backwards compatibility

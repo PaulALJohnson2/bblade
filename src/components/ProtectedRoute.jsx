@@ -19,7 +19,7 @@ function ProtectedRoute({ children }) {
         alignItems: 'center',
         justifyContent: 'center',
         gap: '1rem',
-        background: 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)',
+        background: 'linear-gradient(135deg, #14110A 0%, #3A2E14 100%)',
       }}>
         <div style={{
           width: '46px',

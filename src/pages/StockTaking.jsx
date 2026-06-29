@@ -856,11 +856,11 @@ function StockTaking() {
             text-align: center;
             margin-bottom: 30px;
             padding-bottom: 20px;
-            border-bottom: 3px solid #2563EB;
+            border-bottom: 3px solid #8E6E16;
           }
           .header h1 {
             font-size: 28px;
-            color: #2563EB;
+            color: #8E6E16;
             margin-bottom: 8px;
           }
           .header .date {
@@ -876,7 +876,7 @@ function StockTaking() {
             margin-bottom: 25px;
           }
           .section-header {
-            background: #2563EB;
+            background: #14110A;
             color: white;
             padding: 10px 15px;
             font-size: 14px;
@@ -947,7 +947,7 @@ function StockTaking() {
           .total {
             margin-top: 30px;
             padding: 15px 20px;
-            background: linear-gradient(135deg, #2563EB 0%, #1E40AF 100%);
+            background: linear-gradient(135deg, #14110A 0%, #3A2E14 100%);
             color: white;
             border-radius: 6px;
             display: flex;
