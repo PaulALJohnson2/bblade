@@ -39,6 +39,7 @@ function Wastage() {
   const [recent, setRecent] = useState([]);
   const [section, setSection] = useState('bar');
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedId, setSelectedId] = useState(null);
 
   const [values, setValues] = useState({}); // sale-unit counts keyed by row.key
@@ -70,10 +71,19 @@ function Wastage() {
   };
 
   const q = search.trim().toLowerCase();
-  const visible = useMemo(() => items
-    .filter((i) => !i.archived && sectionOf(i) === section)
+  // Items in the current section (used for both the category list and the list).
+  const sectionItems = useMemo(
+    () => items.filter((i) => !i.archived && sectionOf(i) === section),
+    [items, section]
+  );
+  const categories = useMemo(
+    () => [...new Set(sectionItems.map((i) => i.category).filter(Boolean))].sort(),
+    [sectionItems]
+  );
+  const visible = useMemo(() => sectionItems
+    .filter((i) => !categoryFilter || i.category === categoryFilter)
     .filter((i) => !q || (i.name || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q)),
-    [items, section, q]);
+    [sectionItems, categoryFilter, q]);
 
   const selectedItem = items.find((i) => i.id === selectedId) || null;
   const wUnits = selectedItem ? wastageUnitsFor(selectedItem) : null;
@@ -128,12 +138,22 @@ function Wastage() {
 
       {/* Section tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        <button onClick={() => { setSection('bar'); resetEntry(); }} style={tab(section === 'bar')}>Bar</button>
-        <button onClick={() => { setSection('kitchen'); resetEntry(); }} style={tab(section === 'kitchen')}>Kitchen</button>
+        <button onClick={() => { setSection('bar'); setCategoryFilter(''); resetEntry(); }} style={tab(section === 'bar')}>Bar</button>
+        <button onClick={() => { setSection('kitchen'); setCategoryFilter(''); resetEntry(); }} style={tab(section === 'kitchen')}>Kitchen</button>
       </div>
 
       {/* Search */}
-      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items…" style={{ ...input, marginBottom: '0.75rem' }} />
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items…" style={{ ...input, marginBottom: '0.6rem' }} />
+
+      {/* Category filter pills */}
+      {categories.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.25rem', marginBottom: '0.75rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+          <button onClick={() => setCategoryFilter('')} style={reasonChip(categoryFilter === '')}>All</button>
+          {categories.map((c) => (
+            <button key={c} onClick={() => { setCategoryFilter(c); resetEntry(); }} style={{ ...reasonChip(categoryFilter === c), whiteSpace: 'nowrap' }}>{c}</button>
+          ))}
+        </div>
+      )}
 
       {/* Item list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
