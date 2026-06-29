@@ -46,6 +46,7 @@ function UserMenu() {
   const colors = getThemeColors(isDark);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const name = currentUser?.displayName || currentUser?.email || 'User';
   const initial = name.charAt(0).toUpperCase();
 
@@ -103,16 +104,38 @@ function UserMenu() {
               Admin
             </button>
             <button
-              onClick={() => { setOpen(false); logout(); }}
+              onClick={() => { setOpen(false); setConfirmLogout(true); }}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem',
-                background: 'none', border: 'none', cursor: 'pointer', color: colors.textPrimary, fontSize: '0.9rem',
+                background: 'none', border: 'none', cursor: 'pointer', color: colors.error, fontSize: '0.9rem', fontWeight: 600,
               }}
             >
-              Sign out
+              Logout
             </button>
           </div>
         </>
+      )}
+
+      {confirmLogout && (
+        <div
+          onClick={() => setConfirmLogout(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 5000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: colors.bgCard, borderRadius: '14px', boxShadow: `0 12px 40px ${colors.shadow}`, padding: '1.5rem', maxWidth: '320px', width: '100%', textAlign: 'center' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.1rem', color: colors.textPrimary, marginBottom: '0.35rem' }}>Log out?</div>
+            <div style={{ fontSize: '0.9rem', color: colors.textSecondary, marginBottom: '1.25rem' }}>You'll need to sign in again to use the app.</div>
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <button
+                onClick={() => setConfirmLogout(false)}
+                style={{ flex: 1, padding: '0.8rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '10px', fontWeight: 600, fontSize: '1rem', cursor: 'pointer' }}
+              >Cancel</button>
+              <button
+                onClick={() => { setConfirmLogout(false); logout(); }}
+                style={{ flex: 1, padding: '0.8rem', backgroundColor: colors.error, color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}
+              >Logout</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
