@@ -59,6 +59,7 @@ function StockOverview({ venuePath, canEdit = true }) {
   const [expanded, setExpanded] = useState(null);
   const [showVariance, setShowVariance] = useState(false);
   const [sectionFilter, setSectionFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [rangeKey, setRangeKey] = useState('30');
   const [search, setSearch] = useState('');
 
@@ -80,17 +81,33 @@ function StockOverview({ venuePath, canEdit = true }) {
   const q = search.trim().toLowerCase();
   const rangeDays = RANGES.find((r) => r.key === rangeKey)?.days;
   const cutoff = rangeDays ? Date.now() - rangeDays * 86400000 : 0;
+  const itemFilterActive = !!q || !!categoryFilter;
+
+  // Categories present in the items of the selected section.
+  const categories = useMemo(() => {
+    const inSection = items.filter((i) => !i.archived && (sectionFilter === 'all' || (i.section === 'kitchen' ? 'kitchen' : 'bar') === sectionFilter));
+    return [...new Set(inSection.map((i) => i.category).filter(Boolean))].sort();
+  }, [items, sectionFilter]);
+
+  // Does this counted item match the active stock-item search / category filter?
+  const matchItem = (itemId, count) => {
+    const item = itemsById[itemId];
+    const name = (count?.itemName || item?.name || '').toLowerCase();
+    if (q && !name.includes(q)) return false;
+    if (categoryFilter && (item?.category || '') !== categoryFilter) return false;
+    return true;
+  };
 
   const visible = useMemo(() => sessions
     .filter((s) => sectionFilter === 'all' || (s.section === 'kitchen' ? 'kitchen' : 'bar') === sectionFilter)
     .filter((s) => !rangeDays || (ts(s.completedAt) || ts(s.createdAt)) >= cutoff)
-    .filter((s) => !q || (s.createdByName || '').toLowerCase().includes(q))
+    .filter((s) => !itemFilterActive || Object.entries(s.counts || {}).some(([id, c]) => matchItem(id, c)))
     .sort((a, b) => {
       const ap = a.status === 'completed' ? 1 : 0;
       const bp = b.status === 'completed' ? 1 : 0;
       if (ap !== bp) return ap - bp;
       return (ts(b.completedAt) || ts(b.createdAt)) - (ts(a.completedAt) || ts(a.createdAt));
-    }), [sessions, sectionFilter, rangeKey, q]);
+    }), [sessions, sectionFilter, rangeKey, q, categoryFilter, itemsById]);
 
   const lastCompleted = useMemo(() => {
     const done = sessions.filter((s) => s.status === 'completed');
@@ -114,6 +131,7 @@ function StockOverview({ venuePath, canEdit = true }) {
     ids.forEach((id) => {
       const cur = s.counts?.[id];
       const old = prev.counts?.[id];
+      if (itemFilterActive && !matchItem(id, cur || old)) return;
       const curQ = cur?.quantity || 0;
       const oldQ = old?.quantity || 0;
       const item = itemsById[id];
@@ -148,14 +166,25 @@ function StockOverview({ venuePath, canEdit = true }) {
       {/* Section + range filters */}
       <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {['all', 'bar', 'kitchen'].map((s) => (
-          <button key={s} onClick={() => setSectionFilter(s)} style={pill(sectionFilter === s, sectionColor(s, colors))}>{s}</button>
+          <button key={s} onClick={() => { setSectionFilter(s); setCategoryFilter(''); }} style={pill(sectionFilter === s, sectionColor(s, colors))}>{s}</button>
         ))}
         <span style={{ width: '1px', background: colors.borderLight, margin: '0 0.25rem' }} />
         {RANGES.map((r) => (
           <button key={r.key} onClick={() => setRangeKey(r.key)} style={pill(rangeKey === r.key)}>{r.label}</button>
         ))}
       </div>
-      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by who ran it…" style={{ ...input, marginBottom: '0.6rem' }} />
+
+      {/* Category filters */}
+      {categories.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          <button onClick={() => setCategoryFilter('')} style={pill(categoryFilter === '')}>All</button>
+          {categories.map((c) => (
+            <button key={c} onClick={() => setCategoryFilter(c)} style={{ ...pill(categoryFilter === c), textTransform: 'none' }}>{c}</button>
+          ))}
+        </div>
+      )}
+
+      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search stock item…" style={{ ...input, marginBottom: '0.6rem' }} />
 
       {/* Headline stats */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', fontSize: '0.8rem', color: colors.textSecondary }}>
@@ -232,7 +261,9 @@ function StockOverview({ venuePath, canEdit = true }) {
                     {itemCount === 0 ? (
                       <div style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', color: colors.textSecondary }}>Nothing counted yet.</div>
                     ) : (
-                      Object.entries(counts).map(([itemId, count]) => (
+                      Object.entries(counts)
+                        .filter(([itemId, count]) => !itemFilterActive || matchItem(itemId, count))
+                        .map(([itemId, count]) => (
                         <div key={itemId} style={{ padding: '0.5rem 0.75rem', borderTop: `1px solid ${colors.borderLight}`, display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>{count.itemName || itemsById[itemId]?.name || 'Item'}</span>
                           {(() => {
