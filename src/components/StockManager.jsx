@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { getAllStockItems, saveOrUpdateStockItem, deleteStockItem, bulkPatchStockItems } from '../services/apiService';
+import UnitPicker from './UnitPicker';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -52,7 +53,10 @@ function StockManager({ venuePath, canEdit = true }) {
   const openEdit = (it) => {
     if (expandedId === it.id) { setExpandedId(null); setDraft(null); return; }
     setExpandedId(it.id);
-    setDraft({ name: it.name || '', category: it.category || '', section: sectionOf(it) });
+    setDraft({
+      name: it.name || '', category: it.category || '', section: sectionOf(it),
+      wholeUnit: it.wholeUnit || '', partUnit: it.partUnit || '', unit: it.unit || '', casePack: it.casePack || 0,
+    });
   };
 
   const saveItem = async (it) => {
@@ -62,6 +66,10 @@ function StockManager({ venuePath, canEdit = true }) {
       category: draft.category.trim(),
       section: draft.section === 'ignore' ? (it.section || 'bar') : draft.section,
       archived: draft.section === 'ignore',
+      wholeUnit: draft.wholeUnit || '',
+      partUnit: draft.partUnit || '',
+      unit: draft.unit || '',
+      casePack: draft.casePack || 0,
     };
     const res = await saveOrUpdateStockItem(venuePath, it.id, patch);
     setBusy(false);
@@ -108,7 +116,7 @@ function StockManager({ venuePath, canEdit = true }) {
     <div style={card}>
       <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: colors.textPrimary }}>Manage stock</h2>
       <p style={{ margin: '0 0 1rem', color: colors.textSecondary, fontSize: '0.85rem' }}>
-        Edit names, move items between Bar &amp; Kitchen, rename or move categories.
+        Edit names, volume/case size, move items between Bar &amp; Kitchen, rename or move categories.
       </p>
 
       {loading ? (
@@ -182,6 +190,13 @@ function StockManager({ venuePath, canEdit = true }) {
                         <button onClick={() => setDraft({ ...draft, section: 'kitchen' })} style={segBtn(draft.section === 'kitchen', '#d69e2e')}>Kitchen</button>
                         <button onClick={() => setDraft({ ...draft, section: 'ignore' })} style={segBtn(draft.section === 'ignore', colors.textMuted)}>Ignore</button>
                       </div>
+                      <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>Volume / how it's counted</label>
+                      <UnitPicker
+                        section={draft.section === 'kitchen' ? 'kitchen' : 'bar'}
+                        value={{ wholeUnit: draft.wholeUnit, partUnit: draft.partUnit, unit: draft.unit, casePack: draft.casePack }}
+                        onChange={(u) => setDraft({ ...draft, ...u })}
+                        colors={colors}
+                      />
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                         <button onClick={() => saveItem(it)} disabled={busy} style={{ flex: 1, padding: '0.7rem', backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>
                           {busy ? 'Saving…' : 'Save'}
