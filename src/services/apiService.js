@@ -33,6 +33,11 @@ export {
   subscribeToStockSessions,
   subscribeToStockSession,
 
+  // Wastage (rolling log)
+  logWastage,
+  subscribeToWastageLog,
+  deleteWastageEntry,
+
   // Venue (the venue document → name)
   subscribeToVenue,
   getVenue,

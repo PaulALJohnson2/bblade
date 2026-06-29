@@ -30,6 +30,8 @@ import {
   Timestamp,
   onSnapshot,
   runTransaction,
+  increment,
+  limit,
 } from 'firebase/firestore';
 import { db } from './config';
 import { idsFromVenuePath } from '../config/app';
@@ -527,6 +529,103 @@ export async function fixGallonStockItems(venuePath) {
     return { success: true, fixed, message: `Fixed ${fixed} item(s)` };
   } catch (error) {
     console.error('Error fixing gallon items:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// WASTAGE  (rolling log under {venuePath}/wastageLog)
+// ============================================
+
+/**
+ * Log a single wastage event and decrement the item's stock by the wasted amount.
+ *
+ * Wastage is a rolling log (not a session): each call writes one wastageLog entry
+ * and adjusts stockItems/{itemId}.quantity by -quantity. Like saveStockCount, the
+ * stock write is offline-first (applies to the local cache immediately, syncs on
+ * reconnect) — we use increment() so concurrent edits from other devices merge.
+ *
+ * @param {Object} data - { itemId, itemName, section, caseCount, caseLabel,
+ *   wholeCount, wholeLabel, partCount, partLabel, quantity (base units wasted),
+ *   reason, note, wastedBy }
+ */
+export async function logWastage(venuePath, itemId, data) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const now = Timestamp.now();
+    const entryRef = doc(collection(db, `${venuePath}/wastageLog`));
+    const wasted = Number(data.quantity) || 0;
+
+    await setDoc(entryRef, {
+      itemId,
+      itemName: data.itemName || '',
+      section: data.section || 'bar',
+      caseCount: data.caseCount ?? 0,
+      caseLabel: data.caseLabel ?? 'Cases',
+      wholeCount: data.wholeCount ?? 0,
+      wholeLabel: data.wholeLabel ?? '',
+      partCount: data.partCount ?? 0,
+      partLabel: data.partLabel ?? '',
+      quantity: wasted,
+      reason: data.reason || '',
+      note: data.note || '',
+      wastedBy: data.wastedBy || '',
+      wastedAt: now,
+      accountId,
+      venueId,
+    });
+
+    // Decrement stock. Don't await — applies to cache instantly, syncs later.
+    if (wasted > 0) {
+      updateDoc(doc(db, `${venuePath}/stockItems/${itemId}`), {
+        quantity: increment(-wasted),
+        updatedAt: now,
+      }).catch(err => console.error('Deferred wastage stock decrement failed:', err));
+    }
+
+    return { success: true, id: entryRef.id };
+  } catch (error) {
+    console.error('Error logging wastage:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Live list of recent wastage entries (newest first, capped at 100). */
+export function subscribeToWastageLog(venuePath, onData, onError) {
+  const q = query(
+    collection(db, `${venuePath}/wastageLog`),
+    orderBy('wastedAt', 'desc'),
+    limit(100)
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in wastage listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Undo a wastage entry: add its amount back onto the item, then delete the log. */
+export async function deleteWastageEntry(venuePath, entryId) {
+  try {
+    const entryRef = doc(db, `${venuePath}/wastageLog/${entryId}`);
+    const snap = await getDoc(entryRef);
+    if (!snap.exists()) return { success: false, error: 'Entry not found' };
+
+    const entry = snap.data();
+    const wasted = Number(entry.quantity) || 0;
+    if (wasted > 0 && entry.itemId) {
+      updateDoc(doc(db, `${venuePath}/stockItems/${entry.itemId}`), {
+        quantity: increment(wasted),
+        updatedAt: Timestamp.now(),
+      }).catch(err => console.error('Deferred wastage restore failed:', err));
+    }
+    await deleteDoc(entryRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting wastage entry:', error);
     return { success: false, error: error.message };
   }
 }

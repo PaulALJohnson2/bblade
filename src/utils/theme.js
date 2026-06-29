@@ -29,6 +29,9 @@ const lightTokens = {
   warning: '#C77A18', warningSoft: '#FBF0DE',
   error: '#DC3B40',   dangerSoft: '#FCEAEA',   errorDark: '#C32F34',
 
+  // Wastage accent (distinct from primary-blue and kitchen-amber)
+  wastage: '#C2410C', wastageSoft: '#FBEDE5', onWastage: '#FFFFFF',
+
   // Text
   textPrimary: '#131A24',
   textSecondary: '#5A6675',
@@ -73,6 +76,9 @@ const darkTokens = {
   success: '#34B27B', successSoft: '#143025', successDark: '#2A8B5F',
   warning: '#E0A038', warningSoft: '#2E2614',
   error: '#F0716E',   dangerSoft: '#2A1719',   errorDark: '#D85C59',
+
+  // Wastage accent (distinct from primary-blue and kitchen-amber)
+  wastage: '#FB7C42', wastageSoft: '#2A1B12', onWastage: '#1A0E06',
 
   // Text
   textPrimary: '#EAEEF5',

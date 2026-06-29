@@ -15,7 +15,9 @@ import { getThemeColors } from './utils/theme';
 import './App.css';
 
 const Login = lazy(() => import('./pages/Login'));
+const Home = lazy(() => import('./pages/Home'));
 const StockTaking = lazy(() => import('./pages/StockTaking'));
+const Wastage = lazy(() => import('./pages/Wastage'));
 const Admin = lazy(() => import('./pages/Admin'));
 
 const PageLoader = () => (
@@ -103,7 +105,12 @@ function Shell() {
     <div className="app">
       <header className="app-header">
         <div className="header-content">
-          <div className="header-title" style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
+          <div
+            className="header-title"
+            onClick={() => navigate('/')}
+            style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', cursor: 'pointer' }}
+            title="Home"
+          >
             <h1>BBlade</h1>
             <span style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85 }}>
               {pubName || 'Stock'}
@@ -144,7 +151,9 @@ function Shell() {
       <main className="app-main">
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<StockTaking />} />
+            <Route path="/" element={<Home />} />
+            <Route path="/stock" element={<StockTaking />} />
+            <Route path="/wastage" element={<Wastage />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </Suspense>

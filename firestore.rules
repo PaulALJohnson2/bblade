@@ -44,6 +44,10 @@ service cloud.firestore {
         match /stockSessions/{sessionId} {
           allow read, write: if signedIn();
         }
+
+        match /wastageLog/{entryId} {
+          allow read, write: if signedIn();
+        }
       }
     }
 
