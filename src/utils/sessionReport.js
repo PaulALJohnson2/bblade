@@ -75,7 +75,12 @@ export function printSessionReport(session, itemsById, pubName) {
         <div class="meta">${esc(when)} &bull; ${rows.length} item${rows.length === 1 ? '' : 's'}${session.createdByName ? ' &bull; ' + esc(session.createdByName) : ''} &bull; <span class="badge">${esc(status)}</span></div>
       </div>
       ${itemsHtml}
-      <script>window.onload = function(){ window.print(); }</script>
+      <script>
+        // Print on load, then close this tab once the dialog is dismissed
+        // (fires on both Save and Cancel) so the user lands back in the app.
+        window.onafterprint = function(){ window.close(); };
+        window.onload = function(){ setTimeout(function(){ window.print(); }, 150); };
+      </script>
     </body></html>`;
 
   const w = window.open('', '_blank');
