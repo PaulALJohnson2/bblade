@@ -4,7 +4,7 @@
  * the admin Stock overview without touching the stock-count screen.
  */
 
-import { parseUnitInfo, formatCountSummary } from './stockUnitUtils';
+import { parseUnitInfo, formatCountOverview } from './stockUnitUtils';
 
 const sectionLabel = (s) => (s === 'kitchen' ? 'Kitchen' : 'Bar');
 
@@ -30,7 +30,7 @@ function countedRows(session, itemsById) {
       return {
         name: count.itemName || item?.name || 'Item',
         category: item?.category || '',
-        summary: formatCountSummary(count, unitInfo),
+        summary: formatCountOverview(count, unitInfo),
         quantity: count.quantity ?? 0,
         countedBy: Array.isArray(count.countedBy) ? count.countedBy.join(', ') : (count.countedBy || ''),
       };

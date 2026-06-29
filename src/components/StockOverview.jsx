@@ -12,7 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { subscribeToStockSessions } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { parseUnitInfo, formatCountSummary } from '../utils/stockUnitUtils';
+import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 import { printSessionReport, downloadSessionCSV } from '../utils/sessionReport';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -122,8 +122,8 @@ function StockOverview({ venuePath, canEdit = true }) {
       if (!delta) return;
       rows.push({
         id, name: cur?.itemName || old?.itemName || item?.name || 'Item',
-        prev: old ? formatCountSummary(old, unitInfo) : '—',
-        cur: cur ? formatCountSummary(cur, unitInfo) : '—',
+        prev: old ? formatCountOverview(old, unitInfo) : '—',
+        cur: cur ? formatCountOverview(cur, unitInfo) : '—',
         delta, raw: curQ - oldQ,
       });
     });
@@ -235,7 +235,7 @@ function StockOverview({ venuePath, canEdit = true }) {
                       Object.entries(counts).map(([itemId, count]) => (
                         <div key={itemId} style={{ padding: '0.5rem 0.75rem', borderTop: `1px solid ${colors.borderLight}`, display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
                           <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>{count.itemName || itemsById[itemId]?.name || 'Item'}</span>
-                          <span style={{ fontSize: '0.82rem', color: colors.textSecondary, textAlign: 'right' }}>{formatCountSummary(count, unitInfoFor(itemsById[itemId], count))}</span>
+                          <span style={{ fontSize: '0.82rem', color: colors.textSecondary, textAlign: 'right' }}>{formatCountOverview(count, unitInfoFor(itemsById[itemId], count))}</span>
                         </div>
                       ))
                     )}

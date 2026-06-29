@@ -437,6 +437,22 @@ function formatCountDisplayBase(count, unitInfo) {
  * @param {Object} unitInfo - From parseUnitInfo(item) — needed for tenths conversion
  * @returns {string} e.g. "3 Kegs, 5 Tenths (175 Litres)" or "5 Bottles, 3 Tenths"
  */
+/**
+ * Like formatCountSummary, but for record/overview views: discrete & packaged
+ * items collapse "X Cases, Y Loose" into a single total item count (the total is
+ * what matters in a record). Spirits/wine still read as decimal bottles and
+ * kegs/casks keep their measurement total.
+ */
+export function formatCountOverview(count, unitInfo) {
+  if (!count) return '0';
+  const isNative = unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption;
+  if (isNative || unitInfo?.hasTenthsOption) return formatCountSummary(count, unitInfo);
+  // Discrete / packaged → just the total number of items (singles).
+  const total = Math.round((count.quantity || 0) * 100) / 100;
+  const label = unitInfo?.hasPartUnit ? 'items' : (unitInfo?.wholeLabel || count.wholeLabel || 'items');
+  return `${total} ${label}`;
+}
+
 export function formatCountSummary(count, unitInfo) {
   if (!count) return '0';
 
