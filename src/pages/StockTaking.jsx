@@ -222,8 +222,14 @@ function StockTaking() {
   // Categories available within the current section, for the category tabs
   const sectionItems = allItems.filter(item => !item.archived && (activeSection === 'all' || item.section === activeSection));
   const categories = [...new Set(sectionItems.map(item => item.category).filter(Boolean))].sort();
-  // All confirmed categories across the venue, for quick-pick in the category prompt.
-  const allCategories = [...new Set(allItems.filter(i => !i.archived).map(i => i.category).filter(Boolean))].sort();
+  // Confirmed categories within one section, for section-scoped quick-pick pills —
+  // bar categories must not surface in the kitchen and vice versa.
+  const categoriesForSection = (section) => {
+    const sec = section || 'bar';
+    return [...new Set(allItems.filter(i => !i.archived && (i.section || 'bar') === sec).map(i => i.category).filter(Boolean))].sort();
+  };
+  // Per-section category lists for the builder (which switches section internally).
+  const categoriesBySection = { bar: categoriesForSection('bar'), kitchen: categoriesForSection('kitchen') };
 
   // Scroll to first search result when searching
   useEffect(() => {
@@ -1127,7 +1133,7 @@ function StockTaking() {
       {showBuilder && (
         <StockBuilder
           venuePath={selectedPub.path}
-          existingCategories={allCategories}
+          categoriesBySection={categoriesBySection}
           existingItems={allItems.map(i => ({ name: i.name, wholeUnit: i.wholeUnit, partUnit: i.partUnit }))}
           userName={userProfile?.displayName || currentUser?.email}
           initialSection={currentSession?.section || 'bar'}
@@ -1642,7 +1648,7 @@ function StockTaking() {
                                 item={selectedItem}
                                 colors={colors}
                                 saving={assigningCatId === selectedItem.id}
-                                existingCategories={allCategories}
+                                existingCategories={categoriesForSection(selectedItem.section)}
                                 onConfirm={(c) => handleAssignCategory(selectedItem, c)}
                               />
                             );
@@ -1986,7 +1992,7 @@ function StockTaking() {
                               item={item}
                               colors={colors}
                               saving={assigningCatId === item.id}
-                              existingCategories={allCategories}
+                              existingCategories={categoriesForSection(item.section)}
                               onConfirm={(c) => handleAssignCategory(item, c)}
                             />
                           );
@@ -2770,9 +2776,9 @@ function StockTaking() {
                     color: colors.textPrimary
                   }}
                 />
-                {allCategories.length > 0 && (
+                {categoriesForSection(formData.section).length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
-                    {allCategories.map(c => {
+                    {categoriesForSection(formData.section).map(c => {
                       const active = c === formData.category.trim();
                       return (
                         <button

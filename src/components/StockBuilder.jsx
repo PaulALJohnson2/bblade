@@ -11,7 +11,7 @@
  *
  * Props:
  *   venuePath
- *   existingCategories - string[] (for quick-pick / consistency)
+ *   categoriesBySection - { bar: string[], kitchen: string[] } (section-scoped quick-pick)
  *   existingItems      - [{ name, wholeUnit, partUnit }] (duplicate guard)
  *   userId, userName   - who's counting (for the stock-take session)
  *   onClose()
@@ -26,7 +26,7 @@ import { computeCount } from '../utils/countMath';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
-function StockBuilder({ venuePath, existingCategories = [], existingItems = [], userName, initialSection = 'bar', getSessionId, onClose }) {
+function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [], userName, initialSection = 'bar', getSessionId, onClose }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const nameRef = useRef(null);
@@ -42,7 +42,10 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [added, setAdded] = useState([]); // recent { name, wholeUnit, partUnit, counted }, newest first
-  const [cats, setCats] = useState(existingCategories);
+  // Categories the user has added this session, keyed by section, merged with the
+  // section's existing ones so the quick-pick never mixes bar and kitchen.
+  const [addedCats, setAddedCats] = useState({});
+  const cats = [...new Set([...(categoriesBySection[section] || []), ...(addedCats[section] || [])])].sort();
 
   const unitInfo = parseUnitInfo({ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit });
   const useTenths = unitInfo.hasPartUnit && unitInfo.hasTenthsOption;
@@ -122,7 +125,9 @@ function StockBuilder({ venuePath, existingCategories = [], existingItems = [], 
 
     setSaving(false);
     setAdded((a) => [{ name: nm, wholeUnit: unit.wholeUnit || '', partUnit: unit.partUnit || '', counted }, ...a].slice(0, 50));
-    if (category.trim() && !cats.includes(category.trim())) setCats([...cats, category.trim()]);
+    if (category.trim() && !cats.includes(category.trim())) {
+      setAddedCats((prev) => ({ ...prev, [section]: [...(prev[section] || []), category.trim()] }));
+    }
     resetEntry();
   };
 
