@@ -13,7 +13,7 @@ import { subscribeToStockSessions } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
-import { printSessionReport, downloadSessionCSV } from '../utils/sessionReport';
+import { printSessionReport, downloadSessionCSV, formatDuration } from '../utils/sessionReport';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -240,6 +240,18 @@ function StockOverview({ venuePath, canEdit = true }) {
 
                 {open && (
                   <div style={{ borderTop: `1px solid ${colors.borderLight}` }}>
+                    {/* Timing: when the count started, finished, and how long it took */}
+                    <div style={{ padding: '0.6rem 0.75rem 0', fontSize: '0.78rem', color: colors.textSecondary, display: 'flex', flexWrap: 'wrap', gap: '0.25rem 0.5rem' }}>
+                      <span>Started <strong style={{ color: colors.textPrimary }}>{fmtDate(s.createdAt)}</strong></span>
+                      {!inProgress && s.completedAt && (
+                        <>
+                          <span>· Finished <strong style={{ color: colors.textPrimary }}>{fmtDate(s.completedAt)}</strong></span>
+                          {formatDuration(s.createdAt, s.completedAt) && (
+                            <span>· Took <strong style={{ color: colors.textPrimary }}>{formatDuration(s.createdAt, s.completedAt)}</strong></span>
+                          )}
+                        </>
+                      )}
+                    </div>
                     {/* Actions */}
                     <div style={{ display: 'flex', gap: '0.5rem', padding: '0.6rem 0.75rem' }}>
                       <button style={exportBtn} onClick={() => printSessionReport(s, itemsById, pubName)}>Export PDF</button>

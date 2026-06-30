@@ -16,6 +16,19 @@ const fmtFileStamp = (t) => {
   const d = t?.toDate ? t.toDate() : (t ? new Date(t) : new Date());
   return d.toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-');
 };
+const toDate = (t) => (t?.toDate ? t.toDate() : (t ? new Date(t) : null));
+/** Human duration between two timestamps, e.g. "1h 23m" or "45m". '' if unknown. */
+export const formatDuration = (start, end) => {
+  const a = toDate(start);
+  const b = toDate(end);
+  if (!a || !b) return '';
+  const mins = Math.max(0, Math.round((b.getTime() - a.getTime()) / 60000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+};
 
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -43,6 +56,12 @@ export function printSessionReport(session, itemsById, pubName) {
   const rows = countedRows(session, itemsById);
   const when = fmtDateTime(session.completedAt || session.createdAt);
   const status = session.status === 'completed' ? 'Completed' : 'In progress';
+  const started = fmtDateTime(session.createdAt);
+  const finished = session.completedAt ? fmtDateTime(session.completedAt) : '';
+  const took = formatDuration(session.createdAt, session.completedAt);
+  const timing = finished
+    ? `Started ${esc(started)} &bull; Finished ${esc(finished)}${took ? ` &bull; Took ${esc(took)}` : ''}`
+    : `Started ${esc(started)}`;
   const itemsHtml = rows.length
     ? rows.map((r) => `
         <div class="item">
@@ -72,7 +91,7 @@ export function printSessionReport(session, itemsById, pubName) {
     </style></head><body>
       <div class="header">
         <h1>${esc(pubName || 'Stock')} — ${esc(sectionLabel(session.section))} Stock Take</h1>
-        <div class="meta">${esc(when)} &bull; ${rows.length} item${rows.length === 1 ? '' : 's'}${session.createdByName ? ' &bull; ' + esc(session.createdByName) : ''} &bull; <span class="badge">${esc(status)}</span></div>
+        <div class="meta">${timing} &bull; ${rows.length} item${rows.length === 1 ? '' : 's'}${session.createdByName ? ' &bull; ' + esc(session.createdByName) : ''} &bull; <span class="badge">${esc(status)}</span></div>
       </div>
       ${itemsHtml}
       <script>
