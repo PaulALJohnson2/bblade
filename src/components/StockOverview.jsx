@@ -121,11 +121,6 @@ function StockOverview({ venuePath, canEdit = true }) {
       return (ts(b.completedAt) || ts(b.createdAt)) - (ts(a.completedAt) || ts(a.createdAt));
     }), [sessions, sectionFilter, rangeKey, q, categoryFilter, itemsById]);
 
-  const lastCompleted = useMemo(() => {
-    const done = sessions.filter((s) => s.status === 'completed');
-    if (!done.length) return null;
-    return done.reduce((a, b) => ((ts(b.completedAt) || ts(b.createdAt)) > (ts(a.completedAt) || ts(a.createdAt)) ? b : a));
-  }, [sessions]);
 
   // Previous completed take of the same section, immediately before `s`.
   const prevCompleted = (s) => {
@@ -201,7 +196,6 @@ function StockOverview({ venuePath, canEdit = true }) {
       {/* Headline stats */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', fontSize: '0.8rem', color: colors.textSecondary }}>
         <span><strong style={{ color: colors.textPrimary }}>{visible.length}</strong> take{visible.length === 1 ? '' : 's'} shown</span>
-        {lastCompleted && <span>· Last completed <strong style={{ color: colors.textPrimary }}>{fmtDate(lastCompleted.completedAt || lastCompleted.createdAt)}</strong></span>}
       </div>
 
       {loading ? (
