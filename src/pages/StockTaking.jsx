@@ -76,6 +76,10 @@ function StockTaking() {
   const [currentSession, setCurrentSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [showSessionPicker, setShowSessionPicker] = useState(true);
+  // Set true once we've checked localStorage to auto-resume the last active
+  // session after a reopen. Gates the persist effect below so it can't wipe the
+  // saved id before that one-time check runs.
+  const didResumeRef = useRef(false);
 
   // Search and quick entry state
   const [searchQuery, setSearchQuery] = useState('');
@@ -149,8 +153,27 @@ function StockTaking() {
     const unsubscribe = subscribeToStockSessions(
       selectedPub.path,
       (sessions) => {
-        setAllSessions(sessions || []);
+        const list = sessions || [];
+        setAllSessions(list);
         setSessionLoading(false);
+        // After a reopen (e.g. force-close mid-count), drop the user straight
+        // back into the session they were counting instead of the picker. Runs
+        // once; the half-entered item count is intentionally NOT restored.
+        if (!didResumeRef.current) {
+          didResumeRef.current = true;
+          try {
+            const key = `stocktake:resume:${selectedPub.path}`;
+            const savedId = localStorage.getItem(key);
+            const resume = savedId && list.find((s) => s.id === savedId && s.status !== 'completed');
+            if (resume) {
+              setCurrentSession(resume);
+              if (resume.section) setActiveSection(resume.section);
+              setShowSessionPicker(false);
+            } else if (savedId) {
+              localStorage.removeItem(key);
+            }
+          } catch { /* localStorage unavailable */ }
+        }
       },
       (err) => {
         console.error('Sessions subscription error:', err);
@@ -184,6 +207,34 @@ function StockTaking() {
 
     return () => unsubscribe();
   }, [selectedPub, currentSession?.id]);
+
+  // Remember which in-progress session is active so a reopen can auto-resume it.
+  // Cleared when the user leaves the session (back to picker / complete / delete).
+  useEffect(() => {
+    if (!selectedPub || !didResumeRef.current) return;
+    const key = `stocktake:resume:${selectedPub.path}`;
+    try {
+      if (currentSession?.id) localStorage.setItem(key, currentSession.id);
+      else localStorage.removeItem(key);
+    } catch { /* localStorage unavailable */ }
+  }, [selectedPub, currentSession?.id]);
+
+  // When the app is backgrounded (phone locked, app switched, or about to be
+  // force-closed), discard any half-entered, unsaved count so the user never
+  // resumes from a stale partial entry. Already-saved counts are untouched —
+  // they live in the Firestore session, not this local entry state.
+  useEffect(() => {
+    const discardOnHide = () => {
+      if (!document.hidden) return;
+      setSelectedItem(null);
+      setCaseQuantity('');
+      setWholeQuantity('');
+      setPartQuantity('');
+      setTenthsQuantity('');
+    };
+    document.addEventListener('visibilitychange', discardOnHide);
+    return () => document.removeEventListener('visibilitychange', discardOnHide);
+  }, []);
 
   // When a card is selected (expanded inline):
   //  - Desktop: focus the first input for quick typing.
