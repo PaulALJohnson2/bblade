@@ -43,6 +43,10 @@ import { parseUnitInfo, formatCountDisplay, formatCountSummary, formatItemDescri
 import StockListUpload from '../components/StockListUpload';
 import StockBuilder from '../components/StockBuilder';
 
+// Sentinel category for items with no category assigned. Shown as an "Other"
+// pill so uncategorised stock is still reachable now that "All" is gone.
+const OTHER_CATEGORY = '__other__';
+
 function StockTaking() {
   const { currentUser, userProfile, members, selectedPub, canAccessStock, canEdit, isSuperAdmin, isAdmin } = useAuth();
 
@@ -266,13 +270,16 @@ function StockTaking() {
       (item.category && item.category.toLowerCase().includes(query));
     const matchesSection = activeSection === 'all' || item.section === activeSection;
     // While searching, ignore the category tab so results span the whole section
-    const matchesCategory = activeCategory === 'all' || !!query || item.category === activeCategory;
+    const matchesCategory = activeCategory === 'all' || !!query ||
+      (activeCategory === OTHER_CATEGORY ? !item.category : item.category === activeCategory);
     return !item.archived && matchesSearch && matchesSection && matchesCategory;
   });
 
   // Categories available within the current section, for the category tabs
   const sectionItems = allItems.filter(item => !item.archived && (activeSection === 'all' || item.section === activeSection));
   const categories = [...new Set(sectionItems.map(item => item.category).filter(Boolean))].sort();
+  // Append an "Other" tab when the section has any uncategorised items.
+  if (sectionItems.some(item => !item.category)) categories.push(OTHER_CATEGORY);
   // Confirmed categories within one section, for section-scoped quick-pick pills —
   // bar categories must not surface in the kitchen and vice versa.
   const categoriesForSection = (section) => {
@@ -1598,7 +1605,9 @@ function StockTaking() {
               scrollbarWidth: 'none'
             }}>
               {categories.map(category => {
-                const count = sectionItems.filter(item => item.category === category).length;
+                const count = category === OTHER_CATEGORY
+                  ? sectionItems.filter(item => !item.category).length
+                  : sectionItems.filter(item => item.category === category).length;
                 const isActive = activeCategory === category;
                 return (
                   <button
@@ -1623,7 +1632,7 @@ function StockTaking() {
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    {category} ({count})
+                    {category === OTHER_CATEGORY ? 'Other' : category} ({count})
                   </button>
                 );
               })}
