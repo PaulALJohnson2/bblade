@@ -1593,10 +1593,8 @@ function StockTaking() {
               paddingBottom: '0.25rem',
               scrollbarWidth: 'none'
             }}>
-              {['all', ...categories].map(category => {
-                const count = category === 'all'
-                  ? sectionItems.length
-                  : sectionItems.filter(item => item.category === category).length;
+              {categories.map(category => {
+                const count = sectionItems.filter(item => item.category === category).length;
                 const isActive = activeCategory === category;
                 return (
                   <button
@@ -1621,7 +1619,7 @@ function StockTaking() {
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    {category === 'all' ? 'All' : category} ({count})
+                    {category} ({count})
                   </button>
                 );
               })}
