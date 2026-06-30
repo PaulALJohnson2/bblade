@@ -22,6 +22,8 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
   const [custom, setCustom] = useState({ wholeUnit: '', partUnit: '' });
   const [customSizeMode, setCustomSizeMode] = useState(false);
   const [customSize, setCustomSize] = useState('');
+  // Selected unit for multi-unit custom sizes (e.g. weight: kg vs g).
+  const [customUnit, setCustomUnit] = useState('');
   const [casePack, setCasePack] = useState('');
   const cp = () => { const n = parseInt(casePack, 10); return n > 0 ? n : 0; };
 
@@ -94,7 +96,11 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
         <select
           value={customSizeMode ? '__customsize' : ''}
           onChange={(e) => {
-            if (e.target.value === '__customsize') { setCustomSizeMode(true); return; }
+            if (e.target.value === '__customsize') {
+              setCustomUnit(sizeMeta?.units?.[0]?.key || '');
+              setCustomSizeMode(true);
+              return;
+            }
             setCustomSizeMode(false);
             const s = template.sizes.find(x => x.label === e.target.value);
             if (s) onAssign({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label, casePack: cp() });
@@ -126,12 +132,32 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
             disabled={saving}
             autoFocus
           />
-          {sizeMeta.suffix && <span style={{ color: colors.textSecondary, fontWeight: 600 }}>{sizeMeta.suffix}</span>}
+          {sizeMeta.units ? (
+            <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+              {sizeMeta.units.map(u => {
+                const active = (customUnit || sizeMeta.units[0].key) === u.key;
+                return (
+                  <button
+                    type="button" key={u.key} onClick={() => setCustomUnit(u.key)} disabled={saving}
+                    style={{
+                      padding: '0.55rem 0.8rem', borderRadius: '8px',
+                      border: `2px solid ${active ? colors.primary : colors.border}`,
+                      backgroundColor: active ? colors.primarySoft : colors.bgCard,
+                      color: active ? colors.primary : colors.textPrimary,
+                      fontWeight: active ? 700 : 500, cursor: saving ? 'not-allowed' : 'pointer',
+                    }}
+                  >{u.label}</button>
+                );
+              })}
+            </div>
+          ) : sizeMeta.suffix ? (
+            <span style={{ color: colors.textSecondary, fontWeight: 600 }}>{sizeMeta.suffix}</span>
+          ) : null}
           <button
             type="button"
             disabled={saving || !(parseFloat(customSize) > 0)}
             onClick={() => {
-              const u = customSizeFor(template.key, customSize);
+              const u = customSizeFor(template.key, customSize, customUnit);
               if (u) onAssign({ ...u, casePack: cp() });
             }}
             style={{

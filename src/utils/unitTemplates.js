@@ -124,7 +124,11 @@ const CUSTOM_BUILDERS = {
   spirit: { hint: 'cl', suffix: 'cl',     build: n => ({ wholeUnit: `Bottle 1*${n}cl`, partUnit: 'Tenth',    unit: `${n}cl` }) },
   wine:   { hint: 'cl', suffix: 'cl',     build: n => ({ wholeUnit: `Bottle 1*${n}cl`, partUnit: 'Tenth',    unit: `${n}cl` }) },
   bottlecan: { hint: 'ml', suffix: 'ml',  build: n => ({ wholeUnit: `${n}ml`,          partUnit: '',         unit: `${n}ml` }) },
-  weight: { hint: 'kg', suffix: 'kg',     build: n => ({ wholeUnit: `Bag 1*${n}kg`,    partUnit: 'Kilogram', unit: `${n}kg` }) },
+  // Weight can be typed in kg or g — kitchens stock both (5kg flour, 50g saffron).
+  weight: { hint: 'Weight', units: [
+    { key: 'kg', label: 'kg', build: n => ({ wholeUnit: `Bag 1*${n}kg`, partUnit: 'Kilogram', unit: `${n}kg` }) },
+    { key: 'g',  label: 'g',  build: n => ({ wholeUnit: `Bag 1*${n}g`,  partUnit: 'Gram',     unit: `${n}g` }) },
+  ] },
   pack:   { hint: 'How many', suffix: '', build: n => ({ wholeUnit: `Pack 1*${n}Each`, partUnit: 'Each',     unit: `of ${n}` }) },
   case:   { hint: 'How many', suffix: '', build: n => ({ wholeUnit: `Case 1*${n}Each`, partUnit: 'Each',     unit: `of ${n}` }) },
 };
@@ -134,18 +138,31 @@ export function templateAcceptsCustomSize(templateKey) {
   return !!CUSTOM_BUILDERS[templateKey];
 }
 
-/** A hint/suffix for the custom-size input of a template. */
+/**
+ * Custom-size input metadata for a template. Single-unit templates return a
+ * `suffix`; multi-unit ones (e.g. weight: kg/g) return a `units` array of
+ * { key, label } so the picker can offer a unit toggle.
+ */
 export function customSizeMeta(templateKey) {
   const c = CUSTOM_BUILDERS[templateKey];
-  return c ? { hint: c.hint, suffix: c.suffix } : null;
+  if (!c) return null;
+  if (c.units) return { hint: c.hint, units: c.units.map(u => ({ key: u.key, label: u.label })) };
+  return { hint: c.hint, suffix: c.suffix };
 }
 
-/** Build a wholeUnit/partUnit from a template + typed number; null if invalid. */
-export function customSizeFor(templateKey, value) {
+/**
+ * Build a wholeUnit/partUnit from a template + typed number; null if invalid.
+ * For multi-unit templates, `unitKey` selects which unit (defaults to the first).
+ */
+export function customSizeFor(templateKey, value, unitKey) {
   const cfg = CUSTOM_BUILDERS[templateKey];
   if (!cfg) return null;
   const n = parseFloat(value);
   if (!(n > 0)) return null;
+  if (cfg.units) {
+    const u = cfg.units.find(x => x.key === unitKey) || cfg.units[0];
+    return u.build(n);
+  }
   return cfg.build(n);
 }
 

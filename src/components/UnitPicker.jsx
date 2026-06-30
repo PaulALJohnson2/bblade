@@ -25,6 +25,8 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
   );
   const [customSizeOpen, setCustomSizeOpen] = useState(false);
   const [customSize, setCustomSize] = useState('');
+  // Selected unit for multi-unit custom sizes (e.g. weight: kg vs g).
+  const [customUnit, setCustomUnit] = useState('');
 
   // Only offer measures that fit the section (no kegs for food, etc.).
   const TEMPLATES = templatesForSection(section);
@@ -47,8 +49,15 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
   };
 
   const applyCustomSize = () => {
-    const u = template ? customSizeFor(template.key, customSize) : null;
+    const u = template ? customSizeFor(template.key, customSize, customUnit) : null;
     if (u) onChange({ ...u, casePack: value.casePack || 0 });
+  };
+
+  // Open the typed-size row, defaulting the unit toggle to the first unit.
+  const openCustomSize = () => {
+    const meta = template ? customSizeMeta(template.key) : null;
+    setCustomUnit(meta?.units?.[0]?.key || '');
+    setCustomSizeOpen(true);
   };
 
   // The orthogonal "comes in a case of N" size — preserves the chosen unit/label.
@@ -104,24 +113,35 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
               </button>
             ))}
             {templateAcceptsCustomSize(template.key) && (
-              <button type="button" onClick={() => setCustomSizeOpen(true)} style={chip(customSizeOpen)}>
+              <button type="button" onClick={openCustomSize} style={chip(customSizeOpen)}>
                 ✎ Other
               </button>
             )}
           </div>
-          {customSizeOpen && customSizeMeta(template.key) && (
+          {customSizeOpen && customSizeMeta(template.key) && (() => {
+            const meta = customSizeMeta(template.key);
+            const activeUnit = customUnit || meta.units?.[0]?.key || '';
+            return (
             <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.4rem' }}>
               <input
                 type="number" inputMode="decimal" min="0" step="any"
                 value={customSize}
                 onChange={(e) => setCustomSize(e.target.value)}
-                placeholder={customSizeMeta(template.key).hint}
+                placeholder={meta.hint}
                 style={{ flex: 1, minWidth: 0, padding: '0.5rem', fontSize: '0.9rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: colors.bgCard, color: colors.textPrimary }}
                 autoFocus
               />
-              {customSizeMeta(template.key).suffix && (
-                <span style={{ color: colors.textSecondary, fontWeight: 600, fontSize: '0.85rem' }}>{customSizeMeta(template.key).suffix}</span>
-              )}
+              {meta.units ? (
+                <div style={{ display: 'flex', gap: '0.3rem', flexShrink: 0 }}>
+                  {meta.units.map(u => (
+                    <button type="button" key={u.key} onClick={() => setCustomUnit(u.key)} style={chip(activeUnit === u.key)}>
+                      {u.label}
+                    </button>
+                  ))}
+                </div>
+              ) : meta.suffix ? (
+                <span style={{ color: colors.textSecondary, fontWeight: 600, fontSize: '0.85rem' }}>{meta.suffix}</span>
+              ) : null}
               <button
                 type="button"
                 disabled={!(parseFloat(customSize) > 0)}
@@ -129,7 +149,8 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
                 style={{ flexShrink: 0, padding: '0.5rem 0.9rem', backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', borderRadius: '6px', fontWeight: 600, fontSize: '0.85rem', cursor: parseFloat(customSize) > 0 ? 'pointer' : 'not-allowed', opacity: parseFloat(customSize) > 0 ? 1 : 0.6 }}
               >Set</button>
             </div>
-          )}
+            );
+          })()}
         </>
       )}
 
