@@ -289,10 +289,14 @@ function StockTaking() {
     }
   }, [searchQuery, filteredItems.length]);
 
-  // Reset the category tab when switching section so it can't hide every item
+  // The category row has no "All" option, so keep the first category selected by
+  // default. Re-pick whenever the available categories change — items finishing
+  // load, or switching section (categories are section-scoped).
   useEffect(() => {
-    setActiveCategory('all');
-  }, [activeSection]);
+    if (categories.length && !categories.includes(activeCategory)) {
+      setActiveCategory(categories[0]);
+    }
+  }, [categories.join('|'), activeCategory]);
 
   const barItems = allItems.filter(item => !item.archived && item.section === 'bar');
   const kitchenItems = allItems.filter(item => !item.archived && item.section === 'kitchen');
