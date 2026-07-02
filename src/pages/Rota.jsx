@@ -7,9 +7,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
+import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
@@ -50,15 +49,18 @@ const DEFAULT_PATTERNS = [
 const MAX_PRESETS = 6;
 
 function Rota() {
-  const { members, selectedPub, isAdmin, pubName } = useAuth();
+  const { members, selectedPub, isAdmin, pubName, currentUser } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const admin = !!(isAdmin && isAdmin());
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [savedRows, setSavedRows] = useState([]); // only members who have shifts
+  const [published, setPublished] = useState(false);
   const [patternCounts, setPatternCounts] = useState({}); // 'HH:MM-HH:MM' → uses
   const [staffOrder, setStaffOrder] = useState([]); // custom memberId ordering
   const [loading, setLoading] = useState(true);
+  const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
 
   const venuePath = selectedPub?.path;
@@ -68,10 +70,11 @@ function Rota() {
   useEffect(() => {
     if (!venuePath) return undefined;
     setLoading(true);
+    setSent(false);
     const unsub = subscribeToRota(
       venuePath,
       weekId,
-      (data) => { setSavedRows(data?.rows || []); setLoading(false); },
+      (data) => { setSavedRows(data?.rows || []); setPublished(!!data?.published); setLoading(false); },
       () => setLoading(false),
     );
     return () => unsub();
@@ -130,8 +133,11 @@ function Rota() {
       });
   }, [members, savedRows, selectedPub, staffOrder]);
 
-  // Gate after hooks so hook order stays stable.
-  if (!(isAdmin && isAdmin())) return <Navigate to="/" replace />;
+  // The signed-in user's own member row (matched by email), for highlighting.
+  const myMemberId = useMemo(() => {
+    const email = (currentUser?.email || '').toLowerCase();
+    return (members || []).find((m) => (m.email || '').toLowerCase() === email)?.id || null;
+  }, [members, currentUser]);
 
   // Set/clear one shift; store only members who have at least one shift.
   const setShift = (row, dayKey, shift) => {
@@ -154,6 +160,15 @@ function Rota() {
   const reorderStaff = (orderedIds) => {
     setStaffOrder(orderedIds);
     if (venuePath) saveStaffOrder(venuePath, orderedIds);
+  };
+
+  // Publish this week's rota so staff can see it.
+  const sendToStaff = async () => {
+    if (!venuePath) return;
+    setPublished(true);
+    setSent(true);
+    setTimeout(() => setSent(false), 2500);
+    await setRotaPublished(venuePath, weekId, true);
   };
 
   const weekEnd = addDays(weekStart, 6);
@@ -184,22 +199,43 @@ function Rota() {
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
         <button type="button" style={{ ...navBtn, marginLeft: 'auto' }} onClick={() => window.print()}>Print</button>
+        {admin && (
+          <button
+            type="button"
+            style={{ ...navBtn, backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
+            onClick={sendToStaff}
+          >
+            {sent ? 'Sent ✓' : published ? 'Re-send to staff' : 'Send to staff'}
+          </button>
+        )}
       </div>
+
+      {admin && published && !sent && (
+        <div style={{ margin: '-0.4rem 0 1rem', fontSize: '0.82rem', color: colors.textSecondary }}>
+          Published — staff can see this week. Any edits are visible to them immediately.
+        </div>
+      )}
 
       <div style={card}>
         {loading ? (
           <div style={{ padding: '1.5rem', textAlign: 'center', color: colors.textSecondary }}>Loading rota…</div>
+        ) : (!admin && !published) ? (
+          <div style={{ padding: '1.75rem', textAlign: 'center', color: colors.textSecondary, fontSize: '0.95rem' }}>
+            This week's rota hasn't been published yet.
+          </div>
         ) : (
           <RotaGrid
             days={days}
             rows={rows}
+            readOnly={!admin}
+            highlightMemberId={myMemberId}
             onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
             onReorder={reorderStaff}
           />
         )}
       </div>
 
-      {editing && (
+      {admin && editing && (
         <ShiftEditor
           staffName={editing.row.name}
           dayLabel={(() => { const d = days.find((x) => x.key === editing.dayKey); return `${d.label} ${d.dateLabel}`; })()}

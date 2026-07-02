@@ -27,6 +27,11 @@ function Home() {
       to: '/wastage', accent: colors.wastage,
       icon: ['M3 6h18', 'M8 6V4h8v2', 'M6 6l1 14h10l1-14', 'M10 10v6', 'M14 10v6'],
     },
+    {
+      key: 'rota', label: 'Rota', desc: 'See your shifts',
+      to: '/rota', accent: colors.primary,
+      icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
+    },
   ];
 
   return (

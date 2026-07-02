@@ -62,6 +62,7 @@ export {
   // Rotas (weekly staff rota)
   subscribeToRota,
   saveRota,
+  setRotaPublished,
   subscribeToShiftPatterns,
   bumpShiftPattern,
   subscribeToStaffOrder,

@@ -10,6 +10,8 @@
  *   rows    - [{ memberId, name, shifts: { mon:{start,end}|undefined, ... } }]
  *   onCellClick(row, dayKey)
  *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
+ *   readOnly          - staff view: no editing, no dragging, no "+" affordances
+ *   highlightMemberId - tint this member's row (the signed-in user's own row)
  */
 
 import React, { useRef, useState } from 'react';
@@ -20,6 +22,8 @@ const NAME_COL = '190px';
 
 // Slate-blue text accent for shift times (light + dark variants).
 const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
+// Own-row highlight tint.
+const HILITE = { light: '#EAF1F8', dark: '#1B2735' };
 
 // Compact 12-hour shift-time label (no am/pm for now): 17:00 → 5, 09:30 → 9:30,
 // and 12/0 map to 12 (noon/midnight). Whole hours drop the ":00".
@@ -49,10 +53,11 @@ function fmtHours(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
+  const hilite = isDark ? HILITE.dark : HILITE.light;
 
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
@@ -184,45 +189,53 @@ function RotaGrid({ days, rows, onCellClick, onReorder }) {
         {rows.map((row) => {
           const totalMin = days.reduce((sum, d) => sum + shiftMinutes(row.shifts?.[d.key]), 0);
           const rowIndex = rows.indexOf(row);
+          const hi = highlightMemberId && row.memberId === highlightMemberId;
+          const rowBg = hi ? hilite : undefined;
+          const dragProps = readOnly ? {} : {
+            ref: (el) => { nameRefs.current[rowIndex] = el; },
+            title: 'Drag to reorder',
+            onPointerDown: (e) => startDrag(e, rowIndex),
+            onPointerMove: moveDrag,
+            onPointerUp: dropDrag,
+            onPointerCancel: endDrag,
+          };
           return (
             <React.Fragment key={row.memberId}>
               <div
-                ref={(el) => { nameRefs.current[rowIndex] = el; }}
-                title="Drag to reorder"
-                onPointerDown={(e) => startDrag(e, rowIndex)}
-                onPointerMove={moveDrag}
-                onPointerUp={dropDrag}
-                onPointerCancel={endDrag}
+                {...dragProps}
                 style={{
                   ...nameCell,
                   gap: '0.4rem',
-                  cursor: 'grab',
-                  touchAction: 'none',
-                  userSelect: 'none',
-                  boxShadow: overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
+                  backgroundColor: rowBg,
+                  cursor: readOnly ? 'default' : 'grab',
+                  touchAction: readOnly ? 'auto' : 'none',
+                  userSelect: readOnly ? 'auto' : 'none',
+                  boxShadow: !readOnly && overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
                   opacity: dragIndex === rowIndex ? 0.4 : 1,
                 }}
               >
-                <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
+                {!readOnly && <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>}
+                <span style={{ fontWeight: hi ? 800 : nameCell.fontWeight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {row.name}{hi ? ' (you)' : ''}
+                </span>
               </div>
               {days.map((d) => {
                 const shift = row.shifts?.[d.key];
                 return (
                   <div
                     key={d.key}
-                    style={dayCell}
-                    onClick={() => onCellClick(row, d.key)}
-                    role="button"
-                    tabIndex={0}
+                    style={{ ...dayCell, backgroundColor: rowBg, cursor: readOnly ? 'default' : 'pointer' }}
+                    onClick={readOnly ? undefined : () => onCellClick(row, d.key)}
+                    role={readOnly ? undefined : 'button'}
+                    tabIndex={readOnly ? undefined : 0}
                   >
                     {shift
                       ? <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>
-                      : <span style={{ color: colors.textMuted, fontSize: '1.8rem', opacity: 0.4 }}>+</span>}
+                      : (!readOnly && <span style={{ color: colors.textMuted, fontSize: '1.8rem', opacity: 0.4 }}>+</span>)}
                   </div>
                 );
               })}
-              <div style={totalCell}>{fmtHours(totalMin)}</div>
+              <div style={{ ...totalCell, backgroundColor: rowBg }}>{fmtHours(totalMin)}</div>
             </React.Fragment>
           );
         })}

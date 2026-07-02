@@ -909,6 +909,23 @@ export async function saveRota(venuePath, weekId, data) {
   }
 }
 
+/** Publish (or unpublish) a week's rota so staff can see it. */
+export async function setRotaPublished(venuePath, weekId, published) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const docData = {
+      accountId, venueId, published,
+      publishedAt: published ? Timestamp.now() : null,
+      updatedAt: Timestamp.now(),
+    };
+    await setDoc(doc(db, `${venuePath}/rotas/${weekId}`), docData, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error publishing rota:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Live shift-pattern usage counts for a venue, as { 'HH:MM-HH:MM': count }.
  *  Used to rank the shift-editor quick-pick pills by how often each is used. */
 export function subscribeToShiftPatterns(venuePath, onData, onError) {
