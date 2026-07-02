@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -143,6 +143,10 @@ function Admin() {
   };
 
   const admin = !!(isAdmin && isAdmin());
+
+  // Admin section is owner/manager only — non-admins can't reach it at all.
+  if (!admin) return <Navigate to="/" replace />;
+
   const TILES = [
     { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, show: true,
       icon: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'] },

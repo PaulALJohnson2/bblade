@@ -43,7 +43,8 @@ const PageLoader = () => (
 );
 
 function UserMenu() {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, isAdmin } = useAuth();
+  const admin = !!(isAdmin && isAdmin());
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const navigate = useNavigate();
@@ -95,16 +96,18 @@ function UserMenu() {
                 <div style={{ color: colors.textSecondary, fontSize: '0.78rem' }}>{currentUser.email}</div>
               )}
             </div>
-            <button
-              onClick={() => { setOpen(false); navigate('/admin'); }}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem',
-                background: 'none', border: 'none', cursor: 'pointer', color: colors.textPrimary, fontSize: '0.9rem',
-                borderBottom: `1px solid ${colors.borderLight}`,
-              }}
-            >
-              Admin
-            </button>
+            {admin && (
+              <button
+                onClick={() => { setOpen(false); navigate('/admin'); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '0.75rem 1rem',
+                  background: 'none', border: 'none', cursor: 'pointer', color: colors.textPrimary, fontSize: '0.9rem',
+                  borderBottom: `1px solid ${colors.borderLight}`,
+                }}
+              >
+                Admin
+              </button>
+            )}
             <button
               onClick={() => { setOpen(false); setConfirmLogout(true); }}
               style={{
