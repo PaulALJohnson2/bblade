@@ -164,15 +164,12 @@ function RotaGrid({ days, rows, onCellClick }) {
 
         {/* Grand total row */}
         {rows.length > 0 && (() => {
-          const perDay = days.map((d) => rows.reduce((sum, r) => sum + shiftMinutes(r.shifts?.[d.key]), 0));
-          const grand = perDay.reduce((a, b) => a + b, 0);
+          const grand = rows.reduce((sum, r) => sum + days.reduce((s, d) => s + shiftMinutes(r.shifts?.[d.key]), 0), 0);
           return (
             <>
               <div style={{ ...footBase, fontSize: '0.95rem' }}>Total</div>
-              {days.map((d, i) => (
-                <div key={d.key} style={{ ...footBase, justifyContent: 'center', color: colors.textSecondary }}>
-                  {fmtHours(perDay[i])}
-                </div>
+              {days.map((d) => (
+                <div key={d.key} style={footBase} />
               ))}
               <div style={{ ...footBase, justifyContent: 'center', borderRight: 'none', fontSize: '1.1rem', color: accent }}>
                 {fmtHours(grand)}
