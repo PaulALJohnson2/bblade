@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -21,6 +22,7 @@ const ROLES = ['owner', 'manager', 'staff'];
 
 function Admin() {
   const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -117,6 +119,8 @@ function Admin() {
       icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
     { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, show: admin,
       icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
+    { key: 'rota', label: 'Rotas', desc: 'Build weekly staff rota', accent: colors.primary, show: admin, to: '/rota',
+      icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'] },
   ].filter((t) => t.show);
 
   const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview' };
@@ -128,7 +132,7 @@ function Admin() {
         <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Admin</h1>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           {TILES.map((t) => (
-            <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => setView(t.key)} />
+            <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => (t.to ? navigate(t.to) : setView(t.key))} />
           ))}
         </div>
 
