@@ -188,28 +188,22 @@ function RotaGrid({ days, rows, onCellClick, onReorder }) {
             <React.Fragment key={row.memberId}>
               <div
                 ref={(el) => { nameRefs.current[rowIndex] = el; }}
+                title="Drag to reorder"
+                onPointerDown={(e) => startDrag(e, rowIndex)}
+                onPointerMove={moveDrag}
+                onPointerUp={dropDrag}
+                onPointerCancel={endDrag}
                 style={{
                   ...nameCell,
                   gap: '0.4rem',
+                  cursor: 'grab',
+                  touchAction: 'none',
+                  userSelect: 'none',
                   boxShadow: overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
                   opacity: dragIndex === rowIndex ? 0.4 : 1,
                 }}
               >
-                <span
-                  aria-label="Drag to reorder"
-                  title="Drag to reorder"
-                  onPointerDown={(e) => startDrag(e, rowIndex)}
-                  onPointerMove={moveDrag}
-                  onPointerUp={dropDrag}
-                  onPointerCancel={endDrag}
-                  style={{
-                    color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1,
-                    userSelect: 'none', touchAction: 'none', cursor: 'grab',
-                    padding: '0.35rem 0.15rem', marginLeft: '-0.15rem', flexShrink: 0,
-                  }}
-                >
-                  ⠿
-                </span>
+                <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
               </div>
               {days.map((d) => {
