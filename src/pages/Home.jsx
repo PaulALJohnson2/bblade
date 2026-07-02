@@ -12,9 +12,10 @@ import Tile from '../components/Tile';
 
 function Home() {
   const navigate = useNavigate();
-  const { pubName } = useAuth();
+  const { pubName, isAdmin } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const admin = !!(isAdmin && isAdmin());
 
   const tiles = [
     {
@@ -28,11 +29,11 @@ function Home() {
       icon: ['M3 6h18', 'M8 6V4h8v2', 'M6 6l1 14h10l1-14', 'M10 10v6', 'M14 10v6'],
     },
     {
-      key: 'rotas', label: 'Rotas', desc: 'Coming soon', soon: true,
-      accent: colors.textMuted,
+      key: 'rotas', label: 'Rotas', desc: 'Build weekly staff rota',
+      to: '/rota', accent: colors.primary, show: admin,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
     },
-  ];
+  ].filter((t) => t.show !== false);
 
   return (
     <div style={{ maxWidth: '560px', margin: '0 auto' }}>

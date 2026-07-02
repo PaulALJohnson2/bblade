@@ -58,4 +58,8 @@ export {
   getMembers,
   saveMember,
   deleteMember,
+
+  // Rotas (weekly staff rota)
+  subscribeToRota,
+  saveRota,
 } from '../firebase/firestoreService';

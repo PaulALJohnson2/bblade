@@ -48,6 +48,10 @@ service cloud.firestore {
         match /wastageLog/{entryId} {
           allow read, write: if signedIn();
         }
+
+        match /rotas/{rotaId} {
+          allow read, write: if signedIn();
+        }
       }
     }
 

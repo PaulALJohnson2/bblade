@@ -22,6 +22,7 @@ const importStock = () => import('./pages/StockTaking');
 const importWastage = () => import('./pages/Wastage');
 const importAdmin = () => import('./pages/Admin');
 const importSuper = () => import('./pages/SuperAdmin');
+const importRota = () => import('./pages/Rota');
 
 // Home is the landing hub — eager (in the main bundle) so it never shows a
 // loading fallback. The heavier feature pages stay code-split + preloaded.
@@ -30,6 +31,7 @@ const StockTaking = lazy(importStock);
 const Wastage = lazy(importWastage);
 const Admin = lazy(importAdmin);
 const SuperAdmin = lazy(importSuper);
+const Rota = lazy(importRota);
 
 const PageLoader = () => (
   <div
@@ -150,7 +152,7 @@ function Shell() {
   // Warm the route chunks once the shell is up, so the first tap into Stock
   // Count / Wastage / Settings doesn't wait on a JS download.
   useEffect(() => {
-    const preload = () => { importStock(); importWastage(); importAdmin(); };
+    const preload = () => { importStock(); importWastage(); importAdmin(); importRota(); };
     const ric = window.requestIdleCallback;
     if (ric) { const id = ric(preload); return () => window.cancelIdleCallback?.(id); }
     const t = setTimeout(preload, 1200);
@@ -196,6 +198,7 @@ function Shell() {
             <Route path="/stock" element={<StockTaking />} />
             <Route path="/wastage" element={<Wastage />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/rota" element={<Rota />} />
             <Route path="/super" element={<SuperAdmin />} />
           </Routes>
         </Suspense>

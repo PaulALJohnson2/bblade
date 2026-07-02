@@ -875,3 +875,36 @@ export async function deleteMember(accountId, memberId) {
     return { success: false, error: error.message };
   }
 }
+
+// ============================================
+// ROTAS  (weekly staff rota, under {venuePath}/rotas/{weekId})
+//   weekId = the Monday of the week, ISO 'YYYY-MM-DD'.
+//   { weekStart, rows: [{ memberId, name, shifts: { mon..sun: {start,end}|null } }] }
+// ============================================
+
+/** Subscribe to a single week's rota. onData receives the doc data, or null if
+ *  the week has no rota saved yet. Returns an unsubscribe function. */
+export function subscribeToRota(venuePath, weekId, onData, onError) {
+  const docRef = doc(db, `${venuePath}/rotas/${weekId}`);
+  return onSnapshot(
+    docRef,
+    (snap) => onData(snap.exists() ? { id: snap.id, ...snap.data() } : null),
+    (error) => {
+      console.error('Error in rota listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Create or overwrite a week's rota. weekId is the Monday's ISO date. */
+export async function saveRota(venuePath, weekId, data) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const docData = { ...data, accountId, venueId, updatedAt: Timestamp.now() };
+    await setDoc(doc(db, `${venuePath}/rotas/${weekId}`), docData, { merge: true });
+    return { success: true, id: weekId };
+  } catch (error) {
+    console.error('Error saving rota:', error);
+    return { success: false, error: error.message };
+  }
+}
