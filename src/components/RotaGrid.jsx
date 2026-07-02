@@ -28,6 +28,26 @@ function fmtTime(t) {
   return m === '00' ? String(hour) : `${hour}:${m}`;
 }
 
+// Length of a shift in minutes; midnight end counts as end-of-day and an end
+// at/before the start is treated as running overnight.
+function shiftMinutes(shift) {
+  if (!shift) return 0;
+  const [sh, sm] = shift.start.split(':').map(Number);
+  const [eh, em] = shift.end.split(':').map(Number);
+  const s = sh * 60 + sm;
+  let e = shift.end === '00:00' ? 1440 : eh * 60 + em;
+  if (e <= s) e += 1440;
+  return e - s;
+}
+
+// Minutes → "40h" / "37h 30m" (blank for zero).
+function fmtHours(min) {
+  if (!min) return '';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
 function RotaGrid({ days, rows, onCellClick }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
@@ -35,8 +55,8 @@ function RotaGrid({ days, rows, onCellClick }) {
 
   const grid = {
     display: 'grid',
-    gridTemplateColumns: `${NAME_COL} repeat(7, minmax(96px, 1fr))`,
-    minWidth: '760px',
+    gridTemplateColumns: `${NAME_COL} repeat(7, minmax(96px, 1fr)) 96px`,
+    minWidth: '860px',
     border: `1px solid ${colors.borderLight}`,
     borderRadius: '8px',
     overflow: 'hidden',
@@ -84,6 +104,14 @@ function RotaGrid({ days, rows, onCellClick }) {
     width: '100%',
     textAlign: 'center',
   };
+  const totalCell = {
+    ...cellBase,
+    justifyContent: 'center',
+    borderRight: 'none',
+    fontWeight: 700,
+    fontSize: '1rem',
+    color: colors.textPrimary,
+  };
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -96,31 +124,36 @@ function RotaGrid({ days, rows, onCellClick }) {
             <span style={{ fontSize: '0.8rem', fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
           </div>
         ))}
+        <div style={{ ...headCell, borderRight: 'none' }}>Hours</div>
 
         {/* Staff rows */}
-        {rows.map((row) => (
-          <React.Fragment key={row.memberId}>
-            <div style={nameCell}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
-            </div>
-            {days.map((d) => {
-              const shift = row.shifts?.[d.key];
-              return (
-                <div
-                  key={d.key}
-                  style={dayCell}
-                  onClick={() => onCellClick(row, d.key)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  {shift
-                    ? <span style={timeText}>{fmtTime(shift.start)}–{fmtTime(shift.end)}</span>
-                    : <span style={{ color: colors.textMuted, fontSize: '1.8rem', opacity: 0.4 }}>+</span>}
-                </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
+        {rows.map((row) => {
+          const totalMin = days.reduce((sum, d) => sum + shiftMinutes(row.shifts?.[d.key]), 0);
+          return (
+            <React.Fragment key={row.memberId}>
+              <div style={nameCell}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
+              </div>
+              {days.map((d) => {
+                const shift = row.shifts?.[d.key];
+                return (
+                  <div
+                    key={d.key}
+                    style={dayCell}
+                    onClick={() => onCellClick(row, d.key)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    {shift
+                      ? <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>
+                      : <span style={{ color: colors.textMuted, fontSize: '1.8rem', opacity: 0.4 }}>+</span>}
+                  </div>
+                );
+              })}
+              <div style={totalCell}>{fmtHours(totalMin)}</div>
+            </React.Fragment>
+          );
+        })}
 
         {rows.length === 0 && (
           <div style={{ gridColumn: '1 / -1', padding: '1.25rem', textAlign: 'center', color: colors.textSecondary, fontSize: '0.9rem' }}>
