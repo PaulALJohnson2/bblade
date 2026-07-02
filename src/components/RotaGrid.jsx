@@ -20,6 +20,16 @@ import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '150px';
 
+// Compact shift-time label: drop ":00" and the leading zero on whole hours
+// (09:00 → 9), keep minutes otherwise (09:30 → 9:30), and show a midnight end
+// as 24 so a close reads "18–24" rather than "18–0".
+function fmtTime(t, isEnd = false) {
+  if (isEnd && t === '00:00') return '24';
+  const [h, m] = t.split(':');
+  const hour = parseInt(h, 10);
+  return m === '00' ? String(hour) : `${hour}:${m}`;
+}
+
 function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow, onAddStaff }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
@@ -125,7 +135,7 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
                   tabIndex={0}
                 >
                   {shift
-                    ? <span style={chip}>{shift.start}–{shift.end}</span>
+                    ? <span style={chip}>{fmtTime(shift.start)}–{fmtTime(shift.end, true)}</span>
                     : <span style={{ color: colors.textMuted, fontSize: '1.1rem', opacity: 0.5 }}>+</span>}
                 </div>
               );
