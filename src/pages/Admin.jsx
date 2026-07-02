@@ -271,8 +271,9 @@ function Admin() {
         <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: colors.textPrimary }}>Staff</h2>
         <p style={{ margin: '0 0 1rem', color: colors.textSecondary, fontSize: '0.85rem' }}>
           Add the people who do stock takes. An email authorises that person to
-          sign in with Google; leave it blank for someone who only needs crediting
-          on counts (no login). Pick who you are in the header when counting.
+          sign in — with Google or a passwordless email link (no Google account
+          needed); leave it blank for someone who only needs crediting on counts
+          (no login). Pick who you are in the header when counting.
         </p>
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
