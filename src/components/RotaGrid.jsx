@@ -20,13 +20,11 @@ import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '150px';
 
-// Compact shift-time label: drop ":00" and the leading zero on whole hours
-// (09:00 → 9), keep minutes otherwise (09:30 → 9:30), and show a midnight end
-// as 24 so a close reads "18–24" rather than "18–0".
-function fmtTime(t, isEnd = false) {
-  if (isEnd && t === '00:00') return '24';
+// Compact 12-hour shift-time label (no am/pm for now): 17:00 → 5, 09:30 → 9:30,
+// and 12/0 map to 12 (noon/midnight). Whole hours drop the ":00".
+function fmtTime(t) {
   const [h, m] = t.split(':');
-  const hour = parseInt(h, 10);
+  const hour = parseInt(h, 10) % 12 || 12;
   return m === '00' ? String(hour) : `${hour}:${m}`;
 }
 
@@ -87,8 +85,8 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
     lineHeight: 1.2,
     color: colors.onPrimary,
     backgroundColor: colors.primary,
-    borderRadius: '8px',
-    padding: '0.3rem 0.4rem',
+    borderRadius: '6px',
+    padding: '0.15rem 0.3rem',
     textAlign: 'center',
     whiteSpace: 'nowrap',
   };
@@ -135,7 +133,7 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
                   tabIndex={0}
                 >
                   {shift
-                    ? <span style={chip}>{fmtTime(shift.start)}–{fmtTime(shift.end, true)}</span>
+                    ? <span style={chip}>{fmtTime(shift.start)}–{fmtTime(shift.end)}</span>
                     : <span style={{ color: colors.textMuted, fontSize: '1.1rem', opacity: 0.5 }}>+</span>}
                 </div>
               );
