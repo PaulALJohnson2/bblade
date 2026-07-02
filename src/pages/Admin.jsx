@@ -34,6 +34,10 @@ function Admin() {
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [error, setError] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState('staff');
 
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
@@ -69,6 +73,32 @@ function Admin() {
     const res = await saveMember(null, { displayName, email, role: newRole, venueAccess: 'all', active: true });
     if (res.success) { setNewName(''); setNewEmail(''); setNewRole('staff'); }
     else setError('Could not add staff: ' + res.error);
+  };
+
+  const startEdit = (member) => {
+    setError(null);
+    setEditingId(member.id);
+    setEditName(member.displayName || '');
+    setEditEmail(member.email || '');
+    setEditRole(member.role || 'staff');
+  };
+
+  const handleSaveEdit = async () => {
+    const displayName = editName.trim();
+    const email = editEmail.trim().toLowerCase();
+    if (!displayName) { setError('Please enter a name.'); return; }
+    if (members.some(m => m.id !== editingId && (m.displayName || '').toLowerCase() === displayName.toLowerCase())) {
+      setError(`"${displayName}" is already a staff member.`);
+      return;
+    }
+    if (email && members.some(m => m.id !== editingId && (m.email || '').toLowerCase() === email)) {
+      setError(`${email} is already authorised.`);
+      return;
+    }
+    setError(null);
+    const res = await saveMember(editingId, { displayName, email, role: editRole });
+    if (res.success) setEditingId(null);
+    else setError('Could not save staff: ' + res.error);
   };
 
   const handleRemoveMember = async (member) => {
@@ -277,36 +307,78 @@ function Admin() {
             {members.map((member) => (
               <div
                 key={member.id}
-                style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '0.6rem 0.85rem', backgroundColor: colors.bgLight, borderRadius: '8px',
-                }}
+                style={{ padding: '0.6rem 0.85rem', backgroundColor: colors.bgLight, borderRadius: '8px' }}
               >
-                <span style={{ color: colors.textPrimary }}>
-                  {member.displayName}
-                  {member.role && (
-                    <span style={{
-                      marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
-                      textTransform: 'uppercase', letterSpacing: '0.04em',
-                    }}>
-                      {member.role}
+                {editingId === member.id ? (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      style={{ ...input, minWidth: '120px' }}
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
+                      placeholder="Name"
+                    />
+                    <input
+                      style={{ ...input, minWidth: '160px' }}
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
+                      placeholder="Google email (optional)"
+                    />
+                    <select
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value)}
+                      style={{
+                        padding: '0.75rem', fontSize: '1rem', borderRadius: '8px',
+                        border: `2px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary,
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <button onClick={handleSaveEdit} style={primaryBtn}>Save</button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      style={{ padding: '0.75rem 1rem', background: 'none', border: `1px solid ${colors.border}`, borderRadius: '8px', color: colors.textSecondary, cursor: 'pointer', fontSize: '0.95rem' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: colors.textPrimary }}>
+                      {member.displayName}
+                      {member.role && (
+                        <span style={{
+                          marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                          textTransform: 'uppercase', letterSpacing: '0.04em',
+                        }}>
+                          {member.role}
+                        </span>
+                      )}
+                      {member.email && (
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: colors.textSecondary }}>
+                          {member.email}
+                        </span>
+                      )}
                     </span>
-                  )}
-                  {member.email && (
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: colors.textSecondary }}>
-                      {member.email}
-                    </span>
-                  )}
-                </span>
-                <button
-                  onClick={() => handleRemoveMember(member)}
-                  style={{
-                    background: 'none', border: 'none', color: colors.errorDark,
-                    cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline',
-                  }}
-                >
-                  Remove
-                </button>
+                    <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'center', flexShrink: 0 }}>
+                      <button
+                        onClick={() => startEdit(member)}
+                        style={{ background: 'none', border: 'none', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleRemoveMember(member)}
+                        style={{ background: 'none', border: 'none', color: colors.errorDark, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
