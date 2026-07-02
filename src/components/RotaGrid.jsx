@@ -28,9 +28,17 @@ function fmtTime(t) {
   return m === '00' ? String(hour) : `${hour}:${m}`;
 }
 
+// Slate-blue accent palette for the rota grid, independent of the app's gold
+// theme. Structure (surfaces/borders/text) still comes from the theme tokens.
+const ROTA = {
+  light: { chipBg: '#2F4A6B', chipText: '#FFFFFF', weekend: '#EAF1F8', headBg: '#EDF2F8', headWeekend: '#DBE7F4' },
+  dark: { chipBg: '#4A6E97', chipText: '#F3F7FC', weekend: '#141D28', headBg: '#151E29', headWeekend: '#1C2A3A' },
+};
+
 function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow, onAddStaff }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const rota = isDark ? ROTA.dark : ROTA.light;
 
   const grid = {
     display: 'grid',
@@ -57,7 +65,7 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
     justifyContent: 'center',
     alignItems: 'center',
     gap: '1px',
-    backgroundColor: weekend ? colors.primarySoft : colors.bgLight,
+    backgroundColor: weekend ? rota.headWeekend : rota.headBg,
     fontWeight: 700,
     fontSize: '0.82rem',
     color: colors.textPrimary,
@@ -67,7 +75,7 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
     ...cellBase,
     justifyContent: 'space-between',
     gap: '0.4rem',
-    backgroundColor: colors.bgLight,
+    backgroundColor: rota.headBg,
     fontWeight: 600,
     fontSize: '0.88rem',
     color: colors.textPrimary,
@@ -76,15 +84,15 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
     ...cellBase,
     justifyContent: 'center',
     cursor: 'pointer',
-    backgroundColor: weekend ? (isDark ? colors.bgLight : colors.primarySoft) : colors.bgCard,
+    backgroundColor: weekend ? rota.weekend : colors.bgCard,
     WebkitTapHighlightColor: 'transparent',
   });
   const chip = {
     fontSize: '0.78rem',
     fontWeight: 700,
     lineHeight: 1.2,
-    color: colors.onPrimary,
-    backgroundColor: colors.primary,
+    color: rota.chipText,
+    backgroundColor: rota.chipBg,
     borderRadius: '6px',
     padding: '0.15rem 0.3rem',
     textAlign: 'center',
@@ -99,7 +107,7 @@ function RotaGrid({ days, rows, availableMembers = [], onCellClick, onRemoveRow,
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={grid}>
         {/* Header row */}
-        <div style={{ ...headCell(false), backgroundColor: colors.bgLight }}>Staff</div>
+        <div style={{ ...headCell(false), backgroundColor: rota.headBg }}>Staff</div>
         {days.map((d) => (
           <div key={d.key} style={headCell(d.weekend)}>
             <span>{d.label}</span>
