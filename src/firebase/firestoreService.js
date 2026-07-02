@@ -908,3 +908,31 @@ export async function saveRota(venuePath, weekId, data) {
     return { success: false, error: error.message };
   }
 }
+
+/** Live shift-pattern usage counts for a venue, as { 'HH:MM-HH:MM': count }.
+ *  Used to rank the shift-editor quick-pick pills by how often each is used. */
+export function subscribeToShiftPatterns(venuePath, onData, onError) {
+  const ref = doc(db, `${venuePath}/rotaPrefs/shiftPatterns`);
+  return onSnapshot(
+    ref,
+    (snap) => onData(snap.exists() ? (snap.data().counts || {}) : {}),
+    (error) => {
+      console.error('Error in shift patterns listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Record one use of a start–end shift pattern (increments its counter). */
+export async function bumpShiftPattern(venuePath, start, end) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const key = `${start}-${end}`;
+    const ref = doc(db, `${venuePath}/rotaPrefs/shiftPatterns`);
+    await setDoc(ref, { accountId, venueId, counts: { [key]: increment(1) }, updatedAt: Timestamp.now() }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error bumping shift pattern:', error);
+    return { success: false, error: error.message };
+  }
+}

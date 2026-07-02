@@ -21,15 +21,15 @@ const TIME_OPTIONS = (() => {
   return out;
 })();
 
-// Common shift presets for quick entry.
-const PRESETS = [
+// Fallback presets if none are supplied (usage-ranked ones come from the page).
+const DEFAULT_PRESETS = [
   { label: '9–5', start: '09:00', end: '17:00' },
-  { label: 'Lunch', start: '11:00', end: '15:00' },
-  { label: 'Evening', start: '17:00', end: '23:00' },
-  { label: 'Close', start: '18:00', end: '00:00' },
+  { label: '11–3', start: '11:00', end: '15:00' },
+  { label: '5–11', start: '17:00', end: '23:00' },
+  { label: '6–12', start: '18:00', end: '00:00' },
 ];
 
-function ShiftEditor({ staffName, dayLabel, value, onSave, onClear, onCancel }) {
+function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onClear, onCancel }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -77,9 +77,9 @@ function ShiftEditor({ staffName, dayLabel, value, onSave, onClear, onCancel }) 
         <div style={{ color: colors.textSecondary, fontSize: '0.85rem', marginBottom: '1rem' }}>{dayLabel}</div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
-          {PRESETS.map((p) => (
+          {(presets && presets.length ? presets : DEFAULT_PRESETS).map((p) => (
             <button
-              key={p.label}
+              key={`${p.start}-${p.end}`}
               type="button"
               style={preset}
               onClick={() => { setStart(p.start); setEnd(p.end); }}

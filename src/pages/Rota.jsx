@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota } from '../services/apiService';
+import { subscribeToRota, saveRota, subscribeToShiftPatterns, bumpShiftPattern } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
@@ -35,6 +35,20 @@ function addDays(d, n) {
   return x;
 }
 
+// Compact 12-hour label for a preset pill (matches the grid): 17:00 → 5.
+const fmtHour = (t) => { const [h, m] = t.split(':'); const hr = parseInt(h, 10) % 12 || 12; return m === '00' ? String(hr) : `${hr}:${m}`; };
+const patternLabel = (s, e) => `${fmtHour(s)}–${fmtHour(e)}`;
+
+// Seed patterns so the pills are useful before any usage has accumulated;
+// learned patterns rank ahead of these once they start being used.
+const DEFAULT_PATTERNS = [
+  { start: '09:00', end: '17:00' },
+  { start: '11:00', end: '15:00' },
+  { start: '17:00', end: '23:00' },
+  { start: '18:00', end: '00:00' },
+];
+const MAX_PRESETS = 6;
+
 function Rota() {
   const { members, selectedPub, isAdmin, pubName } = useAuth();
   const { isDark } = useTheme();
@@ -42,6 +56,7 @@ function Rota() {
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [savedRows, setSavedRows] = useState([]); // only members who have shifts
+  const [patternCounts, setPatternCounts] = useState({}); // 'HH:MM-HH:MM' → uses
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // { row, dayKey }
 
@@ -60,6 +75,31 @@ function Rota() {
     );
     return () => unsub();
   }, [venuePath, weekId]);
+
+  // Subscribe to this venue's learned shift-pattern usage counts.
+  useEffect(() => {
+    if (!venuePath) return undefined;
+    const unsub = subscribeToShiftPatterns(venuePath, setPatternCounts, () => {});
+    return () => unsub();
+  }, [venuePath]);
+
+  // Quick-pick pills: learned patterns ranked by usage, then defaults to fill.
+  const presets = useMemo(() => {
+    const learned = Object.entries(patternCounts)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key]) => { const [start, end] = key.split('-'); return { start, end }; });
+    const seen = new Set();
+    const out = [];
+    for (const p of [...learned, ...DEFAULT_PATTERNS]) {
+      const k = `${p.start}-${p.end}`;
+      if (seen.has(k) || !p.start || !p.end) continue;
+      seen.add(k);
+      out.push({ start: p.start, end: p.end, label: patternLabel(p.start, p.end) });
+      if (out.length >= MAX_PRESETS) break;
+    }
+    return out;
+  }, [patternCounts]);
 
   const days = useMemo(() => DAY_KEYS.map((key, i) => {
     const date = addDays(weekStart, i);
@@ -88,7 +128,10 @@ function Rota() {
     else byId.delete(row.memberId);
     const next = Array.from(byId.values());
     setSavedRows(next);
-    if (venuePath) saveRota(venuePath, weekId, { weekStart: weekId, rows: next });
+    if (venuePath) {
+      saveRota(venuePath, weekId, { weekStart: weekId, rows: next });
+      if (shift) bumpShiftPattern(venuePath, shift.start, shift.end); // learn the pattern
+    }
     setEditing(null);
   };
 
@@ -138,6 +181,7 @@ function Rota() {
         <ShiftEditor
           staffName={editing.row.name}
           dayLabel={(() => { const d = days.find((x) => x.key === editing.dayKey); return `${d.label} ${d.dateLabel}`; })()}
+          presets={presets}
           value={editing.row.shifts?.[editing.dayKey] || null}
           onSave={(shift) => setShift(editing.row, editing.dayKey, shift)}
           onClear={() => setShift(editing.row, editing.dayKey, null)}

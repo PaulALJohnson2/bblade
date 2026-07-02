@@ -62,4 +62,6 @@ export {
   // Rotas (weekly staff rota)
   subscribeToRota,
   saveRota,
+  subscribeToShiftPatterns,
+  bumpShiftPattern,
 } from '../firebase/firestoreService';

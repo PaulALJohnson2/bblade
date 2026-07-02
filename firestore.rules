@@ -52,6 +52,10 @@ service cloud.firestore {
         match /rotas/{rotaId} {
           allow read, write: if signedIn();
         }
+
+        match /rotaPrefs/{docId} {
+          allow read, write: if signedIn();
+        }
       }
     }
 
