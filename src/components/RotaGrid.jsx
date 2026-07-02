@@ -12,7 +12,7 @@
  *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -56,6 +56,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder }) {
 
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
+  const nameRefs = useRef({}); // rowIndex → name-cell DOM node, for hit-testing
 
   const moveRow = (from, to) => {
     if (from == null || to == null || from === to) return;
@@ -65,6 +66,39 @@ function RotaGrid({ days, rows, onCellClick, onReorder }) {
     onReorder?.(ids);
   };
   const endDrag = () => { setDragIndex(null); setOverIndex(null); };
+
+  // Pointer-based drag (works for both mouse and touch). Grabbing the grip
+  // captures the pointer; movement hit-tests against the name-cell rows.
+  const startDrag = (e, index) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setDragIndex(index);
+    setOverIndex(index);
+  };
+  const moveDrag = (e) => {
+    if (dragIndex == null) return;
+    const n = rows.length;
+    const y = e.clientY;
+    const first = nameRefs.current[0]?.getBoundingClientRect();
+    const last = nameRefs.current[n - 1]?.getBoundingClientRect();
+    let target = dragIndex;
+    if (first && y < first.top) target = 0;
+    else if (last && y > last.bottom) target = n - 1;
+    else {
+      for (let i = 0; i < n; i += 1) {
+        const el = nameRefs.current[i];
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (y >= r.top && y <= r.bottom) { target = i; break; }
+      }
+    }
+    if (target !== overIndex) setOverIndex(target);
+  };
+  const dropDrag = (e) => {
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    moveRow(dragIndex, overIndex);
+    endDrag();
+  };
 
   const grid = {
     display: 'grid',
@@ -153,21 +187,29 @@ function RotaGrid({ days, rows, onCellClick, onReorder }) {
           return (
             <React.Fragment key={row.memberId}>
               <div
+                ref={(el) => { nameRefs.current[rowIndex] = el; }}
                 style={{
                   ...nameCell,
-                  gap: '0.5rem',
-                  cursor: 'grab',
+                  gap: '0.4rem',
                   boxShadow: overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
                   opacity: dragIndex === rowIndex ? 0.4 : 1,
                 }}
-                draggable
-                onDragStart={(e) => { setDragIndex(rowIndex); e.dataTransfer.effectAllowed = 'move'; }}
-                onDragOver={(e) => { e.preventDefault(); if (overIndex !== rowIndex) setOverIndex(rowIndex); }}
-                onDrop={(e) => { e.preventDefault(); moveRow(dragIndex, rowIndex); endDrag(); }}
-                onDragEnd={endDrag}
-                title="Drag to reorder"
               >
-                <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1rem', lineHeight: 1, userSelect: 'none' }}>⠿</span>
+                <span
+                  aria-label="Drag to reorder"
+                  title="Drag to reorder"
+                  onPointerDown={(e) => startDrag(e, rowIndex)}
+                  onPointerMove={moveDrag}
+                  onPointerUp={dropDrag}
+                  onPointerCancel={endDrag}
+                  style={{
+                    color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1,
+                    userSelect: 'none', touchAction: 'none', cursor: 'grab',
+                    padding: '0.35rem 0.15rem', marginLeft: '-0.15rem', flexShrink: 0,
+                  }}
+                >
+                  ⠿
+                </span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
               </div>
               {days.map((d) => {
