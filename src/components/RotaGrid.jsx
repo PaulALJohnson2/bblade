@@ -47,7 +47,7 @@ function RotaGrid({ days, rows, onCellClick }) {
   const cellBase = {
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
-    padding: '1rem 0.75rem',
+    padding: '1rem 0.5rem',
     minHeight: '76px',
     display: 'flex',
     alignItems: 'center',
@@ -77,10 +77,12 @@ function RotaGrid({ days, rows, onCellClick }) {
     WebkitTapHighlightColor: 'transparent',
   };
   const timeText = {
-    fontSize: '1.2rem',
+    fontSize: '1.7rem',
     fontWeight: 700,
     color: accent,
     whiteSpace: 'nowrap',
+    width: '100%',
+    textAlign: 'center',
   };
 
   return (
@@ -113,7 +115,7 @@ function RotaGrid({ days, rows, onCellClick }) {
                 >
                   {shift
                     ? <span style={timeText}>{fmtTime(shift.start)}–{fmtTime(shift.end)}</span>
-                    : <span style={{ color: colors.textMuted, fontSize: '1.5rem', opacity: 0.4 }}>+</span>}
+                    : <span style={{ color: colors.textMuted, fontSize: '1.8rem', opacity: 0.4 }}>+</span>}
                 </div>
               );
             })}
