@@ -22,6 +22,9 @@ import {
   getRedirectResult,
   signOut,
   onAuthStateChanged,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
 } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { ACCOUNT_ID, VENUE_ID, venuePath, isSuperAdminEmail } from '../config/app';
@@ -64,6 +67,10 @@ export const AuthProvider = ({ children }) => {
   const [role, setRole] = useState('staff');
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
+  // True while finishing an email-link sign-in (page opened via the link).
+  const [completingEmailLink, setCompletingEmailLink] = useState(
+    () => typeof window !== 'undefined' && isSignInWithEmailLink(auth, window.location.href),
+  );
   // Preferred display name resolved from the matched Member record (falls back
   // to the Google profile name / email). Drives count attribution + the header.
   const [memberName, setMemberName] = useState('');
@@ -177,6 +184,31 @@ export const AuthProvider = ({ children }) => {
     return () => { unsubVenue(); unsubAcct(); unsubMembers(); };
   }, [authorized, PATH, activeAccountId]);
 
+  // Complete an email-link sign-in when the page is opened via the link. Once
+  // signed in, onAuthStateChanged above authorizes against the members allowlist.
+  useEffect(() => {
+    if (!isSignInWithEmailLink(auth, window.location.href)) return;
+    let email = window.localStorage.getItem('emailForSignIn');
+    if (!email) {
+      // Link opened on a different device — confirm the address (anti-injection).
+      email = window.prompt('Please confirm your email to finish signing in');
+    }
+    if (!email) { setCompletingEmailLink(false); return; }
+    setLoading(true);
+    signInWithEmailLink(auth, email, window.location.href)
+      .then(() => {
+        window.localStorage.removeItem('emailForSignIn');
+        // Strip the one-time code params from the URL.
+        window.history.replaceState({}, '', '/login');
+      })
+      .catch((err) => {
+        console.error('Email link sign-in failed:', err);
+        setAuthError('That sign-in link is invalid or has expired. Please request a new one.');
+        setLoading(false);
+      })
+      .finally(() => setCompletingEmailLink(false));
+  }, []);
+
   // ---- auth actions ----
   const loginWithGoogle = async () => {
     setAuthError(null);
@@ -199,6 +231,21 @@ export const AuthProvider = ({ children }) => {
           return { success: false, error: redirectErr.message };
         }
       }
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Email-link (passwordless) sign-in: email the user a one-time link. Access is
+  // still gated by the members allowlist when they complete sign-in.
+  const sendEmailLink = async (email) => {
+    setAuthError(null);
+    try {
+      const actionCodeSettings = { url: `${window.location.origin}/login`, handleCodeInApp: true };
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      window.localStorage.setItem('emailForSignIn', email);
+      return { success: true };
+    } catch (error) {
+      console.error('sendEmailLink failed:', error);
       return { success: false, error: error.message };
     }
   };
@@ -233,6 +280,8 @@ export const AuthProvider = ({ children }) => {
     authError,
     clearAuthError: () => setAuthError(null),
     loginWithGoogle,
+    sendEmailLink,
+    completingEmailLink,
     logout,
 
     // Tenant context (active account/venue — switchable by super-admins)

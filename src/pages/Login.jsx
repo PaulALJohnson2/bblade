@@ -12,11 +12,15 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
 function Login() {
-  const { loginWithGoogle, currentUser, authorized, authError } = useAuth();
+  const { loginWithGoogle, sendEmailLink, completingEmailLink, currentUser, authorized, authError } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState('');
+  const [sendingLink, setSendingLink] = useState(false);
+  const [linkSentTo, setLinkSentTo] = useState(null);
+  const [linkError, setLinkError] = useState(null);
 
   // Once signed in + authorized, leave the login page.
   useEffect(() => {
@@ -35,9 +39,20 @@ function Login() {
     if (!res?.success) setBusy(false);
   };
 
-  // While signing in / verifying access, show a loader instead of the form so it
-  // doesn't briefly bounce back to the login screen before the app loads.
-  if (busy && !authError) {
+  const handleSendLink = async () => {
+    const addr = email.trim();
+    if (!addr) return;
+    setSendingLink(true);
+    setLinkError(null);
+    const res = await sendEmailLink(addr);
+    setSendingLink(false);
+    if (res?.success) setLinkSentTo(addr);
+    else setLinkError("Couldn't send a sign-in link. Please check the address and try again.");
+  };
+
+  // While signing in / verifying access (incl. completing an email link), show a
+  // loader instead of the form so it doesn't bounce back before the app loads.
+  if ((busy || completingEmailLink) && !authError) {
     return (
       <div style={{
         minHeight: '100vh', display: 'flex', flexDirection: 'column',
@@ -122,6 +137,60 @@ function Login() {
           </svg>
           {busy ? 'Signing in…' : 'Sign in with Google'}
         </button>
+
+        {/* Divider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '1.25rem 0' }}>
+          <div style={{ flex: 1, height: '1px', backgroundColor: colors.borderLight }} />
+          <span style={{ color: colors.textMuted, fontSize: '0.8rem' }}>or</span>
+          <div style={{ flex: 1, height: '1px', backgroundColor: colors.borderLight }} />
+        </div>
+
+        {/* Passwordless email-link sign-in (for staff without a Google account) */}
+        {linkSentTo ? (
+          <div style={{ textAlign: 'left', fontSize: '0.88rem', color: colors.textPrimary }}>
+            <p style={{ margin: '0 0 0.5rem' }}>
+              We've emailed a sign-in link to <strong>{linkSentTo}</strong>. Open it on this
+              device to finish signing in.
+            </p>
+            <button
+              onClick={() => { setLinkSentTo(null); setEmail(''); }}
+              style={{ background: 'none', border: 'none', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline', padding: 0 }}
+            >
+              Use a different email
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendLink()}
+              placeholder="you@email.com"
+              autoComplete="email"
+              style={{
+                width: '100%', padding: '0.85rem', fontSize: '1rem', boxSizing: 'border-box',
+                border: `1px solid ${colors.border}`, borderRadius: '8px',
+                backgroundColor: colors.bgCard, color: colors.textPrimary,
+              }}
+            />
+            {linkError && (
+              <div style={{ fontSize: '0.82rem', color: colors.error, textAlign: 'left' }}>{linkError}</div>
+            )}
+            <button
+              onClick={handleSendLink}
+              disabled={sendingLink || !email.trim()}
+              style={{
+                width: '100%', padding: '0.85rem', fontSize: '1rem', fontWeight: 600,
+                borderRadius: '8px', border: 'none', cursor: sendingLink || !email.trim() ? 'default' : 'pointer',
+                backgroundColor: colors.primary, color: colors.onPrimary,
+                opacity: sendingLink || !email.trim() ? 0.6 : 1,
+              }}
+            >
+              {sendingLink ? 'Sending…' : 'Email me a sign-in link'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
