@@ -15,7 +15,7 @@ import React from 'react';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
-const NAME_COL = '150px';
+const NAME_COL = '190px';
 
 // Slate-blue text accent for shift times (light + dark variants).
 const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
@@ -35,8 +35,8 @@ function RotaGrid({ days, rows, onCellClick }) {
 
   const grid = {
     display: 'grid',
-    gridTemplateColumns: `${NAME_COL} repeat(7, minmax(72px, 1fr))`,
-    minWidth: '600px',
+    gridTemplateColumns: `${NAME_COL} repeat(7, minmax(96px, 1fr))`,
+    minWidth: '760px',
     border: `1px solid ${colors.borderLight}`,
     borderRadius: '8px',
     overflow: 'hidden',
@@ -47,8 +47,8 @@ function RotaGrid({ days, rows, onCellClick }) {
   const cellBase = {
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
-    padding: '0.45rem 0.5rem',
-    minHeight: '40px',
+    padding: '0.7rem 0.75rem',
+    minHeight: '60px',
     display: 'flex',
     alignItems: 'center',
   };
@@ -60,14 +60,14 @@ function RotaGrid({ days, rows, onCellClick }) {
     gap: '1px',
     borderBottom: `2px solid ${colors.border}`,
     fontWeight: 700,
-    fontSize: '0.8rem',
+    fontSize: '0.95rem',
     color: colors.textPrimary,
     textAlign: 'center',
   };
   const nameCell = {
     ...cellBase,
     fontWeight: 600,
-    fontSize: '0.88rem',
+    fontSize: '1rem',
     color: colors.textPrimary,
   };
   const dayCell = {
@@ -77,7 +77,7 @@ function RotaGrid({ days, rows, onCellClick }) {
     WebkitTapHighlightColor: 'transparent',
   };
   const timeText = {
-    fontSize: '0.82rem',
+    fontSize: '0.95rem',
     fontWeight: 600,
     color: accent,
     whiteSpace: 'nowrap',
@@ -91,7 +91,7 @@ function RotaGrid({ days, rows, onCellClick }) {
         {days.map((d) => (
           <div key={d.key} style={headCell}>
             <span>{d.label}</span>
-            <span style={{ fontSize: '0.7rem', fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
           </div>
         ))}
 
@@ -113,7 +113,7 @@ function RotaGrid({ days, rows, onCellClick }) {
                 >
                   {shift
                     ? <span style={timeText}>{fmtTime(shift.start)}–{fmtTime(shift.end)}</span>
-                    : <span style={{ color: colors.textMuted, fontSize: '1.05rem', opacity: 0.4 }}>+</span>}
+                    : <span style={{ color: colors.textMuted, fontSize: '1.3rem', opacity: 0.4 }}>+</span>}
                 </div>
               );
             })}
