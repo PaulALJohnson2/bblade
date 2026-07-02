@@ -112,6 +112,13 @@ function RotaGrid({ days, rows, onCellClick }) {
     fontSize: '1rem',
     color: colors.textPrimary,
   };
+  const footBase = {
+    ...cellBase,
+    borderTop: `2px solid ${colors.border}`,
+    borderBottom: 'none',
+    fontWeight: 700,
+    color: colors.textPrimary,
+  };
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -154,6 +161,25 @@ function RotaGrid({ days, rows, onCellClick }) {
             </React.Fragment>
           );
         })}
+
+        {/* Grand total row */}
+        {rows.length > 0 && (() => {
+          const perDay = days.map((d) => rows.reduce((sum, r) => sum + shiftMinutes(r.shifts?.[d.key]), 0));
+          const grand = perDay.reduce((a, b) => a + b, 0);
+          return (
+            <>
+              <div style={{ ...footBase, fontSize: '0.95rem' }}>Total</div>
+              {days.map((d, i) => (
+                <div key={d.key} style={{ ...footBase, justifyContent: 'center', color: colors.textSecondary }}>
+                  {fmtHours(perDay[i])}
+                </div>
+              ))}
+              <div style={{ ...footBase, justifyContent: 'center', borderRight: 'none', fontSize: '1.1rem', color: accent }}>
+                {fmtHours(grand)}
+              </div>
+            </>
+          );
+        })()}
 
         {rows.length === 0 && (
           <div style={{ gridColumn: '1 / -1', padding: '1.25rem', textAlign: 'center', color: colors.textSecondary, fontSize: '0.9rem' }}>
