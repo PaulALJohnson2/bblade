@@ -67,6 +67,4 @@ export {
   bumpShiftPattern,
   subscribeToStaffOrder,
   saveStaffOrder,
-  subscribeToHiddenStaff,
-  saveHiddenStaff,
 } from '../firebase/firestoreService';

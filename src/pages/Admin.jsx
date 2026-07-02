@@ -31,6 +31,7 @@ function Admin() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('staff');
+  const [newOnRota, setNewOnRota] = useState(true);
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [error, setError] = useState(null);
@@ -38,6 +39,7 @@ function Admin() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState('staff');
+  const [editOnRota, setEditOnRota] = useState(true);
 
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
@@ -70,8 +72,8 @@ function Admin() {
       return;
     }
     setError(null);
-    const res = await saveMember(null, { displayName, email, role: newRole, venueAccess: 'all', active: true });
-    if (res.success) { setNewName(''); setNewEmail(''); setNewRole('staff'); }
+    const res = await saveMember(null, { displayName, email, role: newRole, venueAccess: 'all', active: true, onRota: newOnRota });
+    if (res.success) { setNewName(''); setNewEmail(''); setNewRole('staff'); setNewOnRota(true); }
     else setError('Could not add staff: ' + res.error);
   };
 
@@ -81,6 +83,7 @@ function Admin() {
     setEditName(member.displayName || '');
     setEditEmail(member.email || '');
     setEditRole(member.role || 'staff');
+    setEditOnRota(member.onRota !== false);
   };
 
   const handleSaveEdit = async () => {
@@ -96,7 +99,7 @@ function Admin() {
       return;
     }
     setError(null);
-    const res = await saveMember(editingId, { displayName, email, role: editRole });
+    const res = await saveMember(editingId, { displayName, email, role: editRole, onRota: editOnRota });
     if (res.success) setEditingId(null);
     else setError('Could not save staff: ' + res.error);
   };
@@ -295,6 +298,10 @@ function Admin() {
           >
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input type="checkbox" checked={newOnRota} onChange={(e) => setNewOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+            On rota
+          </label>
           <button onClick={handleAddMember} style={primaryBtn}>Add</button>
         </div>
 
@@ -337,6 +344,10 @@ function Admin() {
                     >
                       {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={editOnRota} onChange={(e) => setEditOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                      On rota
+                    </label>
                     <button onClick={handleSaveEdit} style={primaryBtn}>Save</button>
                     <button
                       onClick={() => setEditingId(null)}
@@ -355,6 +366,14 @@ function Admin() {
                           textTransform: 'uppercase', letterSpacing: '0.04em',
                         }}>
                           {member.role}
+                        </span>
+                      )}
+                      {member.onRota === false && (
+                        <span style={{
+                          marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textMuted,
+                          textTransform: 'uppercase', letterSpacing: '0.04em',
+                        }}>
+                          · not on rota
                         </span>
                       )}
                       {member.email && (

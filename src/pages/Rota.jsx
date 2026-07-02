@@ -8,7 +8,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToHiddenStaff, saveHiddenStaff } from '../services/apiService';
+import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
@@ -59,7 +59,6 @@ function Rota() {
   const [published, setPublished] = useState(false);
   const [patternCounts, setPatternCounts] = useState({}); // 'HH:MM-HH:MM' → uses
   const [staffOrder, setStaffOrder] = useState([]); // custom memberId ordering
-  const [hiddenIds, setHiddenIds] = useState([]); // members removed from the rota
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
@@ -95,13 +94,6 @@ function Rota() {
     return () => unsub();
   }, [venuePath]);
 
-  // Subscribe to the list of members hidden from the rota.
-  useEffect(() => {
-    if (!venuePath) return undefined;
-    const unsub = subscribeToHiddenStaff(venuePath, setHiddenIds, () => {});
-    return () => unsub();
-  }, [venuePath]);
-
   // Quick-pick pills: learned patterns ranked by usage, then defaults to fill.
   const presets = useMemo(() => {
     const learned = Object.entries(patternCounts)
@@ -125,33 +117,22 @@ function Rota() {
     return { key, label: DAY_LABELS[key], dateLabel: `${date.getDate()}/${date.getMonth() + 1}` };
   }), [weekStart]);
 
-  // Members eligible for this venue's rota (active + has venue access).
-  const eligibleMembers = useMemo(() => {
-    const hasVenue = (m) => m.venueAccess === 'all' || (Array.isArray(m.venueAccess) && m.venueAccess.includes(selectedPub?.id));
-    return (members || []).filter((m) => m.active !== false && hasVenue(m));
-  }, [members, selectedPub]);
-
-  // Visible rows: eligible members minus hidden, merged with saved shifts, in
-  // the custom drag order (unordered members fall back to A–Z).
+  // Rota rows: active members with venue access that are flagged On rota
+  // (default true), merged with saved shifts, in the custom drag order
+  // (unordered members fall back to A–Z).
   const rows = useMemo(() => {
     const shiftsById = new Map(savedRows.map((r) => [r.memberId, r.shifts || {}]));
     const orderIndex = new Map(staffOrder.map((id, i) => [id, i]));
-    const hidden = new Set(hiddenIds);
-    return eligibleMembers
-      .filter((m) => !hidden.has(m.id))
+    const hasVenue = (m) => m.venueAccess === 'all' || (Array.isArray(m.venueAccess) && m.venueAccess.includes(selectedPub?.id));
+    return (members || [])
+      .filter((m) => m.active !== false && m.onRota !== false && hasVenue(m))
       .map((m) => ({ memberId: m.id, name: m.displayName || m.email || 'Staff', shifts: shiftsById.get(m.id) || {} }))
       .sort((a, b) => {
         const ai = orderIndex.has(a.memberId) ? orderIndex.get(a.memberId) : Infinity;
         const bi = orderIndex.has(b.memberId) ? orderIndex.get(b.memberId) : Infinity;
         return ai !== bi ? ai - bi : a.name.localeCompare(b.name);
       });
-  }, [eligibleMembers, savedRows, staffOrder, hiddenIds]);
-
-  // Eligible members currently hidden from the rota (for the restore control).
-  const hiddenMembers = useMemo(() => {
-    const hidden = new Set(hiddenIds);
-    return eligibleMembers.filter((m) => hidden.has(m.id));
-  }, [eligibleMembers, hiddenIds]);
+  }, [members, savedRows, selectedPub, staffOrder]);
 
   // The signed-in user's own member row (matched by email), for highlighting.
   const myMemberId = useMemo(() => {
@@ -180,19 +161,6 @@ function Rota() {
   const reorderStaff = (orderedIds) => {
     setStaffOrder(orderedIds);
     if (venuePath) saveStaffOrder(venuePath, orderedIds);
-  };
-
-  // Remove a member from the rota (hidden across all weeks until restored).
-  const removeFromRota = (memberId) => {
-    if (hiddenIds.includes(memberId)) return;
-    const next = [...hiddenIds, memberId];
-    setHiddenIds(next);
-    if (venuePath) saveHiddenStaff(venuePath, next);
-  };
-  const restoreToRota = (memberId) => {
-    const next = hiddenIds.filter((id) => id !== memberId);
-    setHiddenIds(next);
-    if (venuePath) saveHiddenStaff(venuePath, next);
   };
 
   // Publish this week's rota so staff can see it.
@@ -264,32 +232,9 @@ function Rota() {
             highlightMemberId={myMemberId}
             onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
             onReorder={reorderStaff}
-            onRemoveRow={removeFromRota}
           />
         )}
       </div>
-
-      {admin && hiddenMembers.length > 0 && (
-        <div style={{ marginTop: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: colors.textSecondary }}>Not on rota:</span>
-          {hiddenMembers.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => restoreToRota(m.id)}
-              title="Add back to the rota"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                padding: '0.3rem 0.6rem', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
-                borderRadius: '9999px', border: `1px solid ${colors.border}`,
-                backgroundColor: colors.bgLight, color: colors.textPrimary,
-              }}
-            >
-              {m.displayName || m.email} <span aria-hidden="true" style={{ color: colors.primary, fontWeight: 800 }}>+</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {admin && editing && (
         <ShiftEditor

@@ -10,7 +10,6 @@
  *   rows    - [{ memberId, name, shifts: { mon:{start,end}|undefined, ... } }]
  *   onCellClick(row, dayKey)
  *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
- *   onRemoveRow(memberId)       - hide this member from the rota
  *   readOnly          - staff view: no editing, no dragging, no "+" affordances
  *   highlightMemberId - tint this member's row (the signed-in user's own row)
  */
@@ -54,7 +53,7 @@ function fmtHours(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder, onRemoveRow, readOnly = false, highlightMemberId = null }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -219,18 +218,6 @@ function RotaGrid({ days, rows, onCellClick, onReorder, onRemoveRow, readOnly = 
                 <span style={{ fontWeight: hi ? 800 : nameCell.fontWeight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {row.name}{hi ? ' (you)' : ''}
                 </span>
-                {!readOnly && onRemoveRow && (
-                  <button
-                    type="button"
-                    aria-label={`Remove ${row.name} from the rota`}
-                    title="Remove from rota"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); onRemoveRow(row.memberId); }}
-                    style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, padding: '0 0.1rem', flexShrink: 0 }}
-                  >
-                    ×
-                  </button>
-                )}
               </div>
               {days.map((d) => {
                 const shift = row.shifts?.[d.key];

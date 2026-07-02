@@ -966,32 +966,6 @@ export async function saveStaffOrder(venuePath, order) {
   }
 }
 
-/** Live list of memberIds hidden from the rota (e.g. staff who never work). */
-export function subscribeToHiddenStaff(venuePath, onData, onError) {
-  const ref = doc(db, `${venuePath}/rotaPrefs/hiddenStaff`);
-  return onSnapshot(
-    ref,
-    (snap) => onData(snap.exists() ? (snap.data().hidden || []) : []),
-    (error) => {
-      console.error('Error in hidden staff listener:', error);
-      if (onError) onError(error.message);
-    }
-  );
-}
-
-/** Persist the list of memberIds hidden from the rota. */
-export async function saveHiddenStaff(venuePath, hidden) {
-  try {
-    const { accountId, venueId } = idsFromVenuePath(venuePath);
-    const ref = doc(db, `${venuePath}/rotaPrefs/hiddenStaff`);
-    await setDoc(ref, { accountId, venueId, hidden, updatedAt: Timestamp.now() }, { merge: true });
-    return { success: true };
-  } catch (error) {
-    console.error('Error saving hidden staff:', error);
-    return { success: false, error: error.message };
-  }
-}
-
 /** Record one use of a start–end shift pattern (increments its counter). */
 export async function bumpShiftPattern(venuePath, start, end) {
   try {
