@@ -41,9 +41,9 @@ function Rota() {
   const colors = getThemeColors(isDark);
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
-  const [rows, setRows] = useState([]);
+  const [savedRows, setSavedRows] = useState([]); // only members who have shifts
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(null); // { rowIndex, dayKey }
+  const [editing, setEditing] = useState(null); // { row, dayKey }
 
   const venuePath = selectedPub?.path;
   const weekId = useMemo(() => toISODate(weekStart), [weekStart]);
@@ -55,40 +55,40 @@ function Rota() {
     const unsub = subscribeToRota(
       venuePath,
       weekId,
-      (data) => { setRows(data?.rows || []); setLoading(false); },
+      (data) => { setSavedRows(data?.rows || []); setLoading(false); },
       () => setLoading(false),
     );
     return () => unsub();
   }, [venuePath, weekId]);
 
-  // Persist the current rows for this week (whole-doc write — low volume).
-  const persist = (nextRows) => {
-    setRows(nextRows);
-    if (venuePath) saveRota(venuePath, weekId, { weekStart: weekId, rows: nextRows });
-  };
-
   const days = useMemo(() => DAY_KEYS.map((key, i) => {
     const date = addDays(weekStart, i);
-    return { key, label: DAY_LABELS[key], dateLabel: `${date.getDate()}/${date.getMonth() + 1}`, weekend: key === 'sat' || key === 'sun' };
+    return { key, label: DAY_LABELS[key], dateLabel: `${date.getDate()}/${date.getMonth() + 1}` };
   }), [weekStart]);
 
-  const availableMembers = useMemo(() => {
-    const used = new Set(rows.map((r) => r.memberId));
+  // Every eligible staff member is a row; merge in any saved shifts by memberId.
+  const rows = useMemo(() => {
+    const shiftsById = new Map(savedRows.map((r) => [r.memberId, r.shifts || {}]));
     const hasVenue = (m) => m.venueAccess === 'all' || (Array.isArray(m.venueAccess) && m.venueAccess.includes(selectedPub?.id));
-    return (members || []).filter((m) => m.active !== false && hasVenue(m) && !used.has(m.id));
-  }, [members, rows, selectedPub]);
+    return (members || [])
+      .filter((m) => m.active !== false && hasVenue(m))
+      .map((m) => ({ memberId: m.id, name: m.displayName || m.email || 'Staff', shifts: shiftsById.get(m.id) || {} }));
+  }, [members, savedRows, selectedPub]);
 
   // Gate after hooks so hook order stays stable.
   if (!(isAdmin && isAdmin())) return <Navigate to="/" replace />;
 
-  const addStaff = (memberId) => {
-    const m = (members || []).find((x) => x.id === memberId);
-    if (!m) return;
-    persist([...rows, { memberId, name: m.displayName || m.email || 'Staff', shifts: {} }]);
-  };
-  const removeRow = (rowIndex) => persist(rows.filter((_, i) => i !== rowIndex));
-  const setShift = (rowIndex, dayKey, shift) => {
-    persist(rows.map((r, i) => (i === rowIndex ? { ...r, shifts: { ...r.shifts, [dayKey]: shift } } : r)));
+  // Set/clear one shift; store only members who have at least one shift.
+  const setShift = (row, dayKey, shift) => {
+    const byId = new Map(savedRows.map((r) => [r.memberId, { ...r, shifts: { ...r.shifts } }]));
+    const entry = byId.get(row.memberId) || { memberId: row.memberId, name: row.name, shifts: {} };
+    entry.name = row.name;
+    if (shift) entry.shifts[dayKey] = shift; else delete entry.shifts[dayKey];
+    if (Object.keys(entry.shifts).length > 0) byId.set(row.memberId, entry);
+    else byId.delete(row.memberId);
+    const next = Array.from(byId.values());
+    setSavedRows(next);
+    if (venuePath) saveRota(venuePath, weekId, { weekStart: weekId, rows: next });
     setEditing(null);
   };
 
@@ -105,8 +105,6 @@ function Rota() {
     backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`,
     borderRadius: '12px', padding: '1.25rem', boxShadow: `0 2px 12px ${colors.shadow}`,
   };
-
-  const editRow = editing != null ? rows[editing.rowIndex] : null;
 
   return (
     <div style={{ maxWidth: '820px', margin: '0 auto' }}>
@@ -131,21 +129,18 @@ function Rota() {
           <RotaGrid
             days={days}
             rows={rows}
-            availableMembers={availableMembers}
-            onCellClick={(rowIndex, dayKey) => setEditing({ rowIndex, dayKey })}
-            onRemoveRow={removeRow}
-            onAddStaff={addStaff}
+            onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
           />
         )}
       </div>
 
-      {editing != null && editRow && (
+      {editing && (
         <ShiftEditor
-          staffName={editRow.name}
+          staffName={editing.row.name}
           dayLabel={(() => { const d = days.find((x) => x.key === editing.dayKey); return `${d.label} ${d.dateLabel}`; })()}
-          value={editRow.shifts?.[editing.dayKey] || null}
-          onSave={(shift) => setShift(editing.rowIndex, editing.dayKey, shift)}
-          onClear={() => setShift(editing.rowIndex, editing.dayKey, null)}
+          value={editing.row.shifts?.[editing.dayKey] || null}
+          onSave={(shift) => setShift(editing.row, editing.dayKey, shift)}
+          onClear={() => setShift(editing.row, editing.dayKey, null)}
           onCancel={() => setEditing(null)}
         />
       )}
