@@ -9,9 +9,10 @@
  *   days    - [{ key:'mon', label:'Mon', dateLabel:'30/6' }]
  *   rows    - [{ memberId, name, shifts: { mon:{start,end}|undefined, ... } }]
  *   onCellClick(row, dayKey)
+ *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -48,10 +49,22 @@ function fmtHours(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function RotaGrid({ days, rows, onCellClick }) {
+function RotaGrid({ days, rows, onCellClick, onReorder }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
+
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+
+  const moveRow = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    const ids = rows.map((r) => r.memberId);
+    const [moved] = ids.splice(from, 1);
+    ids.splice(to, 0, moved);
+    onReorder?.(ids);
+  };
+  const endDrag = () => { setDragIndex(null); setOverIndex(null); };
 
   const grid = {
     display: 'grid',
@@ -136,9 +149,25 @@ function RotaGrid({ days, rows, onCellClick }) {
         {/* Staff rows */}
         {rows.map((row) => {
           const totalMin = days.reduce((sum, d) => sum + shiftMinutes(row.shifts?.[d.key]), 0);
+          const rowIndex = rows.indexOf(row);
           return (
             <React.Fragment key={row.memberId}>
-              <div style={nameCell}>
+              <div
+                style={{
+                  ...nameCell,
+                  gap: '0.5rem',
+                  cursor: 'grab',
+                  boxShadow: overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
+                  opacity: dragIndex === rowIndex ? 0.4 : 1,
+                }}
+                draggable
+                onDragStart={(e) => { setDragIndex(rowIndex); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={(e) => { e.preventDefault(); if (overIndex !== rowIndex) setOverIndex(rowIndex); }}
+                onDrop={(e) => { e.preventDefault(); moveRow(dragIndex, rowIndex); endDrag(); }}
+                onDragEnd={endDrag}
+                title="Drag to reorder"
+              >
+                <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1rem', lineHeight: 1, userSelect: 'none' }}>⠿</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
               </div>
               {days.map((d) => {

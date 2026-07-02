@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, subscribeToShiftPatterns, bumpShiftPattern } from '../services/apiService';
+import { subscribeToRota, saveRota, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
@@ -57,6 +57,7 @@ function Rota() {
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [savedRows, setSavedRows] = useState([]); // only members who have shifts
   const [patternCounts, setPatternCounts] = useState({}); // 'HH:MM-HH:MM' → uses
+  const [staffOrder, setStaffOrder] = useState([]); // custom memberId ordering
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // { row, dayKey }
 
@@ -83,6 +84,13 @@ function Rota() {
     return () => unsub();
   }, [venuePath]);
 
+  // Subscribe to the custom staff ordering.
+  useEffect(() => {
+    if (!venuePath) return undefined;
+    const unsub = subscribeToStaffOrder(venuePath, setStaffOrder, () => {});
+    return () => unsub();
+  }, [venuePath]);
+
   // Quick-pick pills: learned patterns ranked by usage, then defaults to fill.
   const presets = useMemo(() => {
     const learned = Object.entries(patternCounts)
@@ -106,14 +114,21 @@ function Rota() {
     return { key, label: DAY_LABELS[key], dateLabel: `${date.getDate()}/${date.getMonth() + 1}` };
   }), [weekStart]);
 
-  // Every eligible staff member is a row; merge in any saved shifts by memberId.
+  // Every eligible staff member is a row; merge in any saved shifts by memberId
+  // and apply the custom drag order (unordered members fall back to A–Z).
   const rows = useMemo(() => {
     const shiftsById = new Map(savedRows.map((r) => [r.memberId, r.shifts || {}]));
+    const orderIndex = new Map(staffOrder.map((id, i) => [id, i]));
     const hasVenue = (m) => m.venueAccess === 'all' || (Array.isArray(m.venueAccess) && m.venueAccess.includes(selectedPub?.id));
     return (members || [])
       .filter((m) => m.active !== false && hasVenue(m))
-      .map((m) => ({ memberId: m.id, name: m.displayName || m.email || 'Staff', shifts: shiftsById.get(m.id) || {} }));
-  }, [members, savedRows, selectedPub]);
+      .map((m) => ({ memberId: m.id, name: m.displayName || m.email || 'Staff', shifts: shiftsById.get(m.id) || {} }))
+      .sort((a, b) => {
+        const ai = orderIndex.has(a.memberId) ? orderIndex.get(a.memberId) : Infinity;
+        const bi = orderIndex.has(b.memberId) ? orderIndex.get(b.memberId) : Infinity;
+        return ai !== bi ? ai - bi : a.name.localeCompare(b.name);
+      });
+  }, [members, savedRows, selectedPub, staffOrder]);
 
   // Gate after hooks so hook order stays stable.
   if (!(isAdmin && isAdmin())) return <Navigate to="/" replace />;
@@ -133,6 +148,12 @@ function Rota() {
       if (shift) bumpShiftPattern(venuePath, shift.start, shift.end); // learn the pattern
     }
     setEditing(null);
+  };
+
+  // Persist a new staff ordering (array of memberIds, in display order).
+  const reorderStaff = (orderedIds) => {
+    setStaffOrder(orderedIds);
+    if (venuePath) saveStaffOrder(venuePath, orderedIds);
   };
 
   const weekEnd = addDays(weekStart, 6);
@@ -173,6 +194,7 @@ function Rota() {
             days={days}
             rows={rows}
             onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
+            onReorder={reorderStaff}
           />
         )}
       </div>

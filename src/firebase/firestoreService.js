@@ -923,6 +923,32 @@ export function subscribeToShiftPatterns(venuePath, onData, onError) {
   );
 }
 
+/** Live custom staff ordering for the rota (array of memberIds). */
+export function subscribeToStaffOrder(venuePath, onData, onError) {
+  const ref = doc(db, `${venuePath}/rotaPrefs/staffOrder`);
+  return onSnapshot(
+    ref,
+    (snap) => onData(snap.exists() ? (snap.data().order || []) : []),
+    (error) => {
+      console.error('Error in staff order listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Persist the custom staff ordering (array of memberIds). */
+export async function saveStaffOrder(venuePath, order) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const ref = doc(db, `${venuePath}/rotaPrefs/staffOrder`);
+    await setDoc(ref, { accountId, venueId, order, updatedAt: Timestamp.now() }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving staff order:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Record one use of a start–end shift pattern (increments its counter). */
 export async function bumpShiftPattern(venuePath, start, end) {
   try {

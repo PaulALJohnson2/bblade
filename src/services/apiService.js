@@ -64,4 +64,6 @@ export {
   saveRota,
   subscribeToShiftPatterns,
   bumpShiftPattern,
+  subscribeToStaffOrder,
+  saveStaffOrder,
 } from '../firebase/firestoreService';
