@@ -150,9 +150,20 @@ export const AuthProvider = ({ children }) => {
           setAuthError(null);
         } else {
           setAuthError(
-            'Access denied — this Google account is not authorised. Ask an administrator to add you.'
+            'Access denied — this account is not authorised. Ask an administrator to add you.'
           );
-          await signOut(auth);
+          // If this Firebase account was just created (e.g. someone requested an
+          // email link to an address that isn't on the allowlist), delete the
+          // record so we don't accumulate orphan accounts. Falls back to sign-out.
+          // Note: not a security boundary — see role-enforced-rules.
+          const created = user.metadata?.creationTime;
+          const lastSeen = user.metadata?.lastSignInTime;
+          try {
+            if (created && created === lastSeen) await user.delete();
+            else await signOut(auth);
+          } catch {
+            await signOut(auth);
+          }
           setCurrentUser(null);
           setAuthorized(false);
         }
