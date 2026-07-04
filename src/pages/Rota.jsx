@@ -62,10 +62,21 @@ function Rota() {
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // "Fit to screen": shrink the grid so the whole week fits with no sideways
-  // scroll. Remembered across visits.
+  // scroll. Defaults on for phones; remembered once the user toggles it.
   const [compact, setCompact] = useState(() => {
-    try { return localStorage.getItem('rotaCompact') === '1'; } catch { return false; }
+    try {
+      const saved = localStorage.getItem('rotaCompact');
+      if (saved !== null) return saved === '1';
+    } catch { /* ignore */ }
+    return typeof window !== 'undefined' && window.innerWidth < 768;
   });
   const toggleCompact = () => setCompact((c) => {
     const next = !c;
@@ -187,13 +198,14 @@ function Rota() {
   const rangeLabel = `${fmt(weekStart)} – ${fmt(weekEnd)} ${weekEnd.getFullYear()}`;
 
   const navBtn = {
-    padding: '0.5rem 0.8rem', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
+    padding: isMobile ? '0.45rem 0.6rem' : '0.5rem 0.8rem', fontSize: isMobile ? '0.85rem' : '0.9rem',
+    fontWeight: 600, cursor: 'pointer',
     borderRadius: '8px', border: `1px solid ${colors.border}`,
     backgroundColor: colors.bgCard, color: colors.textPrimary,
   };
   const card = {
     backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`,
-    borderRadius: '12px', padding: '1.25rem', boxShadow: `0 2px 12px ${colors.shadow}`,
+    borderRadius: '12px', padding: isMobile ? '0.55rem' : '1.25rem', boxShadow: `0 2px 12px ${colors.shadow}`,
   };
 
   return (
@@ -206,7 +218,7 @@ function Rota() {
       {/* Week navigation */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, -7))}>‹ Prev</button>
-        <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary, minWidth: '190px', textAlign: 'center' }}>{rangeLabel}</div>
+        <div style={{ fontWeight: 700, fontSize: isMobile ? '0.9rem' : '1rem', color: colors.textPrimary, minWidth: isMobile ? '110px' : '190px', flex: isMobile ? 1 : 'none', textAlign: 'center' }}>{rangeLabel}</div>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
         <button

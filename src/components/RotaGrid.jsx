@@ -110,8 +110,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   // Compact ("fit to screen") mode: let the seven day columns shrink to share
   // the available width (no min column width, no grid min-width) and dial the
   // padding/fonts down so a full week fits without horizontal scrolling.
-  const nameColW = compact ? '84px' : NAME_COL;
-  const totalColW = compact ? 'minmax(40px, 0.6fr)' : '96px';
+  const nameColW = compact ? '72px' : NAME_COL;
+  const totalColW = compact ? 'minmax(34px, 0.55fr)' : '96px';
   const dayCols = compact ? 'repeat(7, minmax(0, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
 
   const grid = {
@@ -128,7 +128,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const cellBase = {
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
-    padding: compact ? '0.35rem 0.25rem' : '1rem 0.5rem',
+    padding: compact ? '0.35rem 0.12rem' : '1rem 0.5rem',
     minHeight: compact ? '38px' : '76px',
     display: 'flex',
     alignItems: 'center',
@@ -164,6 +164,19 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     whiteSpace: 'nowrap',
     width: '100%',
     textAlign: 'center',
+  };
+  // Compact cells stack start over end so a day column needs only ~2 chars of
+  // width — the whole week then fits on a phone with no horizontal scroll.
+  const timeStack = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: 1.05,
+    fontSize: '0.78rem',
+    fontWeight: 700,
+    color: accent,
+    width: '100%',
   };
   const totalCell = {
     ...cellBase,
@@ -239,7 +252,14 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                     tabIndex={readOnly ? undefined : 0}
                   >
                     {shift
-                      ? <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: compact ? '0 0.12rem' : '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>
+                      ? (compact
+                          ? (
+                            <span style={timeStack}>
+                              <span>{fmtTime(shift.start)}</span>
+                              <span style={{ opacity: 0.75, fontSize: '0.9em' }}>{fmtTime(shift.end)}</span>
+                            </span>
+                          )
+                          : <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>)
                       : (!readOnly && <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>)}
                   </div>
                 );
