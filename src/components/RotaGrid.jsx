@@ -27,6 +27,10 @@ import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '190px';
 
+// Shift times are set in a handwriting font so the rota reads like a hand-written
+// paper one (Patrick Hand is bundled; the rest are platform fallbacks).
+const HANDWRITING = "'Patrick Hand', 'Bradley Hand', 'Segoe Print', 'Comic Sans MS', cursive";
+
 // Slate-blue text accent for shift times (light + dark variants).
 const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
 // Own-row highlight tint.
@@ -243,10 +247,11 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
               {days.map((d) => {
                 const shifts = dayShifts(row.shifts?.[d.key]);
                 const n = shifts.length;
-                // One shift reads big; split days shrink so both ranges fit.
+                // One shift reads big; the more shifts stacked in a day, the
+                // smaller they go so they don't crowd the cell.
                 const timeFont = compact
-                  ? (n > 1 ? '0.6rem' : '0.72rem')
-                  : (n > 1 ? '1.05rem' : '1.7rem');
+                  ? (n >= 3 ? '0.52rem' : n === 2 ? '0.62rem' : '0.78rem')
+                  : (n >= 3 ? '0.85rem' : n === 2 ? '1.1rem' : '1.7rem');
                 return (
                   <div
                     key={d.key}
@@ -261,6 +266,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                           <span
                             key={i}
                             style={{
+                              fontFamily: HANDWRITING,
                               fontSize: timeFont, fontWeight: 700, color: accent, textAlign: 'center',
                               // Compact columns are narrow: let a long range (half-hour
                               // times) wrap — but only at the dash, never mid-number.
