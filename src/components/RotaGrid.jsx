@@ -124,11 +124,11 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   // Compact ("fit to screen") mode: let the seven day columns shrink to share
   // the available width (no min column width, no grid min-width) and dial the
   // padding/fonts down so a full week fits without horizontal scrolling.
-  const nameColW = compact ? '72px' : NAME_COL;
-  const totalColW = compact ? 'minmax(34px, 0.55fr)' : '96px';
-  // Compact and full-screen must fit the whole week in the available width, so
-  // the day columns can shrink to zero; only the plain in-page (laptop) grid
-  // keeps a 96px minimum and scrolls sideways.
+  // Keep the name/hours columns tight so the day columns get as much width as
+  // possible (long names truncate with an ellipsis). Full-screen and compact
+  // fit the whole week; only the plain in-page (laptop) grid scrolls sideways.
+  const nameColW = compact ? '58px' : (fill ? '92px' : NAME_COL);
+  const totalColW = compact ? 'minmax(30px, 0.5fr)' : (fill ? '58px' : '96px');
   const dayCols = (compact || fill) ? 'repeat(7, minmax(0, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
 
   const grid = {
@@ -153,7 +153,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const cellBase = {
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
-    padding: compact ? '0.35rem 0.12rem' : '1rem 0.5rem',
+    padding: compact ? '0.3rem 0.1rem' : (fill ? '0.3rem 0.15rem' : '1rem 0.5rem'),
     minHeight: fill ? 0 : (compact ? '38px' : '76px'),
     display: 'flex',
     alignItems: 'center',
@@ -175,7 +175,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const nameCell = {
     ...cellBase,
     fontWeight: 600,
-    fontSize: compact ? '0.78rem' : '1rem',
+    fontSize: compact ? '0.74rem' : (fill ? '0.85rem' : '1rem'),
     color: colors.textPrimary,
   };
   const dayCell = {
