@@ -17,21 +17,28 @@ import RotaGrid from './RotaGrid';
 function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const [portrait, setPortrait] = useState(
-    () => typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
-  );
+  // Size the grid from the *measured* viewport, not vh/vw units — on mobile
+  // those don't match the visible area (browser/PWA toolbars, safe areas) and
+  // the rotated grid would spill off-screen.
+  const readSize = () => ({
+    w: typeof window !== 'undefined' ? window.innerWidth : 0,
+    h: typeof window !== 'undefined' ? window.innerHeight : 0,
+  });
+  const [size, setSize] = useState(readSize);
 
   useEffect(() => {
-    const update = () => setPortrait(window.innerHeight > window.innerWidth);
+    const update = () => setSize(readSize());
     update();
     window.addEventListener('resize', update);
     window.addEventListener('orientationchange', update);
+    window.visualViewport?.addEventListener('resize', update);
     // Don't let the page behind scroll while the overlay is up.
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       window.removeEventListener('resize', update);
       window.removeEventListener('orientationchange', update);
+      window.visualViewport?.removeEventListener('resize', update);
       document.body.style.overflow = prevOverflow;
     };
   }, []);
@@ -45,10 +52,12 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
 
   // Portrait: give the grid a landscape box (as wide as the screen is tall) and
   // rotate it a quarter turn — its rotated bounding box then equals the screen.
-  // Landscape: fill the overlay directly.
+  // Landscape: fill the screen directly. Sizes are exact pixels so nothing is
+  // clipped or letterboxed.
+  const portrait = size.h > size.w;
   const box = portrait
-    ? { width: '100vh', height: '100vw', transform: 'rotate(90deg)', transformOrigin: 'center center' }
-    : { width: '100%', height: '100%' };
+    ? { width: `${size.h}px`, height: `${size.w}px`, transform: 'rotate(90deg)', transformOrigin: 'center center' }
+    : { width: `${size.w}px`, height: `${size.h}px` };
 
   return (
     <div
