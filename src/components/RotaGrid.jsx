@@ -7,7 +7,8 @@
  *
  * Props:
  *   days    - [{ key:'mon', label:'Mon', dateLabel:'30/6' }]
- *   rows    - [{ memberId, name, shifts: { mon:{start,end}|undefined, ... } }]
+ *   rows    - [{ memberId, name, shifts: { mon:[{start,end},...]|undefined, ... } }]
+ *             (a day holds an array of shifts; legacy single-object days still read)
  *   onCellClick(row, dayKey)
  *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
  *   readOnly          - staff view: no editing, no dragging, no "+" affordances
@@ -21,6 +22,7 @@
 
 import React, { useRef, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
+import { dayShifts } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '190px';
@@ -48,6 +50,11 @@ function shiftMinutes(shift) {
   let e = shift.end === '00:00' ? 1440 : eh * 60 + em;
   if (e <= s) e += 1440;
   return e - s;
+}
+
+// Total minutes worked in a day across all of its shifts (handles split days).
+function dayMinutes(value) {
+  return dayShifts(value).reduce((sum, s) => sum + shiftMinutes(s), 0);
 }
 
 // Minutes → "40h" / "37h 30m" (blank for zero).
@@ -170,27 +177,6 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     cursor: 'pointer',
     WebkitTapHighlightColor: 'transparent',
   };
-  const timeText = {
-    fontSize: compact ? '0.82rem' : '1.7rem',
-    fontWeight: 700,
-    color: accent,
-    whiteSpace: 'nowrap',
-    width: '100%',
-    textAlign: 'center',
-  };
-  // Compact cells stack start over end so a day column needs only ~2 chars of
-  // width — the whole week then fits on a phone with no horizontal scroll.
-  const timeStack = {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    lineHeight: 1.05,
-    fontSize: '0.78rem',
-    fontWeight: 700,
-    color: accent,
-    width: '100%',
-  };
   const totalCell = {
     ...cellBase,
     justifyContent: 'center',
@@ -222,7 +208,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
 
         {/* Staff rows */}
         {rows.map((row) => {
-          const totalMin = days.reduce((sum, d) => sum + shiftMinutes(row.shifts?.[d.key]), 0);
+          const totalMin = days.reduce((sum, d) => sum + dayMinutes(row.shifts?.[d.key]), 0);
           const rowIndex = rows.indexOf(row);
           const hi = highlightMemberId && row.memberId === highlightMemberId;
           const rowBg = hi ? hilite : undefined;
@@ -255,7 +241,12 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 </span>
               </div>
               {days.map((d) => {
-                const shift = row.shifts?.[d.key];
+                const shifts = dayShifts(row.shifts?.[d.key]);
+                const n = shifts.length;
+                // One shift reads big; split days shrink so both ranges fit.
+                const timeFont = compact
+                  ? (n > 1 ? '0.6rem' : '0.72rem')
+                  : (n > 1 ? '1.05rem' : '1.7rem');
                 return (
                   <div
                     key={d.key}
@@ -264,16 +255,25 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                     role={readOnly ? undefined : 'button'}
                     tabIndex={readOnly ? undefined : 0}
                   >
-                    {shift
-                      ? (compact
-                          ? (
-                            <span style={timeStack}>
-                              <span>{fmtTime(shift.start)}</span>
-                              <span style={{ opacity: 0.75, fontSize: '0.9em' }}>{fmtTime(shift.end)}</span>
-                            </span>
-                          )
-                          : <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>)
-                      : (!readOnly && <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>)}
+                    {n > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: compact ? '1px' : '2px', width: '100%', lineHeight: 1.1 }}>
+                        {shifts.map((s, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              fontSize: timeFont, fontWeight: 700, color: accent, textAlign: 'center',
+                              // Compact columns are narrow: let a long range (half-hour
+                              // times) wrap — but only at the dash, never mid-number.
+                              whiteSpace: compact ? 'normal' : 'nowrap',
+                            }}
+                          >
+                            <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.start)}</span>
+                            <span style={{ padding: compact ? '0 0.06rem' : '0 0.3rem' }}>–</span>
+                            <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.end)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (!readOnly && <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>)}
                   </div>
                 );
               })}
@@ -284,7 +284,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
 
         {/* Grand total row — omitted in the staff view. */}
         {rows.length > 0 && !readOnly && (() => {
-          const grand = rows.reduce((sum, r) => sum + days.reduce((s, d) => s + shiftMinutes(r.shifts?.[d.key]), 0), 0);
+          const grand = rows.reduce((sum, r) => sum + days.reduce((s, d) => s + dayMinutes(r.shifts?.[d.key]), 0), 0);
           return (
             <>
               <div style={{ ...footBase, fontSize: compact ? '0.72rem' : '0.95rem' }}>Total</div>

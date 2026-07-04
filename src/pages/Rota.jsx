@@ -13,6 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
+import { dayShifts } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import RotaFullscreen from '../components/RotaFullscreen';
@@ -160,19 +161,21 @@ function Rota() {
     return (members || []).find((m) => (m.email || '').toLowerCase() === email)?.id || null;
   }, [members, currentUser]);
 
-  // Set/clear one shift; store only members who have at least one shift.
-  const setShift = (row, dayKey, shift) => {
+  // Set a day's shifts (an array — one entry, or several for a split shift; an
+  // empty array clears the day). Store only members who have at least one shift.
+  const setDayShifts = (row, dayKey, shifts) => {
+    const clean = (shifts || []).filter((s) => s && s.start && s.end);
     const byId = new Map(savedRows.map((r) => [r.memberId, { ...r, shifts: { ...r.shifts } }]));
     const entry = byId.get(row.memberId) || { memberId: row.memberId, name: row.name, shifts: {} };
     entry.name = row.name;
-    if (shift) entry.shifts[dayKey] = shift; else delete entry.shifts[dayKey];
+    if (clean.length) entry.shifts[dayKey] = clean; else delete entry.shifts[dayKey];
     if (Object.keys(entry.shifts).length > 0) byId.set(row.memberId, entry);
     else byId.delete(row.memberId);
     const next = Array.from(byId.values());
     setSavedRows(next);
     if (venuePath) {
       saveRota(venuePath, weekId, { weekStart: weekId, rows: next });
-      if (shift) bumpShiftPattern(venuePath, shift.start, shift.end); // learn the pattern
+      clean.forEach((s) => bumpShiftPattern(venuePath, s.start, s.end)); // learn the patterns
     }
     setEditing(null);
   };
@@ -284,9 +287,8 @@ function Rota() {
           staffName={editing.row.name}
           dayLabel={(() => { const d = days.find((x) => x.key === editing.dayKey); return `${d.label} ${d.dateLabel}`; })()}
           presets={presets}
-          value={editing.row.shifts?.[editing.dayKey] || null}
-          onSave={(shift) => setShift(editing.row, editing.dayKey, shift)}
-          onClear={() => setShift(editing.row, editing.dayKey, null)}
+          value={dayShifts(editing.row.shifts?.[editing.dayKey])}
+          onSave={(shifts) => setDayShifts(editing.row, editing.dayKey, shifts)}
           onCancel={() => setEditing(null)}
         />
       )}

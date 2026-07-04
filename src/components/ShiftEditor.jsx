@@ -1,9 +1,10 @@
 /**
- * ShiftEditor — a small centred modal for setting one shift's start/end time.
+ * ShiftEditor — a small centred modal for setting a person's shifts on one day.
  *
- * Opened when a rota day cell is tapped. Offers quick presets plus two
- * 15-minute time dropdowns. Calls onSave({start,end}) to set the shift,
- * onClear() to remove it, or onCancel() to dismiss without changes.
+ * Usually one shift, but a day can hold several (a split shift, e.g. a lunch and
+ * an evening). Each shift has quick presets plus 15-minute start/end dropdowns
+ * and a remove control; "Add another shift" appends one. Calls onSave(shifts)
+ * with the (possibly empty) array — an empty array clears the day.
  */
 
 import React, { useState } from 'react';
@@ -29,15 +30,29 @@ const DEFAULT_PRESETS = [
   { label: '6–12', start: '18:00', end: '00:00' },
 ];
 
-function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onClear, onCancel }) {
+// End "00:00" reads as midnight (end of day), so only flag a genuine reversal.
+const isInvalid = (s) => s.end !== '00:00' && s.end <= s.start;
+
+function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onCancel }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
-  const [start, setStart] = useState(value?.start || '09:00');
-  const [end, setEnd] = useState(value?.end || '17:00');
+  const initial = (Array.isArray(value) ? value : (value ? [value] : []))
+    .filter((s) => s && s.start && s.end)
+    .map((s) => ({ start: s.start, end: s.end }));
+  const [list, setList] = useState(initial.length ? initial : [{ start: '09:00', end: '17:00' }]);
+  const [focus, setFocus] = useState(0); // which shift the presets act on
 
-  // End "00:00" reads as midnight (end of day), so only flag a genuine reversal.
-  const invalid = end !== '00:00' && end <= start;
+  const setAt = (i, patch) => setList((l) => l.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const removeAt = (i) => setList((l) => l.filter((_, j) => j !== i));
+  const addShift = () => { setFocus(list.length); setList((l) => [...l, { start: '17:00', end: '23:00' }]); };
+  const applyPreset = (p) => {
+    if (!list.length) { setList([{ start: p.start, end: p.end }]); setFocus(0); return; }
+    setAt(Math.min(focus, list.length - 1), { start: p.start, end: p.end });
+  };
+
+  const anyInvalid = list.some(isInvalid);
+  const save = () => onSave(list.filter((s) => s.start && s.end && !isInvalid(s)));
 
   const overlay = {
     position: 'fixed', inset: 0, zIndex: 1000,
@@ -45,13 +60,13 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onClear, onC
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
   };
   const modal = {
-    width: '100%', maxWidth: '360px',
+    width: '100%', maxWidth: '360px', maxHeight: '90vh', overflowY: 'auto',
     backgroundColor: colors.bgCard, color: colors.textPrimary,
     border: `1px solid ${colors.borderLight}`, borderRadius: '14px',
     boxShadow: colors.shadowMd, padding: '1.25rem',
   };
   const select = {
-    flex: 1, padding: '0.6rem', fontSize: '1rem',
+    flex: 1, minWidth: 0, padding: '0.6rem', fontSize: '1rem',
     border: `2px solid ${colors.border}`, borderRadius: '8px',
     backgroundColor: colors.bgCard, color: colors.textPrimary,
   };
@@ -65,10 +80,11 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onClear, onC
   const btn = (kind) => ({
     padding: '0.7rem 1rem', fontSize: '0.95rem', fontWeight: 700,
     borderRadius: '8px', cursor: 'pointer', border: 'none',
-    ...(kind === 'save' && { backgroundColor: colors.primary, color: colors.onPrimary, opacity: invalid ? 0.5 : 1 }),
+    ...(kind === 'save' && { backgroundColor: colors.primary, color: colors.onPrimary, opacity: anyInvalid ? 0.5 : 1 }),
     ...(kind === 'clear' && { backgroundColor: 'transparent', color: colors.wastage, border: `1px solid ${colors.border}` }),
     ...(kind === 'cancel' && { backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}` }),
   });
+  const hadValue = initial.length > 0;
 
   return (
     <div style={overlay} onClick={onCancel}>
@@ -82,40 +98,63 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onClear, onC
               key={`${p.start}-${p.end}`}
               type="button"
               style={preset}
-              onClick={() => { setStart(p.start); setEnd(p.end); }}
+              onClick={() => applyPreset(p)}
             >
               {p.label}
             </button>
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.35rem' }}>
-          <div style={{ flex: 1 }}>
-            <div style={label}>Start</div>
-            <select style={select} value={start} onChange={(e) => setStart(e.target.value)}>
-              {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+        {list.map((s, i) => (
+          <div key={i} style={{ marginBottom: '0.6rem' }} onFocusCapture={() => setFocus(i)}>
+            {list.length > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: colors.textSecondary }}>Shift {i + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAt(i)}
+                  style={{ background: 'none', border: 'none', color: colors.wastage, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={label}>Start</div>
+                <select style={select} value={s.start} onChange={(e) => setAt(i, { start: e.target.value })}>
+                  {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={label}>End</div>
+                <select style={select} value={s.end} onChange={(e) => setAt(i, { end: e.target.value })}>
+                  {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t === '00:00' ? '00:00 (midnight)' : t}</option>)}
+                </select>
+              </div>
+            </div>
+            {isInvalid(s) && (
+              <div style={{ color: colors.error, fontSize: '0.78rem', marginTop: '0.35rem' }}>
+                End time must be after the start time.
+              </div>
+            )}
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={label}>End</div>
-            <select style={select} value={end} onChange={(e) => setEnd(e.target.value)}>
-              {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t === '00:00' ? '00:00 (midnight)' : t}</option>)}
-            </select>
-          </div>
-        </div>
+        ))}
 
-        {invalid && (
-          <div style={{ color: colors.error, fontSize: '0.78rem', marginBottom: '0.5rem' }}>
-            End time must be after the start time.
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={addShift}
+          style={{ marginTop: '0.25rem', background: 'none', border: `1px dashed ${colors.border}`, borderRadius: '8px', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, padding: '0.5rem 0.75rem', width: '100%' }}
+        >
+          + Add another shift
+        </button>
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-          <button type="button" style={btn('save')} disabled={invalid} onClick={() => onSave({ start, end })}>
+          <button type="button" style={btn('save')} disabled={anyInvalid} onClick={save}>
             Save
           </button>
-          {value && (
-            <button type="button" style={btn('clear')} onClick={onClear}>Clear</button>
+          {hadValue && (
+            <button type="button" style={btn('clear')} onClick={() => onSave([])}>Clear</button>
           )}
           <button type="button" style={{ ...btn('cancel'), marginLeft: 'auto' }} onClick={onCancel}>Cancel</button>
         </div>
