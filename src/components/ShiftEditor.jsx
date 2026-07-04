@@ -1,9 +1,9 @@
 /**
  * ShiftEditor — a small centred modal for setting a person's shifts on one day.
  *
- * Usually one shift, but a day can hold several (a split shift, e.g. a lunch and
- * an evening). Each shift has quick presets plus 15-minute start/end dropdowns
- * and a remove control; "Add another shift" appends one. Calls onSave(shifts)
+ * Usually one shift, but a day can hold two (a split shift, e.g. a lunch and an
+ * evening). Each shift has quick presets plus 15-minute start/end dropdowns and
+ * a remove control; "Add a split shift" appends a second. Calls onSave(shifts)
  * with the (possibly empty) array — an empty array clears the day.
  */
 
@@ -141,13 +141,15 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onCancel }) 
           </div>
         ))}
 
-        <button
-          type="button"
-          onClick={addShift}
-          style={{ marginTop: '0.25rem', background: 'none', border: `1px dashed ${colors.border}`, borderRadius: '8px', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, padding: '0.5rem 0.75rem', width: '100%' }}
-        >
-          + Add another shift
-        </button>
+        {list.length < 2 && (
+          <button
+            type="button"
+            onClick={addShift}
+            style={{ marginTop: '0.25rem', background: 'none', border: `1px dashed ${colors.border}`, borderRadius: '8px', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, padding: '0.5rem 0.75rem', width: '100%' }}
+          >
+            + Add a split shift
+          </button>
+        )}
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
           <button type="button" style={btn('save')} disabled={anyInvalid} onClick={save}>

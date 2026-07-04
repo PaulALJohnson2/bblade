@@ -179,6 +179,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     ...cellBase,
     justifyContent: 'center',
     cursor: 'pointer',
+    overflow: 'hidden', // keep shift times inside their own cell
     WebkitTapHighlightColor: 'transparent',
   };
   const totalCell = {
@@ -247,11 +248,17 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
               {days.map((d) => {
                 const shifts = dayShifts(row.shifts?.[d.key]);
                 const n = shifts.length;
-                // One shift reads big; the more shifts stacked in a day, the
-                // smaller they go so they don't crowd the cell.
-                const timeFont = compact
-                  ? (n >= 3 ? '0.52rem' : n === 2 ? '0.62rem' : '0.78rem')
-                  : (n >= 3 ? '0.85rem' : n === 2 ? '1.1rem' : '1.7rem');
+                const split = n >= 2;
+                // Longest range label in the cell, e.g. "9–5" (3) vs "12:30–2:30" (10).
+                const maxLen = n ? Math.max(...shifts.map((s) => fmtTime(s.start).length + 1 + fmtTime(s.end).length)) : 0;
+                // A single shift reads big; a split day drops so both lines fit the
+                // row. In the full-screen view each range must stay on one line, so
+                // a single shift's size adapts to its length (a long half-hour range
+                // shrinks to fit the column instead of clipping).
+                let timeFont;
+                if (compact) timeFont = split ? '0.56rem' : '0.78rem';
+                else if (fill) timeFont = split ? '0.72rem' : (maxLen <= 5 ? '1.5rem' : maxLen <= 7 ? '1.25rem' : '0.95rem');
+                else timeFont = split ? '1rem' : '1.4rem'; // laptop in-page
                 return (
                   <div
                     key={d.key}
@@ -261,16 +268,17 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                     tabIndex={readOnly ? undefined : 0}
                   >
                     {n > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: compact ? '1px' : '2px', width: '100%', lineHeight: 1.1 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: split ? '0px' : '2px', width: '100%', lineHeight: 1.05, overflow: 'hidden' }}>
                         {shifts.map((s, i) => (
                           <span
                             key={i}
                             style={{
                               fontFamily: HANDWRITING,
                               fontSize: timeFont, fontWeight: 700, color: accent, textAlign: 'center',
-                              // Compact columns are narrow: let a long range (half-hour
-                              // times) wrap — but only at the dash, never mid-number.
-                              whiteSpace: compact ? 'normal' : 'nowrap',
+                              // Full-screen rows are short and fixed, so keep each
+                              // range on one line there; the in-page views can let a
+                              // long range wrap at the dash (inner spans are nowrap).
+                              whiteSpace: fill ? 'nowrap' : 'normal',
                             }}
                           >
                             <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.start)}</span>
