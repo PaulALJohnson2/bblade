@@ -2,10 +2,11 @@
  * RotaFullscreen — a read-only, whole-screen view of the week's rota.
  *
  * The grid is rendered at its natural (full) size, then scaled to fill the
- * screen as large as it can. On a tall/portrait phone it's rotated a quarter
- * turn (so a wide week uses the long edge of the screen) whenever that yields a
- * bigger result — turn the phone sideways and it reads naturally. Tap anywhere,
- * press Escape, or hit the close button to dismiss. Nothing here is editable.
+ * screen as large as it can. On a portrait screen (a phone held upright) it's
+ * rotated a quarter turn so it presents landscape — turn the phone sideways and
+ * it reads naturally and fills the screen. On any landscape screen (a laptop,
+ * or a phone turned sideways) it stays upright. Tap anywhere, press Escape, or
+ * hit the close button to dismiss. Nothing here is editable.
  */
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -31,10 +32,13 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
       const pad = 20; // breathing room around the edges
       const availW = Math.max(1, window.innerWidth - pad);
       const availH = Math.max(1, window.innerHeight - pad);
-      const upright = Math.min(availW / natW, availH / natH);
-      const turned = Math.min(availW / natH, availH / natW);
-      const rotate = turned > upright;
-      setT({ scale: rotate ? turned : upright, rotate });
+      // Rotate only on portrait screens (a phone held upright); landscape
+      // screens — laptops, or a phone turned sideways — stay upright.
+      const rotate = window.innerHeight > window.innerWidth;
+      const scale = rotate
+        ? Math.min(availW / natH, availH / natW)
+        : Math.min(availW / natW, availH / natH);
+      setT({ scale, rotate });
     };
     fit();
     window.addEventListener('resize', fit);
