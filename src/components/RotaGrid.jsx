@@ -27,10 +27,6 @@ import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '190px';
 
-// Shift times are set in a handwriting font so the rota reads like a hand-written
-// paper one (Patrick Hand is bundled; the rest are platform fallbacks).
-const HANDWRITING = "'Patrick Hand', 'Bradley Hand', 'Segoe Print', 'Comic Sans MS', cursive";
-
 // Slate-blue text accent for shift times (light + dark variants).
 const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
 // Own-row highlight tint.
@@ -275,7 +271,6 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                           <span
                             key={i}
                             style={{
-                              fontFamily: HANDWRITING,
                               fontSize: timeFont, fontWeight: 700, color: accent, textAlign: 'center',
                               // Full-screen rows are short and fixed, so keep each
                               // range on one line there; the in-page views can let a

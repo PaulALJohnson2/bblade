@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
-import './handwriting-font.css';
 
 // PWA safeguard: after a deploy the new service worker (autoUpdate → skipWaiting)
 // claims this already-open page, which left the app running half-swapped against
