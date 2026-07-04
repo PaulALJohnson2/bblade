@@ -20,7 +20,7 @@
  *                       whole-screen view so the rota fills the screen
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
 import { dayShifts } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
@@ -64,7 +64,7 @@ function fmtHours(min) {
   return String(Number((min / 60).toFixed(2)));
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false, focusDayKey = null }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -73,6 +73,21 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const nameRefs = useRef({}); // rowIndex → name-cell DOM node, for hit-testing
+  const wrapRef = useRef(null); // the horizontally-scrolling wrapper
+  const nameHeadRef = useRef(null); // the "Staff" header cell (for its width)
+  const dayHeadRefs = useRef({}); // dayKey → header cell, to scroll it into view
+
+  // On the scrollable in-page grid, bring the focused day (today, on the current
+  // week) as far left as it can go — right after the pinned name column.
+  useLayoutEffect(() => {
+    if (fill || !focusDayKey) return;
+    const wrap = wrapRef.current;
+    const el = dayHeadRefs.current[focusDayKey];
+    if (!wrap || !el) return;
+    const nameW = nameHeadRef.current?.offsetWidth || 0;
+    const offset = (el.getBoundingClientRect().left - wrap.getBoundingClientRect().left) + wrap.scrollLeft - nameW;
+    wrap.scrollLeft = Math.max(0, offset);
+  }, [focusDayKey, days, rows, fill, compact]);
 
   const moveRow = (from, to) => {
     if (from == null || to == null || from === to) return;
@@ -205,12 +220,12 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   };
 
   return (
-    <div style={fill ? { width: '100%', height: '100%', overflow: 'hidden' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={wrapRef} style={fill ? { width: '100%', height: '100%', overflow: 'hidden' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={grid}>
         {/* Header row */}
-        <div style={{ ...headCell, alignItems: 'flex-start', ...(fill ? {} : { position: 'sticky', left: 0, zIndex: 3, backgroundColor: colors.bgCard }) }}>Staff</div>
+        <div ref={nameHeadRef} style={{ ...headCell, alignItems: 'flex-start', ...(fill ? {} : { position: 'sticky', left: 0, zIndex: 3, backgroundColor: colors.bgCard }) }}>Staff</div>
         {days.map((d) => (
-          <div key={d.key} style={headCell}>
+          <div key={d.key} ref={(el) => { dayHeadRefs.current[d.key] = el; }} style={headCell}>
             <span>{d.label}</span>
           </div>
         ))}

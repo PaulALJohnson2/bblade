@@ -138,6 +138,13 @@ function Rota() {
     return { key, label: DAY_LABELS[key], dateLabel: `${date.getDate()}/${date.getMonth() + 1}` };
   }), [weekStart]);
 
+  // On the current week, the grid scrolls today's column as far left as it can.
+  const todayKey = useMemo(() => {
+    const now = new Date();
+    if (toISODate(mondayOf(now)) !== weekId) return null;
+    return DAY_KEYS[(now.getDay() + 6) % 7];
+  }, [weekId]);
+
   // Rota rows: active members with venue access that are flagged On rota
   // (default true), merged with saved shifts, in the custom drag order
   // (unordered members fall back to A–Z).
@@ -227,7 +234,7 @@ function Rota() {
         <div style={{ fontWeight: 700, fontSize: isMobile ? '0.9rem' : '1rem', color: colors.textPrimary, minWidth: isMobile ? '110px' : '190px', flex: isMobile ? 1 : 'none', textAlign: 'center' }}>{rangeLabel}</div>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
-        {showGrid && !isMobile && (
+        {showGrid && (!isMobile || canEdit) && (
           <button
             type="button"
             style={{ ...navBtn, marginLeft: 'auto' }}
@@ -240,7 +247,7 @@ function Rota() {
         {canEdit && (
           <button
             type="button"
-            style={{ ...navBtn, ...((showGrid && !isMobile) ? {} : { marginLeft: 'auto' }), backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
+            style={{ ...navBtn, ...(showGrid ? {} : { marginLeft: 'auto' }), backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
             onClick={sendToStaff}
           >
             {sent ? 'Sent ✓' : published ? 'Re-send to staff' : 'Send to staff'}
@@ -274,6 +281,7 @@ function Rota() {
               rows={rows}
               readOnly={!canEdit}
               compact={compact}
+              focusDayKey={todayKey}
               highlightMemberId={myMemberId}
               onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
               onReorder={reorderStaff}
