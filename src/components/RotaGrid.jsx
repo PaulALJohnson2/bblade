@@ -143,8 +143,9 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     ...(fill ? {
       width: '100%',
       height: '100%',
-      // Staff view drops the grand-total row, so no trailing auto track.
-      gridTemplateRows: rows.length ? `auto repeat(${rows.length}, minmax(0, 1fr))${readOnly ? '' : ' auto'}` : undefined,
+      // header + staff rows + the per-day staff-count row (always) + the
+      // grand-total row (admin view only).
+      gridTemplateRows: rows.length ? `auto repeat(${rows.length}, minmax(0, 1fr)) auto${readOnly ? '' : ' auto'}` : undefined,
     } : {}),
   };
   // Thin ruled lines only — right + bottom on each cell; the grid border closes
@@ -297,6 +298,22 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
             </React.Fragment>
           );
         })}
+
+        {/* Staff-count-per-day row — how many people are on each day (everyone sees it). */}
+        {rows.length > 0 && (() => {
+          const counts = days.map((d) => rows.reduce((c, r) => c + (dayShifts(r.shifts?.[d.key]).length > 0 ? 1 : 0), 0));
+          return (
+            <>
+              <div style={{ ...footBase, fontSize: compact ? '0.58rem' : '0.85rem', color: colors.textSecondary }}>On</div>
+              {days.map((d, i) => (
+                <div key={d.key} style={{ ...footBase, justifyContent: 'center', textAlign: 'center', fontWeight: 700, fontSize: compact ? '0.72rem' : '1rem' }}>
+                  {counts[i] || ''}
+                </div>
+              ))}
+              <div style={{ ...footBase, borderRight: 'none' }} />
+            </>
+          );
+        })()}
 
         {/* Grand total row — omitted in the staff view. */}
         {rows.length > 0 && !readOnly && (() => {
