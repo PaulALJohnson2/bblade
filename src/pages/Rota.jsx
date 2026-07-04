@@ -245,7 +245,9 @@ function Rota() {
             ⤢ Full screen
           </button>
         )}
-        <button type="button" style={navBtn} onClick={() => window.print()}>Print</button>
+        {admin && (
+          <button type="button" style={navBtn} onClick={() => window.print()}>Print</button>
+        )}
         {admin && (
           <button
             type="button"
