@@ -126,7 +126,10 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   // padding/fonts down so a full week fits without horizontal scrolling.
   const nameColW = compact ? '72px' : NAME_COL;
   const totalColW = compact ? 'minmax(34px, 0.55fr)' : '96px';
-  const dayCols = compact ? 'repeat(7, minmax(0, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
+  // Compact and full-screen must fit the whole week in the available width, so
+  // the day columns can shrink to zero; only the plain in-page (laptop) grid
+  // keeps a 96px minimum and scrolls sideways.
+  const dayCols = (compact || fill) ? 'repeat(7, minmax(0, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
 
   const grid = {
     display: 'grid',
@@ -206,7 +209,6 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
         {days.map((d) => (
           <div key={d.key} style={headCell}>
             <span>{d.label}</span>
-            <span style={{ fontSize: readOnly ? (compact ? '0.55rem' : '0.68rem') : (compact ? '0.62rem' : '0.8rem'), fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
           </div>
         ))}
         <div style={{ ...headCell, borderRight: 'none' }}>Hours</div>
