@@ -61,12 +61,11 @@ function dayMinutes(value) {
   return dayShifts(value).reduce((sum, s) => sum + shiftMinutes(s), 0);
 }
 
-// Minutes → "40h" / "37h 30m" (blank for zero).
+// Minutes → decimal hours, e.g. 330→"5.5", 435→"7.25", 765→"12.75", 480→"12"
+// (shifts are 15-min steps, so hours land on exact .25 increments). Blank for zero.
 function fmtHours(min) {
   if (!min) return '';
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
+  return String(Number((min / 60).toFixed(2)));
 }
 
 function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false }) {
@@ -191,7 +190,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     textAlign: 'center', // keep "12h 45m" centred when it wraps to two lines
     borderRight: 'none',
     fontWeight: 700,
-    fontSize: compact ? '0.78rem' : '1rem',
+    fontSize: compact ? '0.6rem' : (fill ? '0.8rem' : '1rem'),
     color: colors.textPrimary,
   };
   const footBase = {
