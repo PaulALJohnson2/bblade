@@ -281,7 +281,7 @@ function Rota() {
               rows={rows}
               readOnly={!canEdit}
               compact={compact}
-              focusDayKey={todayKey}
+              focusDayKey={canEdit ? null : todayKey}
               highlightMemberId={myMemberId}
               onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
               onReorder={reorderStaff}
