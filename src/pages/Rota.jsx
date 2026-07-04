@@ -79,20 +79,9 @@ function Rota() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // "Fit to screen": shrink the grid so the whole week fits with no sideways
-  // scroll. Defaults on for phones; remembered once the user toggles it.
-  const [compact, setCompact] = useState(() => {
-    try {
-      const saved = localStorage.getItem('rotaCompact');
-      if (saved !== null) return saved === '1';
-    } catch { /* ignore */ }
-    return typeof window !== 'undefined' && window.innerWidth < 768;
-  });
-  const toggleCompact = () => setCompact((c) => {
-    const next = !c;
-    try { localStorage.setItem('rotaCompact', next ? '1' : '0'); } catch { /* ignore */ }
-    return next;
-  });
+  // On phones the in-page rota uses the compact (fit-to-screen) layout so the
+  // whole week fits with no sideways scroll; laptops show it full size.
+  const compact = isMobile;
 
   const venuePath = selectedPub?.path;
   const weekId = useMemo(() => toISODate(weekStart), [weekStart]);
@@ -235,19 +224,10 @@ function Rota() {
         <div style={{ fontWeight: 700, fontSize: isMobile ? '0.9rem' : '1rem', color: colors.textPrimary, minWidth: isMobile ? '110px' : '190px', flex: isMobile ? 1 : 'none', textAlign: 'center' }}>{rangeLabel}</div>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
-        <button
-          type="button"
-          style={{ ...navBtn, marginLeft: 'auto', ...(compact ? { backgroundColor: colors.primary, color: colors.onPrimary, border: 'none' } : {}) }}
-          onClick={toggleCompact}
-          aria-pressed={compact}
-          title={compact ? 'Show the full-size rota' : 'Shrink the rota so the whole week fits on screen'}
-        >
-          {compact ? 'Full size' : 'Fit to screen'}
-        </button>
-        {showGrid && (
+        {showGrid && !isMobile && (
           <button
             type="button"
-            style={navBtn}
+            style={{ ...navBtn, marginLeft: 'auto' }}
             onClick={() => setFullscreen(true)}
             title="View the rota full screen"
           >
@@ -257,7 +237,7 @@ function Rota() {
         {canEdit && (
           <button
             type="button"
-            style={{ ...navBtn, backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
+            style={{ ...navBtn, ...((showGrid && !isMobile) ? {} : { marginLeft: 'auto' }), backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
             onClick={sendToStaff}
           >
             {sent ? 'Sent ✓' : published ? 'Re-send to staff' : 'Send to staff'}
