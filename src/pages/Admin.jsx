@@ -156,7 +156,7 @@ function Admin() {
       icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
     { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, show: admin,
       icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
-    { key: 'rota', label: 'Rotas', desc: 'Build weekly staff rota', accent: colors.primary, show: admin, to: '/rota',
+    { key: 'rota', label: 'Rotas', desc: 'Build weekly staff rota', accent: colors.primary, show: admin, to: '/rota?edit=1',
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'] },
   ].filter((t) => t.show);
 

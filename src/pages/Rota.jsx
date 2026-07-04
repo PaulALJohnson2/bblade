@@ -1,5 +1,7 @@
 /**
- * Rota — admin-only weekly staff rota builder.
+ * Rota — weekly staff rota. View-only for everyone (including owners) except
+ * when opened from the Admin section (?edit=1), which unlocks editing and the
+ * "Send to staff" publish control.
  *
  * A paper-style grid: staff down the first column, Mon–Sun across the top, one
  * shift per cell. Gated to owners/managers and scoped to the selected venue.
@@ -7,6 +9,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
@@ -54,6 +57,11 @@ function Rota() {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const admin = !!(isAdmin && isAdmin());
+  // The rota is only editable when opened from the Admin section (which links
+  // with ?edit=1). Everywhere else — including the users-section "Rota" tile —
+  // it's view-only for everyone, owners included.
+  const [searchParams] = useSearchParams();
+  const canEdit = admin && searchParams.get('edit') === '1';
 
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [savedRows, setSavedRows] = useState([]); // only members who have shifts
@@ -210,8 +218,9 @@ function Rota() {
     borderRadius: '12px', padding: isMobile ? '0.55rem' : '1.25rem', boxShadow: `0 2px 12px ${colors.shadow}`,
   };
 
-  // The grid is on screen for admins always, and for staff once it's published.
-  const showGrid = !loading && (admin || published);
+  // The grid is on screen in the admin edit view always, and elsewhere once the
+  // week has been published (sent to staff).
+  const showGrid = !loading && (canEdit || published);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -245,10 +254,7 @@ function Rota() {
             ⤢ Full screen
           </button>
         )}
-        {admin && (
-          <button type="button" style={navBtn} onClick={() => window.print()}>Print</button>
-        )}
-        {admin && (
+        {canEdit && (
           <button
             type="button"
             style={{ ...navBtn, backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
@@ -259,7 +265,7 @@ function Rota() {
         )}
       </div>
 
-      {admin && published && !sent && (
+      {canEdit && published && !sent && (
         <div style={{ margin: '-0.4rem 0 1rem', fontSize: '0.82rem', color: colors.textSecondary }}>
           Published — staff can see this week. Any edits are visible to them immediately.
         </div>
@@ -268,22 +274,22 @@ function Rota() {
       <div style={card}>
         {loading ? (
           <div style={{ padding: '1.5rem', textAlign: 'center', color: colors.textSecondary }}>Loading rota…</div>
-        ) : (!admin && !published) ? (
+        ) : (!canEdit && !published) ? (
           <div style={{ padding: '1.75rem', textAlign: 'center', color: colors.textSecondary, fontSize: '0.95rem' }}>
             This week's rota hasn't been published yet.
           </div>
         ) : (
-          // Staff can't edit — tapping the rota opens the whole-screen view
-          // instead. Admins keep tap-to-edit and use the Full screen button.
+          // Only the admin edit view can edit — everywhere else, tapping the
+          // rota opens the whole-screen view instead.
           <div
-            onClick={!admin ? () => setFullscreen(true) : undefined}
-            style={{ cursor: !admin ? 'zoom-in' : 'default' }}
-            title={!admin ? 'Tap to view full screen' : undefined}
+            onClick={!canEdit ? () => setFullscreen(true) : undefined}
+            style={{ cursor: !canEdit ? 'zoom-in' : 'default' }}
+            title={!canEdit ? 'Tap to view full screen' : undefined}
           >
             <RotaGrid
               days={days}
               rows={rows}
-              readOnly={!admin}
+              readOnly={!canEdit}
               compact={compact}
               highlightMemberId={myMemberId}
               onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
@@ -293,7 +299,7 @@ function Rota() {
         )}
       </div>
 
-      {admin && editing && (
+      {canEdit && editing && (
         <ShiftEditor
           staffName={editing.row.name}
           dayLabel={(() => { const d = days.find((x) => x.key === editing.dayKey); return `${d.label} ${d.dateLabel}`; })()}
