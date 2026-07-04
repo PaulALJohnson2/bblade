@@ -55,7 +55,8 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onCancel }) 
   const save = () => onSave(list.filter((s) => s.start && s.end && !isInvalid(s)));
 
   const overlay = {
-    position: 'fixed', inset: 0, zIndex: 1000,
+    // Above the full-screen rota overlay (6000) so admins can edit from there.
+    position: 'fixed', inset: 0, zIndex: 7000,
     backgroundColor: 'rgba(0,0,0,0.45)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
   };

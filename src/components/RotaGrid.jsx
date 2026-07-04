@@ -73,6 +73,9 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const nameRefs = useRef({}); // rowIndex → name-cell DOM node, for hit-testing
+  // Drag-to-reorder only when editable and a reorder handler is supplied (the
+  // full-screen view omits it — reordering there is awkward once rotated).
+  const canDrag = !readOnly && typeof onReorder === 'function';
   const wrapRef = useRef(null); // the horizontally-scrolling wrapper
   const nameHeadRef = useRef(null); // the "Staff" header cell (for its width)
   const dayHeadRefs = useRef({}); // dayKey → header cell, to scroll it into view
@@ -237,14 +240,14 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
           const rowIndex = rows.indexOf(row);
           const hi = highlightMemberId && row.memberId === highlightMemberId;
           const rowBg = hi ? hilite : undefined;
-          const dragProps = readOnly ? {} : {
+          const dragProps = canDrag ? {
             ref: (el) => { nameRefs.current[rowIndex] = el; },
             title: 'Drag to reorder',
             onPointerDown: (e) => startDrag(e, rowIndex),
             onPointerMove: moveDrag,
             onPointerUp: dropDrag,
             onPointerCancel: endDrag,
-          };
+          } : {};
           return (
             <React.Fragment key={row.memberId}>
               <div
@@ -254,14 +257,14 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                   gap: '0.4rem',
                   // Keep an opaque background on the pinned name column.
                   backgroundColor: rowBg || (fill ? undefined : colors.bgCard),
-                  cursor: readOnly ? 'default' : 'grab',
-                  touchAction: readOnly ? 'auto' : 'none',
-                  userSelect: readOnly ? 'auto' : 'none',
-                  boxShadow: !readOnly && overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
+                  cursor: canDrag ? 'grab' : 'default',
+                  touchAction: canDrag ? 'none' : 'auto',
+                  userSelect: canDrag ? 'none' : 'auto',
+                  boxShadow: canDrag && overIndex === rowIndex && dragIndex !== rowIndex ? `inset 0 2px 0 ${accent}` : 'none',
                   opacity: dragIndex === rowIndex ? 0.4 : 1,
                 }}
               >
-                {!readOnly && !compact && <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>}
+                {canDrag && !compact && <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>}
                 <span style={{ fontWeight: hi ? 800 : nameCell.fontWeight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {row.name}{hi ? ' (you)' : ''}
                 </span>

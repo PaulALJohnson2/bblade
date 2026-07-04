@@ -305,7 +305,9 @@ function Rota() {
         <RotaFullscreen
           days={days}
           rows={rows}
+          readOnly={!canEdit}
           highlightMemberId={myMemberId}
+          onCellClick={canEdit ? (row, dayKey) => setEditing({ row, dayKey }) : undefined}
           onClose={() => setFullscreen(false)}
         />
       )}

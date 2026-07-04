@@ -5,8 +5,11 @@
  * staff rows share the height. On a portrait screen (a phone held upright) it's
  * laid out in a landscape box and rotated a quarter turn so it still fills the
  * screen; turn the phone sideways and it reads naturally. On any landscape
- * screen (a laptop, or a phone turned sideways) it fills directly, upright. Tap
- * anywhere, press Escape, or hit the close button to dismiss. Not editable.
+ * screen (a laptop, or a phone turned sideways) it fills directly, upright.
+ *
+ * Read-only by default (staff): tap anywhere, press Escape, or the close button
+ * dismisses it. When editable (admin) cells are tappable to edit and only the
+ * close button / Escape dismiss it.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -14,7 +17,7 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from './RotaGrid';
 
-function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
+function RotaFullscreen({ days, rows, highlightMemberId = null, onClose, readOnly = true, onCellClick }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   // Size the grid from the *measured* viewport, not vh/vw units — on mobile
@@ -76,7 +79,7 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      {!coarsePointer && (
+      {(!coarsePointer || !readOnly) && (
         <button
           type="button"
           onClick={onClose}
@@ -95,8 +98,17 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
         </button>
       )}
 
-      <div style={{ ...box, flexShrink: 0 }}>
-        <RotaGrid days={days} rows={rows} readOnly fill highlightMemberId={highlightMemberId} />
+      {/* In edit mode, keep taps inside the grid from closing the overlay (only
+          the close button dismisses); read-only keeps tap-anywhere-to-close. */}
+      <div style={{ ...box, flexShrink: 0 }} onClick={readOnly ? undefined : (e) => e.stopPropagation()}>
+        <RotaGrid
+          days={days}
+          rows={rows}
+          readOnly={readOnly}
+          fill
+          highlightMemberId={highlightMemberId}
+          onCellClick={onCellClick}
+        />
       </div>
     </div>
   );
