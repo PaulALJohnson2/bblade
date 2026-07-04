@@ -12,6 +12,7 @@ import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, 
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
+import RotaFullscreen from '../components/RotaFullscreen';
 import ShiftEditor from '../components/ShiftEditor';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -62,6 +63,7 @@ function Rota() {
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
+  const [fullscreen, setFullscreen] = useState(false); // whole-screen read-only view
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -208,6 +210,9 @@ function Rota() {
     borderRadius: '12px', padding: isMobile ? '0.55rem' : '1.25rem', boxShadow: `0 2px 12px ${colors.shadow}`,
   };
 
+  // The grid is on screen for admins always, and for staff once it's published.
+  const showGrid = !loading && (admin || published);
+
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <h1 style={{ margin: '0.25rem 0 0.1rem', fontSize: '1.6rem', color: colors.textPrimary }}>Rota</h1>
@@ -230,6 +235,16 @@ function Rota() {
         >
           {compact ? 'Full size' : 'Fit to screen'}
         </button>
+        {showGrid && (
+          <button
+            type="button"
+            style={navBtn}
+            onClick={() => setFullscreen(true)}
+            title="View the rota full screen"
+          >
+            ⤢ Full screen
+          </button>
+        )}
         <button type="button" style={navBtn} onClick={() => window.print()}>Print</button>
         {admin && (
           <button
@@ -256,15 +271,23 @@ function Rota() {
             This week's rota hasn't been published yet.
           </div>
         ) : (
-          <RotaGrid
-            days={days}
-            rows={rows}
-            readOnly={!admin}
-            compact={compact}
-            highlightMemberId={myMemberId}
-            onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
-            onReorder={reorderStaff}
-          />
+          // Staff can't edit — tapping the rota opens the whole-screen view
+          // instead. Admins keep tap-to-edit and use the Full screen button.
+          <div
+            onClick={!admin ? () => setFullscreen(true) : undefined}
+            style={{ cursor: !admin ? 'zoom-in' : 'default' }}
+            title={!admin ? 'Tap to view full screen' : undefined}
+          >
+            <RotaGrid
+              days={days}
+              rows={rows}
+              readOnly={!admin}
+              compact={compact}
+              highlightMemberId={myMemberId}
+              onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
+              onReorder={reorderStaff}
+            />
+          </div>
         )}
       </div>
 
@@ -277,6 +300,15 @@ function Rota() {
           onSave={(shift) => setShift(editing.row, editing.dayKey, shift)}
           onClear={() => setShift(editing.row, editing.dayKey, null)}
           onCancel={() => setEditing(null)}
+        />
+      )}
+
+      {fullscreen && showGrid && (
+        <RotaFullscreen
+          days={days}
+          rows={rows}
+          highlightMemberId={myMemberId}
+          onClose={() => setFullscreen(false)}
         />
       )}
     </div>
