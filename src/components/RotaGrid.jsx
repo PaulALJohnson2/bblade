@@ -188,6 +188,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const totalCell = {
     ...cellBase,
     justifyContent: 'center',
+    textAlign: 'center', // keep "12h 45m" centred when it wraps to two lines
     borderRight: 'none',
     fontWeight: 700,
     fontSize: compact ? '0.78rem' : '1rem',
