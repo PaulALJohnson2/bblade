@@ -12,6 +12,8 @@
  *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
  *   readOnly          - staff view: no editing, no dragging, no "+" affordances
  *   highlightMemberId - tint this member's row (the signed-in user's own row)
+ *   compact           - shrink cells/fonts so the whole week fits on screen with
+ *                       no horizontal scroll (the "fit to screen" view)
  */
 
 import React, { useRef, useState } from 'react';
@@ -53,7 +55,7 @@ function fmtHours(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -105,10 +107,17 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     endDrag();
   };
 
+  // Compact ("fit to screen") mode: let the seven day columns shrink to share
+  // the available width (no min column width, no grid min-width) and dial the
+  // padding/fonts down so a full week fits without horizontal scrolling.
+  const nameColW = compact ? '84px' : NAME_COL;
+  const totalColW = compact ? 'minmax(40px, 0.6fr)' : '96px';
+  const dayCols = compact ? 'repeat(7, minmax(0, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
+
   const grid = {
     display: 'grid',
-    gridTemplateColumns: `${NAME_COL} repeat(7, minmax(96px, 1fr)) 96px`,
-    minWidth: '860px',
+    gridTemplateColumns: `${nameColW} ${dayCols} ${totalColW}`,
+    minWidth: compact ? 0 : '860px',
     border: `1px solid ${colors.borderLight}`,
     borderRadius: '8px',
     overflow: 'hidden',
@@ -119,8 +128,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const cellBase = {
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
-    padding: '1rem 0.5rem',
-    minHeight: '76px',
+    padding: compact ? '0.35rem 0.25rem' : '1rem 0.5rem',
+    minHeight: compact ? '38px' : '76px',
     display: 'flex',
     alignItems: 'center',
   };
@@ -132,14 +141,14 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     gap: '1px',
     borderBottom: `2px solid ${colors.border}`,
     fontWeight: 700,
-    fontSize: '0.95rem',
+    fontSize: compact ? '0.72rem' : '0.95rem',
     color: colors.textPrimary,
     textAlign: 'center',
   };
   const nameCell = {
     ...cellBase,
     fontWeight: 600,
-    fontSize: '1rem',
+    fontSize: compact ? '0.78rem' : '1rem',
     color: colors.textPrimary,
   };
   const dayCell = {
@@ -149,7 +158,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     WebkitTapHighlightColor: 'transparent',
   };
   const timeText = {
-    fontSize: '1.7rem',
+    fontSize: compact ? '0.82rem' : '1.7rem',
     fontWeight: 700,
     color: accent,
     whiteSpace: 'nowrap',
@@ -161,7 +170,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     justifyContent: 'center',
     borderRight: 'none',
     fontWeight: 700,
-    fontSize: '1rem',
+    fontSize: compact ? '0.78rem' : '1rem',
     color: colors.textPrimary,
   };
   const footBase = {
@@ -180,7 +189,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
         {days.map((d) => (
           <div key={d.key} style={headCell}>
             <span>{d.label}</span>
-            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
+            <span style={{ fontSize: compact ? '0.62rem' : '0.8rem', fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
           </div>
         ))}
         <div style={{ ...headCell, borderRight: 'none' }}>Hours</div>
@@ -214,7 +223,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                   opacity: dragIndex === rowIndex ? 0.4 : 1,
                 }}
               >
-                {!readOnly && <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>}
+                {!readOnly && !compact && <span aria-hidden="true" style={{ color: colors.textMuted, fontSize: '1.15rem', lineHeight: 1, flexShrink: 0 }}>⠿</span>}
                 <span style={{ fontWeight: hi ? 800 : nameCell.fontWeight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                   {row.name}{hi ? ' (you)' : ''}
                 </span>
@@ -230,8 +239,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                     tabIndex={readOnly ? undefined : 0}
                   >
                     {shift
-                      ? <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>
-                      : (!readOnly && <span style={{ color: colors.textMuted, fontSize: '1.8rem', opacity: 0.4 }}>+</span>)}
+                      ? <span style={timeText}>{fmtTime(shift.start)}<span style={{ padding: compact ? '0 0.12rem' : '0 0.35rem' }}>–</span>{fmtTime(shift.end)}</span>
+                      : (!readOnly && <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>)}
                   </div>
                 );
               })}
@@ -245,11 +254,11 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
           const grand = rows.reduce((sum, r) => sum + days.reduce((s, d) => s + shiftMinutes(r.shifts?.[d.key]), 0), 0);
           return (
             <>
-              <div style={{ ...footBase, fontSize: '0.95rem' }}>Total</div>
+              <div style={{ ...footBase, fontSize: compact ? '0.72rem' : '0.95rem' }}>Total</div>
               {days.map((d) => (
                 <div key={d.key} style={footBase} />
               ))}
-              <div style={{ ...footBase, justifyContent: 'center', borderRight: 'none', fontSize: '1.1rem', color: accent }}>
+              <div style={{ ...footBase, justifyContent: 'center', borderRight: 'none', fontSize: compact ? '0.85rem' : '1.1rem', color: accent }}>
                 {fmtHours(grand)}
               </div>
             </>

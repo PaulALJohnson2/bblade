@@ -62,6 +62,16 @@ function Rota() {
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
+  // "Fit to screen": shrink the grid so the whole week fits with no sideways
+  // scroll. Remembered across visits.
+  const [compact, setCompact] = useState(() => {
+    try { return localStorage.getItem('rotaCompact') === '1'; } catch { return false; }
+  });
+  const toggleCompact = () => setCompact((c) => {
+    const next = !c;
+    try { localStorage.setItem('rotaCompact', next ? '1' : '0'); } catch { /* ignore */ }
+    return next;
+  });
 
   const venuePath = selectedPub?.path;
   const weekId = useMemo(() => toISODate(weekStart), [weekStart]);
@@ -199,7 +209,16 @@ function Rota() {
         <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary, minWidth: '190px', textAlign: 'center' }}>{rangeLabel}</div>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
-        <button type="button" style={{ ...navBtn, marginLeft: 'auto' }} onClick={() => window.print()}>Print</button>
+        <button
+          type="button"
+          style={{ ...navBtn, marginLeft: 'auto', ...(compact ? { backgroundColor: colors.primary, color: colors.onPrimary, border: 'none' } : {}) }}
+          onClick={toggleCompact}
+          aria-pressed={compact}
+          title={compact ? 'Show the full-size rota' : 'Shrink the rota so the whole week fits on screen'}
+        >
+          {compact ? 'Full size' : 'Fit to screen'}
+        </button>
+        <button type="button" style={navBtn} onClick={() => window.print()}>Print</button>
         {admin && (
           <button
             type="button"
@@ -229,6 +248,7 @@ function Rota() {
             days={days}
             rows={rows}
             readOnly={!admin}
+            compact={compact}
             highlightMemberId={myMemberId}
             onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
             onReorder={reorderStaff}
