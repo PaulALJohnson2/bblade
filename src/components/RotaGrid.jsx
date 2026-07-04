@@ -130,7 +130,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     ...(fill ? {
       width: '100%',
       height: '100%',
-      gridTemplateRows: rows.length ? `auto repeat(${rows.length}, minmax(0, 1fr)) auto` : undefined,
+      // Staff view drops the grand-total row, so no trailing auto track.
+      gridTemplateRows: rows.length ? `auto repeat(${rows.length}, minmax(0, 1fr))${readOnly ? '' : ' auto'}` : undefined,
     } : {}),
   };
   // Thin ruled lines only — right + bottom on each cell; the grid border closes
@@ -145,13 +146,15 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   };
   const headCell = {
     ...cellBase,
+    // Staff view: a slimmer header row (less padding, smaller labels).
+    ...(readOnly ? { padding: compact ? '0.25rem 0.12rem' : '0.4rem 0.4rem', minHeight: 0 } : {}),
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
     gap: '1px',
     borderBottom: `2px solid ${colors.border}`,
     fontWeight: 700,
-    fontSize: compact ? '0.72rem' : '0.95rem',
+    fontSize: readOnly ? (compact ? '0.66rem' : '0.8rem') : (compact ? '0.72rem' : '0.95rem'),
     color: colors.textPrimary,
     textAlign: 'center',
   };
@@ -212,7 +215,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
         {days.map((d) => (
           <div key={d.key} style={headCell}>
             <span>{d.label}</span>
-            <span style={{ fontSize: compact ? '0.62rem' : '0.8rem', fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
+            <span style={{ fontSize: readOnly ? (compact ? '0.55rem' : '0.68rem') : (compact ? '0.62rem' : '0.8rem'), fontWeight: 500, color: colors.textSecondary }}>{d.dateLabel}</span>
           </div>
         ))}
         <div style={{ ...headCell, borderRight: 'none' }}>Hours</div>
@@ -279,8 +282,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
           );
         })}
 
-        {/* Grand total row */}
-        {rows.length > 0 && (() => {
+        {/* Grand total row — omitted in the staff view. */}
+        {rows.length > 0 && !readOnly && (() => {
           const grand = rows.reduce((sum, r) => sum + days.reduce((s, d) => s + shiftMinutes(r.shifts?.[d.key]), 0), 0);
           return (
             <>
