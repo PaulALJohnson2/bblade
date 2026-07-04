@@ -153,15 +153,15 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const cellBase = {
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
-    padding: compact ? '0.3rem 0.1rem' : (fill ? '0.3rem 0.15rem' : '1rem 0.5rem'),
-    minHeight: fill ? 0 : (compact ? '38px' : '76px'),
+    padding: compact ? '0.15rem 0.06rem' : (fill ? '0.15rem 0.1rem' : '1rem 0.5rem'),
+    minHeight: fill ? 0 : (compact ? '34px' : '76px'),
     display: 'flex',
     alignItems: 'center',
   };
   const headCell = {
     ...cellBase,
     // Staff view: a slimmer header row (less padding, smaller labels).
-    ...(readOnly ? { padding: compact ? '0.25rem 0.12rem' : '0.4rem 0.4rem', minHeight: 0 } : {}),
+    ...(readOnly ? { padding: compact ? '0.2rem 0.06rem' : '0.25rem 0.1rem', minHeight: 0 } : {}),
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
