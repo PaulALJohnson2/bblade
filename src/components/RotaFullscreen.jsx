@@ -25,6 +25,11 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
     h: typeof window !== 'undefined' ? window.innerHeight : 0,
   });
   const [size, setSize] = useState(readSize);
+  // Touch devices (phones/tablets) dismiss by tapping anywhere, so the close
+  // button is redundant there — only show it for mouse/desktop users.
+  const [coarsePointer] = useState(
+    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches,
+  );
 
   useEffect(() => {
     const update = () => setSize(readSize());
@@ -71,22 +76,24 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close full screen"
-        style={{
-          position: 'fixed', zIndex: 6001,
-          top: 'max(0.75rem, env(safe-area-inset-top))',
-          right: 'max(0.75rem, env(safe-area-inset-right))',
-          width: '40px', height: '40px', borderRadius: '50%', border: 'none',
-          backgroundColor: colors.bgCard, color: colors.textPrimary,
-          boxShadow: `0 2px 10px ${colors.shadow}`, fontSize: '1.2rem',
-          lineHeight: 1, cursor: 'pointer',
-        }}
-      >
-        ✕
-      </button>
+      {!coarsePointer && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close full screen"
+          style={{
+            position: 'fixed', zIndex: 6001,
+            top: 'max(0.75rem, env(safe-area-inset-top))',
+            right: 'max(0.75rem, env(safe-area-inset-right))',
+            width: '40px', height: '40px', borderRadius: '50%', border: 'none',
+            backgroundColor: colors.bgCard, color: colors.textPrimary,
+            boxShadow: `0 2px 10px ${colors.shadow}`, fontSize: '1.2rem',
+            lineHeight: 1, cursor: 'pointer',
+          }}
+        >
+          ✕
+        </button>
+      )}
 
       <div style={{ ...box, flexShrink: 0 }}>
         <RotaGrid days={days} rows={rows} readOnly fill highlightMemberId={highlightMemberId} />
