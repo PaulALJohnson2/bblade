@@ -260,7 +260,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 return (
                   <div
                     key={d.key}
-                    style={{ ...dayCell, backgroundColor: rowBg, cursor: readOnly ? 'default' : 'pointer' }}
+                    style={{ ...dayCell, backgroundColor: rowBg || (readOnly && n === 0 ? colors.bgLight : undefined), cursor: readOnly ? 'default' : 'pointer' }}
                     onClick={readOnly ? undefined : () => onCellClick(row, d.key)}
                     role={readOnly ? undefined : 'button'}
                     tabIndex={readOnly ? undefined : 0}
@@ -271,7 +271,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                           <span
                             key={i}
                             style={{
-                              fontSize: timeFont, fontWeight: 700, color: accent, textAlign: 'center',
+                              fontSize: timeFont, fontWeight: 800, color: accent, textAlign: 'center',
                               // Full-screen rows are short and fixed, so keep each
                               // range on one line there; the in-page views can let a
                               // long range wrap at the dash (inner spans are nowrap).
@@ -284,7 +284,13 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                           </span>
                         ))}
                       </div>
-                    ) : (!readOnly && <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>)}
+                    ) : readOnly ? (
+                      // In the published staff view, every empty day reads "Off"
+                      // in a lightly greyed cell.
+                      <span style={{ color: colors.textMuted, fontSize: compact ? '0.62rem' : (fill ? '0.85rem' : '1rem'), fontWeight: 600, fontStyle: 'italic' }}>Off</span>
+                    ) : (
+                      <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>
+                    )}
                   </div>
                 );
               })}
