@@ -122,9 +122,12 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   // Keep the name/hours columns tight so the day columns get as much width as
   // possible (long names truncate with an ellipsis). Full-screen and compact
   // fit the whole week; only the plain in-page (laptop) grid scrolls sideways.
-  const nameColW = compact ? '58px' : (fill ? '92px' : NAME_COL);
-  const totalColW = compact ? 'minmax(30px, 0.5fr)' : (fill ? '58px' : '96px');
-  const dayCols = (compact || fill) ? 'repeat(7, minmax(0, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
+  const nameColW = compact ? '64px' : (fill ? '92px' : NAME_COL);
+  const totalColW = compact ? '46px' : (fill ? '58px' : '96px');
+  // Full-screen fits the whole week (columns shrink to zero). The in-page grids
+  // give each day a comfortable minimum and scroll sideways instead of cramming,
+  // so shift times stay readable on one line — compact just uses a smaller min.
+  const dayCols = fill ? 'repeat(7, minmax(0, 1fr))' : compact ? 'repeat(7, minmax(72px, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
 
   const grid = {
     display: 'grid',
@@ -132,7 +135,9 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     minWidth: (compact || fill) ? 0 : '860px',
     border: `1px solid ${colors.borderLight}`,
     borderRadius: '8px',
-    overflow: 'hidden',
+    // Full-screen clips to the rounded border; the in-page grids must stay
+    // overflow-visible so the pinned (sticky) name column works while scrolling.
+    overflow: fill ? 'hidden' : 'visible',
     backgroundColor: colors.bgCard,
     // Fill mode: occupy the whole parent and let the staff rows share the
     // height (header + total stay content-sized).
@@ -172,6 +177,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     fontWeight: 600,
     fontSize: compact ? '0.74rem' : (fill ? '0.85rem' : '1rem'),
     color: colors.textPrimary,
+    // The in-page grids scroll sideways, so pin the name column on the left.
+    ...(fill ? {} : { position: 'sticky', left: 0, zIndex: 1, backgroundColor: colors.bgCard }),
   };
   const dayCell = {
     ...cellBase,
@@ -201,7 +208,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     <div style={fill ? { width: '100%', height: '100%', overflow: 'hidden' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={grid}>
         {/* Header row */}
-        <div style={{ ...headCell, alignItems: 'flex-start' }}>Staff</div>
+        <div style={{ ...headCell, alignItems: 'flex-start', ...(fill ? {} : { position: 'sticky', left: 0, zIndex: 3, backgroundColor: colors.bgCard }) }}>Staff</div>
         {days.map((d) => (
           <div key={d.key} style={headCell}>
             <span>{d.label}</span>
@@ -230,7 +237,8 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 style={{
                   ...nameCell,
                   gap: '0.4rem',
-                  backgroundColor: rowBg,
+                  // Keep an opaque background on the pinned name column.
+                  backgroundColor: rowBg || (fill ? undefined : colors.bgCard),
                   cursor: readOnly ? 'default' : 'grab',
                   touchAction: readOnly ? 'auto' : 'none',
                   userSelect: readOnly ? 'auto' : 'none',
@@ -254,7 +262,9 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 // a single shift's size adapts to its length (a long half-hour range
                 // shrinks to fit the column instead of clipping).
                 let timeFont;
-                if (compact) timeFont = split ? '0.56rem' : '0.78rem';
+                // In-page grids don't wrap — with a 72px+ column, a range fits one
+                // line; longer half-hour ranges just size down a touch.
+                if (compact) timeFont = maxLen <= 5 ? '0.95rem' : maxLen <= 7 ? '0.85rem' : maxLen <= 10 ? '0.72rem' : '0.62rem';
                 else if (fill) timeFont = split ? '0.72rem' : (maxLen <= 5 ? '1.5rem' : maxLen <= 7 ? '1.25rem' : '0.95rem');
                 else timeFont = split ? '1rem' : '1.4rem'; // laptop in-page
                 return (
@@ -272,14 +282,13 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                             key={i}
                             style={{
                               fontSize: timeFont, fontWeight: 800, color: accent, textAlign: 'center',
-                              // Full-screen rows are short and fixed, so keep each
-                              // range on one line there; the in-page views can let a
-                              // long range wrap at the dash (inner spans are nowrap).
-                              whiteSpace: fill ? 'nowrap' : 'normal',
+                              // Full-screen and compact keep each range on one line
+                              // (font shrinks to fit); only the laptop grid wraps.
+                              whiteSpace: (fill || compact) ? 'nowrap' : 'normal',
                             }}
                           >
                             <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.start)}</span>
-                            <span style={{ padding: compact ? '0 0.06rem' : '0 0.3rem' }}>–</span>
+                            <span style={{ padding: compact ? '0 0.04rem' : '0 0.3rem' }}>–</span>
                             <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.end)}</span>
                           </span>
                         ))}
@@ -304,7 +313,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
           const grand = rows.reduce((sum, r) => sum + days.reduce((s, d) => s + dayMinutes(r.shifts?.[d.key]), 0), 0);
           return (
             <>
-              <div style={{ ...footBase, fontSize: compact ? '0.72rem' : '0.95rem' }}>Total</div>
+              <div style={{ ...footBase, fontSize: compact ? '0.72rem' : '0.95rem', ...(fill ? {} : { position: 'sticky', left: 0, zIndex: 1, backgroundColor: colors.bgCard }) }}>Total</div>
               {days.map((d) => (
                 <div key={d.key} style={footBase} />
               ))}
