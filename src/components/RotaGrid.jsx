@@ -14,6 +14,9 @@
  *   highlightMemberId - tint this member's row (the signed-in user's own row)
  *   compact           - shrink cells/fonts so the whole week fits on screen with
  *                       no horizontal scroll (the "fit to screen" view)
+ *   fill              - stretch to fill the parent's width AND height (day
+ *                       columns and staff rows share the space): used by the
+ *                       whole-screen view so the rota fills the screen
  */
 
 import React, { useRef, useState } from 'react';
@@ -55,7 +58,7 @@ function fmtHours(min) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -117,11 +120,18 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const grid = {
     display: 'grid',
     gridTemplateColumns: `${nameColW} ${dayCols} ${totalColW}`,
-    minWidth: compact ? 0 : '860px',
+    minWidth: (compact || fill) ? 0 : '860px',
     border: `1px solid ${colors.borderLight}`,
     borderRadius: '8px',
     overflow: 'hidden',
     backgroundColor: colors.bgCard,
+    // Fill mode: occupy the whole parent and let the staff rows share the
+    // height (header + total stay content-sized).
+    ...(fill ? {
+      width: '100%',
+      height: '100%',
+      gridTemplateRows: rows.length ? `auto repeat(${rows.length}, minmax(0, 1fr)) auto` : undefined,
+    } : {}),
   };
   // Thin ruled lines only — right + bottom on each cell; the grid border closes
   // the outer edge.
@@ -129,7 +139,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
     borderRight: `1px solid ${colors.borderLight}`,
     borderBottom: `1px solid ${colors.borderLight}`,
     padding: compact ? '0.35rem 0.12rem' : '1rem 0.5rem',
-    minHeight: compact ? '38px' : '76px',
+    minHeight: fill ? 0 : (compact ? '38px' : '76px'),
     display: 'flex',
     alignItems: 'center',
   };
@@ -195,7 +205,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   };
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div style={fill ? { width: '100%', height: '100%', overflow: 'hidden' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={grid}>
         {/* Header row */}
         <div style={{ ...headCell, alignItems: 'flex-start' }}>Staff</div>

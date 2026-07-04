@@ -1,15 +1,15 @@
 /**
  * RotaFullscreen — a read-only, whole-screen view of the week's rota.
  *
- * The grid is rendered at its natural (full) size, then scaled to fill the
- * screen as large as it can. On a portrait screen (a phone held upright) it's
- * rotated a quarter turn so it presents landscape — turn the phone sideways and
- * it reads naturally and fills the screen. On any landscape screen (a laptop,
- * or a phone turned sideways) it stays upright. Tap anywhere, press Escape, or
- * hit the close button to dismiss. Nothing here is editable.
+ * The grid fills the entire screen — day columns stretch across the width and
+ * staff rows share the height. On a portrait screen (a phone held upright) it's
+ * laid out in a landscape box and rotated a quarter turn so it still fills the
+ * screen; turn the phone sideways and it reads naturally. On any landscape
+ * screen (a laptop, or a phone turned sideways) it fills directly, upright. Tap
+ * anywhere, press Escape, or hit the close button to dismiss. Not editable.
  */
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from './RotaGrid';
@@ -17,41 +17,24 @@ import RotaGrid from './RotaGrid';
 function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-  const innerRef = useRef(null);
-  const [t, setT] = useState({ scale: 1, rotate: false });
+  const [portrait, setPortrait] = useState(
+    () => typeof window !== 'undefined' && window.innerHeight > window.innerWidth,
+  );
 
-  // Measure the grid at natural size and pick the transform (rotate?/scale)
-  // that makes it fill the screen. Re-run on resize/orientation changes.
-  useLayoutEffect(() => {
-    const fit = () => {
-      const el = innerRef.current;
-      if (!el) return;
-      const natW = el.offsetWidth;
-      const natH = el.offsetHeight;
-      if (!natW || !natH) return;
-      const pad = 20; // breathing room around the edges
-      const availW = Math.max(1, window.innerWidth - pad);
-      const availH = Math.max(1, window.innerHeight - pad);
-      // Rotate only on portrait screens (a phone held upright); landscape
-      // screens — laptops, or a phone turned sideways — stay upright.
-      const rotate = window.innerHeight > window.innerWidth;
-      const scale = rotate
-        ? Math.min(availW / natH, availH / natW)
-        : Math.min(availW / natW, availH / natH);
-      setT({ scale, rotate });
-    };
-    fit();
-    window.addEventListener('resize', fit);
-    window.addEventListener('orientationchange', fit);
+  useEffect(() => {
+    const update = () => setPortrait(window.innerHeight > window.innerWidth);
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
     // Don't let the page behind scroll while the overlay is up.
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
-      window.removeEventListener('resize', fit);
-      window.removeEventListener('orientationchange', fit);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
       document.body.style.overflow = prevOverflow;
     };
-  }, [days, rows]);
+  }, []);
 
   // Escape closes it.
   useEffect(() => {
@@ -59,6 +42,13 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Portrait: give the grid a landscape box (as wide as the screen is tall) and
+  // rotate it a quarter turn — its rotated bounding box then equals the screen.
+  // Landscape: fill the overlay directly.
+  const box = portrait
+    ? { width: '100vh', height: '100vw', transform: 'rotate(90deg)', transformOrigin: 'center center' }
+    : { width: '100%', height: '100%' };
 
   return (
     <div
@@ -89,10 +79,8 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose }) {
         ✕
       </button>
 
-      <div style={{ flexShrink: 0, transform: `rotate(${t.rotate ? 90 : 0}deg) scale(${t.scale})`, transformOrigin: 'center center' }}>
-        <div ref={innerRef} style={{ display: 'inline-block' }}>
-          <RotaGrid days={days} rows={rows} readOnly highlightMemberId={highlightMemberId} />
-        </div>
+      <div style={{ ...box, flexShrink: 0 }}>
+        <RotaGrid days={days} rows={rows} readOnly fill highlightMemberId={highlightMemberId} />
       </div>
     </div>
   );
