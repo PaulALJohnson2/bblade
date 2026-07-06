@@ -111,12 +111,18 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
   const coverage = useMemo(() => {
     if (!splitReports || !salesFrom || !salesTo) return null;
     const expected = tradingDatesBetween(salesFrom, salesTo);
-    const covered = new Set();
+    // Count how many reports cover each day — >1 means sales are being
+    // subtracted twice (e.g. a legacy single-day doc alongside its week doc).
+    const coveredCount = {};
     for (const r of splitReports.inside) {
       const { from, to } = reportRange(r);
-      for (const d of tradingDatesBetween(from, addDays(to, 1))) covered.add(d);
+      for (const d of tradingDatesBetween(from, addDays(to, 1))) coveredCount[d] = (coveredCount[d] || 0) + 1;
     }
-    return { expected, missing: expected.filter((d) => !covered.has(d)) };
+    return {
+      expected,
+      missing: expected.filter((d) => !coveredCount[d]),
+      doubled: expected.filter((d) => (coveredCount[d] || 0) > 1),
+    };
   }, [splitReports, salesFrom, salesTo]);
 
   const fmtAmt = (row, qty) => {
@@ -167,6 +173,17 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
             <div style={{ fontSize: '0.85rem', fontWeight: 600, color: coverage.missing.length ? colors.warning : colors.success }}>
               Sales reports: {coverage.expected.length - coverage.missing.length} of {coverage.expected.length} trading days
             </div>
+            {/* Exactly which reports the maths used — variance is only as honest as this list */}
+            {splitReports.inside.length > 0 && (
+              <div style={{ fontSize: '0.78rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
+                Using {splitReports.inside.map((r) => { const { from, to } = reportRange(r); return `${prettyIso(from)}–${prettyIso(to)} (${gbp(r.totals?.valueIncVAT || 0)})`; }).join(' + ')}
+              </div>
+            )}
+            {coverage.doubled.length > 0 && (
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: colors.error, marginTop: '0.25rem' }}>
+                ⚠ {coverage.doubled.length} day{coverage.doubled.length === 1 ? ' is' : 's are'} covered by more than one report ({coverage.doubled.map(prettyIso).join(', ')}) — those sales are being subtracted twice. Delete the duplicate in the Reports tab.
+              </div>
+            )}
             {coverage.missing.length > 0 && (
               <div style={{ fontSize: '0.78rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
                 Missing {coverage.missing.map(prettyIso).join(', ')} — shortages will look bigger than they are until these are uploaded.
