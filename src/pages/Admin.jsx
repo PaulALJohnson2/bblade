@@ -158,6 +158,8 @@ function Admin() {
       icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
     { key: 'rota', label: 'Rotas', desc: 'Build weekly staff rota', accent: colors.primary, show: admin, to: '/rota?edit=1',
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'] },
+    { key: 'sales', label: 'Sales', desc: 'Till sales reports', accent: colors.primary, show: admin, to: '/sales',
+      icon: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'] },
   ].filter((t) => t.show);
 
   const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview' };

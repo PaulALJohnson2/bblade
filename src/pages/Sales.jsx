@@ -137,7 +137,7 @@ function Sales() {
     <div style={{ maxWidth: '640px', margin: '0 auto', position: 'relative' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
-        <button onClick={() => navigate('/')} style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}>← Back</button>
+        <button onClick={() => navigate('/admin')} style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}>← Back</button>
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Sales</h1>
       </div>
 
