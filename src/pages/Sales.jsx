@@ -22,6 +22,7 @@ import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 import { useStockData } from '../contexts/StockDataContext';
 import TillMapping from '../components/TillMapping';
 import VarianceReport from '../components/VarianceReport';
+import CostDerivation from '../components/CostDerivation';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -226,17 +227,29 @@ function Sales() {
           onGoToProducts={() => setPageView('products')}
         />
       ) : pageView === 'products' ? (
-        <TillMapping
-          venuePath={selectedPub.path}
-          items={items}
-          tillProducts={tillProducts}
-          products={productUniverse}
-          colors={colors}
-          accent={accent}
-          onAccent={colors.onPrimary}
-          showToast={showToast}
-          mappedBy={userProfile?.displayName || currentUser?.email || ''}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <CostDerivation
+            venuePath={selectedPub.path}
+            items={items}
+            reports={reports}
+            mappingsByKey={mappingsByKey}
+            colors={colors}
+            accent={accent}
+            onAccent={colors.onPrimary}
+            showToast={showToast}
+          />
+          <TillMapping
+            venuePath={selectedPub.path}
+            items={items}
+            tillProducts={tillProducts}
+            products={productUniverse}
+            colors={colors}
+            accent={accent}
+            onAccent={colors.onPrimary}
+            showToast={showToast}
+            mappedBy={userProfile?.displayName || currentUser?.email || ''}
+          />
+        </div>
       ) : (
       <>
       {/* Upload */}

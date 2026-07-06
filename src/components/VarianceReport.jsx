@@ -226,7 +226,7 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
           </div>
           {result.totals.unvalued > 0 && (
             <div style={{ fontSize: '0.75rem', color: colors.textMuted, marginTop: '-0.35rem' }}>
-              {result.totals.unvalued} varying item{result.totals.unvalued === 1 ? ' has' : 's have'} no cost price, so the £ totals understate the true figure.
+              {result.totals.unvalued} varying item{result.totals.unvalued === 1 ? ' has' : 's have'} no cost price, so the £ totals understate the true figure — derive costs from the till in the Till products tab.
             </div>
           )}
 

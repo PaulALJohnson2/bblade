@@ -963,6 +963,31 @@ export async function deleteTillProduct(venuePath, key) {
   }
 }
 
+/**
+ * Set per-item cost prices in one batched write. entries = [{ id, costPrice }].
+ * Writes unitCost too — the two fields mirror each other everywhere else.
+ */
+export async function bulkSetCostPrices(venuePath, entries) {
+  try {
+    const now = Timestamp.now();
+    let batch = writeBatch(db);
+    let inBatch = 0;
+    let count = 0;
+    for (const { id, costPrice } of entries) {
+      const n = Number(costPrice);
+      if (!id || !Number.isFinite(n) || n <= 0) continue;
+      batch.set(doc(db, `${venuePath}/stockItems/${id}`), { costPrice: n, unitCost: n, updatedAt: now }, { merge: true });
+      count++;
+      if (++inBatch === 500) { await batch.commit(); batch = writeBatch(db); inBatch = 0; }
+    }
+    if (inBatch > 0) await batch.commit();
+    return { success: true, count };
+  } catch (error) {
+    console.error('Error bulk-setting cost prices:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Save many till-product mappings in one batched write. entries = [{ key, data }]. */
 export async function bulkSaveTillProducts(venuePath, entries) {
   try {

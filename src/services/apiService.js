@@ -60,6 +60,7 @@ export {
   getDeliveriesBetween,
   getWastageBetween,
   getSalesReportsBetween,
+  bulkSetCostPrices,
 
   // Venue (the venue document → name)
   subscribeToVenue,
