@@ -173,6 +173,12 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
             <div style={{ fontSize: '0.85rem', fontWeight: 600, color: coverage.missing.length ? colors.warning : colors.success }}>
               Sales reports: {coverage.expected.length - coverage.missing.length} of {coverage.expected.length} trading days
             </div>
+            {splitReports.inside.length === 0 && (
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: colors.error, marginTop: '0.25rem' }}>
+                No sales data for this period — everything the pub sold will show below as shortage.
+                Upload the till report for these dates in the Reports tab, then come back.
+              </div>
+            )}
             {/* Exactly which reports the maths used — variance is only as honest as this list */}
             {splitReports.inside.length > 0 && (
               <div style={{ fontSize: '0.78rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
