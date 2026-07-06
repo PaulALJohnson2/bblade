@@ -11,9 +11,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack } from '../services/apiService';
+import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack, bulkSetCasePacks } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { deliveryUnitsFor, computeDeliveryQuantity, summariseDeliveryUnits } from '../utils/deliveryUnits';
+import { formatItemDescription } from '../utils/stockUnitUtils';
 import DeliveryEntry from '../components/DeliveryEntry';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -30,7 +31,8 @@ function deliverySummary(e) {
 
 function Deliveries() {
   const navigate = useNavigate();
-  const { currentUser, userProfile, selectedPub } = useAuth();
+  const { currentUser, userProfile, selectedPub, isAdmin } = useAuth();
+  const admin = !!(isAdmin && isAdmin());
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = colors.delivery;
@@ -51,6 +53,13 @@ function Deliveries() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmUndo, setConfirmUndo] = useState(null); // entry id
+
+  // AI case-size suggestions (admin): null | 'loading' | { rows: [{id,name,desc,value}] }
+  const [caseSuggest, setCaseSuggest] = useState(null);
+  const [applyingSizes, setApplyingSizes] = useState(false);
+  // Kegs/loose items never get a case size, so "missing" never hits zero —
+  // let the banner be waved away (and hide it after an apply) for the session.
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
@@ -133,6 +142,59 @@ function Deliveries() {
     });
   };
 
+  // Items (both sections) that could take a case size but don't have one yet.
+  const missingCase = useMemo(
+    () => items.filter((i) => !i.archived && deliveryUnitsFor(i).canAddCasePack),
+    [items]
+  );
+
+  // Ask Gemini for case sizes based on what the stock list already knows about
+  // each item (name, one-unit size, category), then open the review modal.
+  const handleSuggestSizes = async () => {
+    setCaseSuggest('loading');
+    try {
+      const { inferCaseSizes } = await import('../services/aiInference');
+      const { map, source } = await inferCaseSizes(missingCase.map((i) => ({
+        name: i.name,
+        size: formatItemDescription(i),
+        category: i.category || '',
+      })));
+      const rows = missingCase
+        .filter((i) => map[i.name])
+        .map((i) => ({ id: i.id, name: i.name, desc: formatItemDescription(i), value: String(map[i.name]) }));
+      if (source !== 'ai' || rows.length === 0) {
+        setCaseSuggest(null);
+        showToast(source !== 'ai' ? 'Suggestions unavailable right now' : 'No case sizes to suggest');
+        return;
+      }
+      setCaseSuggest({ rows });
+    } catch (err) {
+      setCaseSuggest(null);
+      showToast('Suggestions unavailable right now');
+      console.error('Case-size suggestion failed:', err);
+    }
+  };
+
+  const setSuggestValue = (id, val) => {
+    setCaseSuggest((s) => (s && s.rows
+      ? { rows: s.rows.map((r) => (r.id === id ? { ...r, value: val.replace(/[^0-9]/g, '') } : r)) }
+      : s));
+  };
+
+  const handleApplySizes = async () => {
+    if (!caseSuggest?.rows || applyingSizes) return;
+    const entries = caseSuggest.rows
+      .map((r) => ({ id: r.id, casePack: parseInt(r.value, 10) || 0 }))
+      .filter((e) => e.casePack > 0);
+    if (entries.length === 0) { setCaseSuggest(null); return; }
+    setApplyingSizes(true);
+    const res = await bulkSetCasePacks(selectedPub.path, entries);
+    setApplyingSizes(false);
+    setCaseSuggest(null);
+    if (res.success) setBannerDismissed(true);
+    showToast(res.success ? `Case sizes set for ${res.count} items` : 'Could not save: ' + res.error);
+  };
+
   const handleUndo = async (entry) => {
     const res = await deleteDeliveryEntry(selectedPub.path, entry.id);
     setConfirmUndo(null);
@@ -150,6 +212,25 @@ function Deliveries() {
         <button onClick={() => navigate('/')} style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}>← Back</button>
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Deliveries</h1>
       </div>
+
+      {/* Admin: learn case sizes from the existing stock list */}
+      {admin && !bannerDismissed && missingCase.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.65rem 0.85rem', marginBottom: '0.75rem', backgroundColor: colors.deliverySoft, border: `1px solid ${colors.borderLight}`, borderRadius: '10px' }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', color: colors.textPrimary }}>
+            {missingCase.length} item{missingCase.length === 1 ? '' : 's'} have no case size yet.
+          </span>
+          <button
+            onClick={handleSuggestSizes}
+            disabled={caseSuggest === 'loading'}
+            style={{ flexShrink: 0, padding: '0.5rem 0.85rem', border: 'none', borderRadius: '8px', backgroundColor: accent, color: colors.onDelivery, fontWeight: 700, fontSize: '0.85rem', cursor: caseSuggest === 'loading' ? 'wait' : 'pointer', opacity: caseSuggest === 'loading' ? 0.6 : 1 }}
+          >{caseSuggest === 'loading' ? 'Working…' : 'Suggest sizes'}</button>
+          <button
+            onClick={() => setBannerDismissed(true)}
+            aria-label="Dismiss"
+            style={{ flexShrink: 0, width: '28px', height: '28px', border: 'none', borderRadius: '50%', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '1.1rem', cursor: 'pointer', lineHeight: 1 }}
+          >×</button>
+        </div>
+      )}
 
       {/* Section tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -291,6 +372,50 @@ function Deliveries() {
           </div>
         )}
       </div>
+
+      {/* Review modal: AI-suggested case sizes, editable before applying */}
+      {caseSuggest && caseSuggest !== 'loading' && (
+        <div
+          onClick={() => !applyingSizes && setCaseSuggest(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 5000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: colors.bgCard, borderRadius: '14px', boxShadow: `0 12px 40px ${colors.shadow}`, padding: '1.25rem', maxWidth: '480px', width: '100%', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary, marginBottom: '0.25rem' }}>Suggested case sizes</div>
+            <div style={{ fontSize: '0.82rem', color: colors.textSecondary, marginBottom: '0.85rem' }}>
+              Learned from each item's size and category. Adjust any that are wrong, clear to skip, then apply.
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.35rem', paddingRight: '0.25rem' }}>
+              {caseSuggest.rows.map((r) => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.4rem 0.5rem', border: `1px solid ${colors.borderLight}`, borderRadius: '8px' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
+                    {r.desc && <div style={{ fontSize: '0.72rem', color: colors.textSecondary }}>{r.desc}</div>}
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={r.value}
+                    onChange={(e) => setSuggestValue(r.id, e.target.value)}
+                    style={{ width: '52px', flexShrink: 0, padding: '0.45rem', fontSize: '0.95rem', fontWeight: 'bold', textAlign: 'center', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary }}
+                  />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem' }}>
+              <button
+                onClick={() => setCaseSuggest(null)}
+                disabled={applyingSizes}
+                style={{ flexShrink: 0, padding: '0.8rem 1.1rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '10px', fontWeight: 600, cursor: 'pointer' }}
+              >Cancel</button>
+              <button
+                onClick={handleApplySizes}
+                disabled={applyingSizes}
+                style={{ flex: 1, padding: '0.8rem', backgroundColor: accent, color: colors.onDelivery, border: 'none', borderRadius: '10px', fontWeight: 700, fontSize: '1rem', cursor: applyingSizes ? 'wait' : 'pointer', opacity: applyingSizes ? 0.6 : 1 }}
+              >{applyingSizes ? 'Applying…' : `Apply ${caseSuggest.rows.filter((r) => parseInt(r.value, 10) > 0).length} case sizes`}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

@@ -43,6 +43,7 @@ export {
   subscribeToDeliveryLog,
   deleteDeliveryEntry,
   setStockItemCasePack,
+  bulkSetCasePacks,
 
   // Venue (the venue document → name)
   subscribeToVenue,

@@ -730,6 +730,27 @@ export async function setStockItemCasePack(venuePath, itemId, casePack) {
   }
 }
 
+/** Set per-item case sizes in one batched write. entries = [{ id, casePack }]. */
+export async function bulkSetCasePacks(venuePath, entries) {
+  try {
+    const now = Timestamp.now();
+    let batch = writeBatch(db);
+    let inBatch = 0;
+    let count = 0;
+    for (const { id, casePack } of entries) {
+      if (!id) continue;
+      batch.set(doc(db, `${venuePath}/stockItems/${id}`), { casePack: Number(casePack) || 0, updatedAt: now }, { merge: true });
+      count++;
+      if (++inBatch === 500) { await batch.commit(); batch = writeBatch(db); inBatch = 0; }
+    }
+    if (inBatch > 0) await batch.commit();
+    return { success: true, count };
+  } catch (error) {
+    console.error('Error bulk-setting case sizes:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Live list of recent delivery entries (newest first, capped at `max`). */
 export function subscribeToDeliveryLog(venuePath, onData, onError, max = 100) {
   const q = query(
