@@ -28,6 +28,11 @@ function Home() {
       icon: ['M3 6h18', 'M8 6V4h8v2', 'M6 6l1 14h10l1-14', 'M10 10v6', 'M14 10v6'],
     },
     {
+      key: 'deliveries', label: 'Deliveries', desc: 'Log stock coming in',
+      to: '/deliveries', accent: colors.delivery,
+      icon: ['M2 6h11v9H2z', 'M13 9h4l3.5 3.5V15H13', 'M5 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0', 'M14 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0'],
+    },
+    {
       key: 'rota', label: 'Rota', desc: 'See your shifts',
       to: '/rota', accent: colors.primary,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],

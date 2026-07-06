@@ -32,6 +32,9 @@ const lightTokens = {
   // Wastage accent (distinct from gold + kitchen-amber)
   wastage: '#B23A18', wastageSoft: '#F6E6DE', onWastage: '#FFFFFF',
 
+  // Deliveries accent (stock in — green)
+  delivery: '#197A4B', deliverySoft: '#E6F4EC', onDelivery: '#FFFFFF',
+
   // Text
   textPrimary: '#1B1813',
   textSecondary: '#6A6151',
@@ -79,6 +82,9 @@ const darkTokens = {
 
   // Wastage accent (distinct from gold + kitchen-amber)
   wastage: '#FB7C42', wastageSoft: '#2A1B12', onWastage: '#1A0E06',
+
+  // Deliveries accent (stock in — green)
+  delivery: '#34B27B', deliverySoft: '#143025', onDelivery: '#0E2418',
 
   // Text
   textPrimary: '#F2EBD9',

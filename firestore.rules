@@ -49,6 +49,10 @@ service cloud.firestore {
           allow read, write: if signedIn();
         }
 
+        match /deliveryLog/{entryId} {
+          allow read, write: if signedIn();
+        }
+
         match /rotas/{rotaId} {
           allow read, write: if signedIn();
         }

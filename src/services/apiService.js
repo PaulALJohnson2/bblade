@@ -38,6 +38,11 @@ export {
   subscribeToWastageLog,
   deleteWastageEntry,
 
+  // Deliveries (rolling log)
+  logDelivery,
+  subscribeToDeliveryLog,
+  deleteDeliveryEntry,
+
   // Venue (the venue document → name)
   subscribeToVenue,
   getVenue,

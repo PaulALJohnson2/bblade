@@ -660,6 +660,100 @@ export async function deleteWastageEntry(venuePath, entryId) {
 }
 
 // ============================================
+// DELIVERIES  (rolling log under {venuePath}/deliveryLog)
+// ============================================
+
+/**
+ * Log a delivery/purchase event and add the received amount onto the item's stock.
+ *
+ * The mirror of logWastage: each call writes one deliveryLog entry and adjusts
+ * stockItems/{itemId}.quantity by +quantity. The stock write is offline-first
+ * (applies to the local cache immediately, syncs on reconnect) — increment()
+ * lets concurrent edits from other devices merge.
+ *
+ * @param {Object} data - { itemName, section, units: [{label, count}],
+ *   quantity (base units received), baseLabel, supplier, cost, note, receivedBy }
+ */
+export async function logDelivery(venuePath, itemId, data) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const now = Timestamp.now();
+    const entryRef = doc(collection(db, `${venuePath}/deliveryLog`));
+    const received = Number(data.quantity) || 0;
+    const cost = Number(data.cost);
+
+    await setDoc(entryRef, {
+      itemId,
+      itemName: data.itemName || '',
+      section: data.section || 'bar',
+      units: Array.isArray(data.units) ? data.units : [],
+      quantity: received,
+      baseLabel: data.baseLabel || '',
+      supplier: data.supplier || '',
+      cost: Number.isFinite(cost) ? cost : null,
+      note: data.note || '',
+      receivedBy: data.receivedBy || '',
+      receivedAt: now,
+      accountId,
+      venueId,
+    });
+
+    // Add to stock. Don't await — applies to cache instantly, syncs later.
+    if (received > 0) {
+      updateDoc(doc(db, `${venuePath}/stockItems/${itemId}`), {
+        quantity: increment(received),
+        updatedAt: now,
+      }).catch(err => console.error('Deferred delivery stock increment failed:', err));
+    }
+
+    return { success: true, id: entryRef.id };
+  } catch (error) {
+    console.error('Error logging delivery:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Live list of recent delivery entries (newest first, capped at `max`). */
+export function subscribeToDeliveryLog(venuePath, onData, onError, max = 100) {
+  const q = query(
+    collection(db, `${venuePath}/deliveryLog`),
+    orderBy('receivedAt', 'desc'),
+    limit(max)
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in delivery listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Undo a delivery entry: take its amount back off the item, then delete the log. */
+export async function deleteDeliveryEntry(venuePath, entryId) {
+  try {
+    const entryRef = doc(db, `${venuePath}/deliveryLog/${entryId}`);
+    const snap = await getDoc(entryRef);
+    if (!snap.exists()) return { success: false, error: 'Entry not found' };
+
+    const entry = snap.data();
+    const received = Number(entry.quantity) || 0;
+    if (received > 0 && entry.itemId) {
+      updateDoc(doc(db, `${venuePath}/stockItems/${entry.itemId}`), {
+        quantity: increment(-received),
+        updatedAt: Timestamp.now(),
+      }).catch(err => console.error('Deferred delivery undo failed:', err));
+    }
+    await deleteDoc(entryRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting delivery entry:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // VENUE  (the venue document at {venuePath} → { name })
 // ============================================
 
