@@ -21,6 +21,7 @@ import { productKeyFor, computeDepletion } from '../utils/tillMapping';
 import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 import { useStockData } from '../contexts/StockDataContext';
 import TillMapping from '../components/TillMapping';
+import VarianceReport from '../components/VarianceReport';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -181,9 +182,9 @@ function Sales() {
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Sales</h1>
       </div>
 
-      {/* Reports / Products tabs */}
+      {/* Reports / Products / Variance tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        {[['reports', 'Reports'], ['products', 'Till products']].map(([k, label]) => (
+        {[['reports', 'Reports'], ['products', 'Till products'], ['variance', 'Variance']].map(([k, label]) => (
           <button
             key={k}
             onClick={() => setPageView(k)}
@@ -192,7 +193,18 @@ function Sales() {
         ))}
       </div>
 
-      {pageView === 'products' ? (
+      {pageView === 'variance' ? (
+        <VarianceReport
+          venuePath={selectedPub.path}
+          items={items}
+          mappingsByKey={mappingsByKey}
+          colors={colors}
+          accent={accent}
+          onAccent={colors.onPrimary}
+          showToast={showToast}
+          onGoToProducts={() => setPageView('products')}
+        />
+      ) : pageView === 'products' ? (
         <TillMapping
           venuePath={selectedPub.path}
           items={items}

@@ -56,6 +56,11 @@ export {
   deleteTillProduct,
   bulkSaveTillProducts,
 
+  // Variance-period range fetches
+  getDeliveriesBetween,
+  getWastageBetween,
+  getSalesReportsBetween,
+
   // Venue (the venue document → name)
   subscribeToVenue,
   getVenue,

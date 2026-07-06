@@ -857,6 +857,54 @@ export async function deleteSalesReport(venuePath, reportId) {
   }
 }
 
+/** One-shot: delivery entries received in (fromTs, toTs]. */
+export async function getDeliveriesBetween(venuePath, fromTs, toTs) {
+  try {
+    const q = query(
+      collection(db, `${venuePath}/deliveryLog`),
+      where('receivedAt', '>', fromTs),
+      where('receivedAt', '<=', toTs)
+    );
+    const snap = await getDocs(q);
+    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error getting deliveries between:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** One-shot: wastage entries logged in (fromTs, toTs]. */
+export async function getWastageBetween(venuePath, fromTs, toTs) {
+  try {
+    const q = query(
+      collection(db, `${venuePath}/wastageLog`),
+      where('wastedAt', '>', fromTs),
+      where('wastedAt', '<=', toTs)
+    );
+    const snap = await getDocs(q);
+    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error getting wastage between:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** One-shot: sales reports with fromDate <= reportDate < toDate (ISO strings). */
+export async function getSalesReportsBetween(venuePath, fromDate, toDate) {
+  try {
+    const q = query(
+      collection(db, `${venuePath}/salesReports`),
+      where('reportDate', '>=', fromDate),
+      where('reportDate', '<', toDate)
+    );
+    const snap = await getDocs(q);
+    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error getting sales reports between:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ============================================
 // TILL PRODUCTS  ({venuePath}/tillProducts — till line → stock item mapping)
 // ============================================
