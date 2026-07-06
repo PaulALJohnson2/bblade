@@ -45,6 +45,11 @@ export {
   setStockItemCasePack,
   bulkSetCasePacks,
 
+  // Sales reports (till exports)
+  saveSalesReport,
+  subscribeToSalesReports,
+  deleteSalesReport,
+
   // Venue (the venue document → name)
   subscribeToVenue,
   getVenue,

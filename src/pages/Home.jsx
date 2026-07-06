@@ -12,7 +12,8 @@ import Tile from '../components/Tile';
 
 function Home() {
   const navigate = useNavigate();
-  const { pubName } = useAuth();
+  const { pubName, isAdmin } = useAuth();
+  const admin = !!(isAdmin && isAdmin());
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -37,6 +38,12 @@ function Home() {
       to: '/rota', accent: colors.primary,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
     },
+    // Sales exposes takings & margins — owners/managers only.
+    ...(admin ? [{
+      key: 'sales', label: 'Sales', desc: 'Till sales reports',
+      to: '/sales', accent: colors.primary,
+      icon: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'],
+    }] : []),
   ];
 
   return (

@@ -792,6 +792,72 @@ export async function deleteDeliveryEntry(venuePath, entryId) {
 }
 
 // ============================================
+// SALES REPORTS  (till exports under {venuePath}/salesReports, doc id = YYYY-MM-DD)
+// ============================================
+
+/**
+ * Save one day's till sales report. Doc id is the report date, so re-uploading
+ * the same day replaces it (the UI warns first). Lines are embedded — a busy
+ * day is ~200 rows ≈ tens of KB, well inside Firestore's 1MB doc limit.
+ *
+ * @param {Object} report - { reportDate: 'YYYY-MM-DD', fileName, source: 'csv',
+ *   lines: [...], totals: {...}, uploadedBy }
+ */
+export async function saveSalesReport(venuePath, report) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const id = report.reportDate;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(id || '')) {
+      return { success: false, error: 'Invalid report date' };
+    }
+    await setDoc(doc(db, `${venuePath}/salesReports/${id}`), {
+      reportDate: id,
+      fileName: report.fileName || '',
+      source: report.source || 'csv',
+      lines: Array.isArray(report.lines) ? report.lines : [],
+      lineCount: Array.isArray(report.lines) ? report.lines.length : 0,
+      totals: report.totals || {},
+      uploadedBy: report.uploadedBy || '',
+      uploadedAt: Timestamp.now(),
+      accountId,
+      venueId,
+    });
+    return { success: true, id };
+  } catch (error) {
+    console.error('Error saving sales report:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Live list of sales reports, newest date first (capped at `max` days). */
+export function subscribeToSalesReports(venuePath, onData, onError, max = 62) {
+  const q = query(
+    collection(db, `${venuePath}/salesReports`),
+    orderBy('reportDate', 'desc'),
+    limit(max)
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in sales reports listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Delete a sales report (by its date id). */
+export async function deleteSalesReport(venuePath, reportId) {
+  try {
+    await deleteDoc(doc(db, `${venuePath}/salesReports/${reportId}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting sales report:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // VENUE  (the venue document at {venuePath} → { name })
 // ============================================
 

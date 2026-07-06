@@ -81,7 +81,8 @@ function mapObjectKeys(obj) {
 // Sniff the delimiter from the header line: most exports use comma, but till
 // systems often emit semicolon (European locales) or tab. Pick whichever
 // separator appears most in the first line (outside quotes); default to comma.
-function detectDelimiter(text) {
+// (Exported for the other till-export parsers, e.g. parseSalesReport.)
+export function detectDelimiter(text) {
   const firstLine = text.split(/\r?\n/, 1)[0] || '';
   const counts = { ',': 0, ';': 0, '\t': 0 };
   let inQuotes = false;
@@ -95,7 +96,8 @@ function detectDelimiter(text) {
 }
 
 // Split CSV text into rows of fields, honouring quoted fields and "" escapes.
-function splitCsvRows(text, delimiter = ',') {
+// (Exported for the other till-export parsers, e.g. parseSalesReport.)
+export function splitCsvRows(text, delimiter = ',') {
   const rows = [];
   let row = [];
   let field = '';

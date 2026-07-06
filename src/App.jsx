@@ -21,6 +21,7 @@ import './App.css';
 const importStock = () => import('./pages/StockTaking');
 const importWastage = () => import('./pages/Wastage');
 const importDeliveries = () => import('./pages/Deliveries');
+const importSales = () => import('./pages/Sales');
 const importAdmin = () => import('./pages/Admin');
 const importSuper = () => import('./pages/SuperAdmin');
 const importRota = () => import('./pages/Rota');
@@ -31,6 +32,7 @@ const Login = lazy(() => import('./pages/Login'));
 const StockTaking = lazy(importStock);
 const Wastage = lazy(importWastage);
 const Deliveries = lazy(importDeliveries);
+const Sales = lazy(importSales);
 const Admin = lazy(importAdmin);
 const SuperAdmin = lazy(importSuper);
 const Rota = lazy(importRota);
@@ -157,7 +159,7 @@ function Shell() {
   // Warm the route chunks once the shell is up, so the first tap into Stock
   // Count / Wastage / Settings doesn't wait on a JS download.
   useEffect(() => {
-    const preload = () => { importStock(); importWastage(); importDeliveries(); importAdmin(); importRota(); };
+    const preload = () => { importStock(); importWastage(); importDeliveries(); importSales(); importAdmin(); importRota(); };
     const ric = window.requestIdleCallback;
     if (ric) { const id = ric(preload); return () => window.cancelIdleCallback?.(id); }
     const t = setTimeout(preload, 1200);
@@ -203,6 +205,7 @@ function Shell() {
             <Route path="/stock" element={<StockTaking />} />
             <Route path="/wastage" element={<Wastage />} />
             <Route path="/deliveries" element={<Deliveries />} />
+            <Route path="/sales" element={<Sales />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/rota" element={<Rota />} />
             <Route path="/super" element={<SuperAdmin />} />
