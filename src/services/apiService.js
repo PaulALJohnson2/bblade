@@ -42,6 +42,7 @@ export {
   logDelivery,
   subscribeToDeliveryLog,
   deleteDeliveryEntry,
+  setStockItemCasePack,
 
   // Venue (the venue document → name)
   subscribeToVenue,

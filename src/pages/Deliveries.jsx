@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry } from '../services/apiService';
+import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { deliveryUnitsFor, computeDeliveryQuantity, summariseDeliveryUnits } from '../utils/deliveryUnits';
 import DeliveryEntry from '../components/DeliveryEntry';
@@ -125,6 +125,14 @@ function Deliveries() {
     else showToast('Could not log: ' + res.error);
   };
 
+  // Persist a captured case size onto the item. Not awaited — the offline-first
+  // cache write re-renders the entry with its Cases row immediately.
+  const handleSetCasePack = (item, n) => {
+    setStockItemCasePack(selectedPub.path, item.id, n).then((res) => {
+      if (!res.success) showToast('Could not save case size: ' + res.error);
+    });
+  };
+
   const handleUndo = async (entry) => {
     const res = await deleteDeliveryEntry(selectedPub.path, entry.id);
     setConfirmUndo(null);
@@ -202,6 +210,7 @@ function Deliveries() {
                     onAccent={colors.onDelivery}
                     values={values}
                     setValue={setValue}
+                    onSetCasePack={(n) => handleSetCasePack(it, n)}
                   />
 
                   {/* Supplier + cost */}

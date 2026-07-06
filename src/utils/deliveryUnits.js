@@ -42,7 +42,10 @@ export function deliveryUnitsFor(item) {
   }
 
   const baseLabel = info.hasPartUnit ? info.partLabel : info.wholeLabel;
-  return { baseLabel, rows };
+  // canAddCasePack → item has no case size yet and its whole unit isn't already
+  // a case-like container, so the entry UI can offer a one-time case-size capture.
+  const caseIsWhole = /^(cases|boxes)$/i.test(info.wholeLabel || '');
+  return { baseLabel, rows, wholeLabel: info.wholeLabel, canAddCasePack: !(info.casePack > 0) && !caseIsWhole };
 }
 
 /** Base-unit total received, summed at full precision then rounded once. */

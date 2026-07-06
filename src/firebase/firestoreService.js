@@ -713,6 +713,23 @@ export async function logDelivery(venuePath, itemId, data) {
   }
 }
 
+/**
+ * Set how many whole units come in a case (0 clears it). Captured during
+ * delivery entry; feeds the "Cases (×N)" row in counts and deliveries alike.
+ */
+export async function setStockItemCasePack(venuePath, itemId, casePack) {
+  try {
+    await updateDoc(doc(db, `${venuePath}/stockItems/${itemId}`), {
+      casePack: Number(casePack) || 0,
+      updatedAt: Timestamp.now(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error setting case size:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Live list of recent delivery entries (newest first, capped at `max`). */
 export function subscribeToDeliveryLog(venuePath, onData, onError, max = 100) {
   const q = query(
