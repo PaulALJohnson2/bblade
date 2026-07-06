@@ -16,7 +16,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { saveSalesReport, subscribeToSalesReports, deleteSalesReport, subscribeToTillProducts } from '../services/apiService';
-import { parseSalesReport, grossProfitPct } from '../utils/parseSalesReport';
+import { parseSalesReport, grossProfitPct, reportRange, daysInRange, addDays } from '../utils/parseSalesReport';
 import { productKeyFor, computeDepletion } from '../utils/tillMapping';
 import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 import { useStockData } from '../contexts/StockDataContext';
@@ -35,6 +35,18 @@ function prettyDate(iso) {
     : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function prettyRange(from, to) {
+  if (!from || from === to) return prettyDate(to || from);
+  const days = daysInRange(from, to);
+  const short = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return `${short(from)} – ${prettyDate(to)} (${days} days)`;
+}
+
+const isIsoDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+
+// Two inclusive date ranges overlap?
+const rangesOverlap = (aFrom, aTo, bFrom, bTo) => aFrom <= bTo && bFrom <= aTo;
+
 function Sales() {
   const navigate = useNavigate();
   const { currentUser, userProfile, selectedPub, isAdmin } = useAuth();
@@ -50,7 +62,8 @@ function Sales() {
   const [tillProducts, setTillProducts] = useState([]);
   const [detailTab, setDetailTab] = useState('lines'); // 'lines' | 'stock'
   const [parsed, setParsed] = useState(null); // { lines, totals, reportDate, skipped, fileName } | { error }
-  const [reportDate, setReportDate] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [toast, setToast] = useState(null);
@@ -115,19 +128,27 @@ function Sales() {
     const text = await file.text();
     const res = parseSalesReport(text, file.name);
     setParsed({ ...res, fileName: file.name });
-    setReportDate(res.reportDate || '');
+    // The filename date is the export date = the range's LAST trading day.
+    setToDate(res.reportDate || '');
+    setFromDate(res.reportDate || '');
   };
 
-  const resetUpload = () => { setParsed(null); setReportDate(''); if (fileInputRef.current) fileInputRef.current.value = ''; };
+  const resetUpload = () => { setParsed(null); setFromDate(''); setToDate(''); if (fileInputRef.current) fileInputRef.current.value = ''; };
 
-  const existsForDate = reportDate && reports.some((r) => r.reportDate === reportDate);
-  const canSave = parsed && !parsed.error && /^\d{4}-\d{2}-\d{2}$/.test(reportDate) && !saving;
+  const validRange = isIsoDate(fromDate) && isIsoDate(toDate) && fromDate <= toDate;
+  // Same range → replace; different-but-overlapping range → double-count warning.
+  const exactMatch = validRange && reports.some((r) => { const { from, to } = reportRange(r); return from === fromDate && to === toDate; });
+  const overlapping = validRange
+    ? reports.filter((r) => { const { from, to } = reportRange(r); return rangesOverlap(from, to, fromDate, toDate) && !(from === fromDate && to === toDate); })
+    : [];
+  const canSave = parsed && !parsed.error && validRange && !saving;
 
   const handleSave = async () => {
     if (!canSave) return;
     setSaving(true);
     const res = await saveSalesReport(selectedPub.path, {
-      reportDate,
+      fromDate,
+      toDate,
       fileName: parsed.fileName,
       source: 'csv',
       lines: parsed.lines,
@@ -136,7 +157,7 @@ function Sales() {
     });
     setSaving(false);
     if (res.success) {
-      showToast(existsForDate ? `Replaced report for ${prettyDate(reportDate)}` : `Saved report for ${prettyDate(reportDate)}`);
+      showToast(`${exactMatch ? 'Replaced' : 'Saved'} report for ${prettyRange(fromDate, toDate)}`);
       resetUpload();
     } else {
       showToast('Could not save: ' + res.error);
@@ -254,15 +275,35 @@ function Sales() {
 
           {totalsRow(parsed.totals)}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <label style={{ fontSize: '0.85rem', color: colors.textSecondary }}>Trading date</label>
-            <input type="date" value={reportDate} onChange={(e) => setReportDate(e.target.value)} style={input} />
-            {!parsed.reportDate && <span style={{ fontSize: '0.78rem', color: colors.warning }}>Couldn't read a date from the filename — set it here.</span>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label style={{ fontSize: '0.85rem', color: colors.textSecondary }}>Trading dates covered by this report</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} style={input} />
+              <span style={{ color: colors.textSecondary }}>→</span>
+              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} style={input} />
+              {validRange && <span style={{ fontSize: '0.82rem', color: colors.textPrimary, fontWeight: 600 }}>{daysInRange(fromDate, toDate)} day{daysInRange(fromDate, toDate) === 1 ? '' : 's'}</span>}
+            </div>
+            {/* Quick presets counting back from the end date */}
+            {isIsoDate(toDate) && (
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {[1, 7, 14, 28].map((n) => (
+                  <button key={n} onClick={() => setFromDate(addDays(toDate, -(n - 1)))} style={{ padding: '0.35rem 0.7rem', borderRadius: '9999px', border: `1px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary, fontSize: '0.78rem', cursor: 'pointer' }}>
+                    {n === 1 ? '1 day' : `${n} days`}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!parsed.reportDate && <span style={{ fontSize: '0.78rem', color: colors.warning }}>Couldn't read a date from the filename — set the range here.</span>}
           </div>
 
-          {existsForDate && (
+          {exactMatch && (
             <div style={{ fontSize: '0.85rem', color: colors.warning, backgroundColor: colors.warningSoft, borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
-              A report for {prettyDate(reportDate)} already exists — saving will replace it.
+              A report for {prettyRange(fromDate, toDate)} already exists — saving will replace it.
+            </div>
+          )}
+          {overlapping.length > 0 && (
+            <div style={{ fontSize: '0.85rem', color: colors.warning, backgroundColor: colors.warningSoft, borderRadius: '8px', padding: '0.5rem 0.75rem' }}>
+              These dates overlap {overlapping.map((r) => { const { from, to } = reportRange(r); return prettyRange(from, to); }).join(', ')} — both would count the same days twice. Delete the other report or fix the dates.
             </div>
           )}
 
@@ -272,7 +313,7 @@ function Sales() {
               onClick={handleSave}
               disabled={!canSave}
               style={{ flex: 1, padding: '0.85rem', backgroundColor: accent, color: colors.onPrimary, border: 'none', borderRadius: '8px', cursor: canSave ? 'pointer' : 'not-allowed', fontWeight: 700, fontSize: '1.05rem', opacity: canSave ? 1 : 0.5 }}
-            >{saving ? 'Saving…' : existsForDate ? 'Replace report' : 'Save report'}</button>
+            >{saving ? 'Saving…' : exactMatch ? 'Replace report' : 'Save report'}</button>
           </div>
         </div>
       )}
@@ -292,7 +333,7 @@ function Sales() {
                   onClick={() => { setOpenId(open ? null : r.id); setSearch(''); setConfirmDelete(null); }}
                   style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.7rem 0.85rem', background: open ? colors.primarySoft : colors.bgCard, border: 'none', cursor: 'pointer' }}
                 >
-                  <span style={{ flex: 1, minWidth: 0, color: colors.textPrimary, fontWeight: 600 }}>{prettyDate(r.reportDate)}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: colors.textPrimary, fontWeight: 600 }}>{(() => { const { from, to } = reportRange(r); return prettyRange(from, to); })()}</span>
                   <span style={{ fontSize: '0.85rem', color: colors.textPrimary, fontWeight: 600 }}>{gbp(r.totals?.valueIncVAT)}</span>
                   <span style={{ fontSize: '0.75rem', color: colors.textSecondary }}>GP {pct(gp)}</span>
                 </button>

@@ -796,22 +796,28 @@ export async function deleteDeliveryEntry(venuePath, entryId) {
 // ============================================
 
 /**
- * Save one day's till sales report. Doc id is the report date, so re-uploading
- * the same day replaces it (the UI warns first). Lines are embedded — a busy
- * day is ~200 rows ≈ tens of KB, well inside Firestore's 1MB doc limit.
+ * Save a till sales report covering an inclusive trading-date RANGE (a single
+ * day or a whole week/fortnight, depending on how the till exports). The doc
+ * id encodes the range, so re-uploading the same range replaces it (the UI
+ * warns first). Lines are embedded — a few hundred rows ≈ tens of KB, well
+ * inside Firestore's 1MB doc limit.
  *
- * @param {Object} report - { reportDate: 'YYYY-MM-DD', fileName, source: 'csv',
- *   lines: [...], totals: {...}, uploadedBy }
+ * @param {Object} report - { fromDate, toDate: 'YYYY-MM-DD', fileName,
+ *   source: 'csv', lines: [...], totals: {...}, uploadedBy }
  */
 export async function saveSalesReport(venuePath, report) {
   try {
     const { accountId, venueId } = idsFromVenuePath(venuePath);
-    const id = report.reportDate;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(id || '')) {
-      return { success: false, error: 'Invalid report date' };
+    const { fromDate, toDate } = report;
+    const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+    if (!isDate(fromDate) || !isDate(toDate) || fromDate > toDate) {
+      return { success: false, error: 'Invalid report dates' };
     }
+    const id = fromDate === toDate ? fromDate : `${fromDate}_${toDate}`;
     await setDoc(doc(db, `${venuePath}/salesReports/${id}`), {
-      reportDate: id,
+      fromDate,
+      toDate,
+      reportDate: toDate, // list/query ordering (and legacy readers)
       fileName: report.fileName || '',
       source: report.source || 'csv',
       lines: Array.isArray(report.lines) ? report.lines : [],
@@ -889,16 +895,27 @@ export async function getWastageBetween(venuePath, fromTs, toTs) {
   }
 }
 
-/** One-shot: sales reports with fromDate <= reportDate < toDate (ISO strings). */
+/**
+ * One-shot: sales reports whose trading-date RANGE overlaps [fromDate, toDate)
+ * (ISO strings; report ranges are inclusive, legacy docs have reportDate only).
+ * Fetched by recency and filtered client-side so range and legacy docs mix.
+ */
 export async function getSalesReportsBetween(venuePath, fromDate, toDate) {
   try {
     const q = query(
       collection(db, `${venuePath}/salesReports`),
-      where('reportDate', '>=', fromDate),
-      where('reportDate', '<', toDate)
+      orderBy('reportDate', 'desc'),
+      limit(400)
     );
     const snap = await getDocs(q);
-    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+    const data = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(r => {
+        const from = r.fromDate || r.reportDate;
+        const to = r.toDate || r.reportDate;
+        return from && to && from < toDate && to >= fromDate;
+      });
+    return { success: true, data };
   } catch (error) {
     console.error('Error getting sales reports between:', error);
     return { success: false, error: error.message };

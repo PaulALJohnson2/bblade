@@ -18,6 +18,7 @@ import {
   getAllStockSessions, getDeliveriesBetween, getWastageBetween, getSalesReportsBetween,
 } from '../services/apiService';
 import { computeVariance, tradingStartDate, tradingDatesBetween } from '../utils/varianceReport';
+import { reportRange, addDays, daysInRange } from '../utils/parseSalesReport';
 import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 
 const gbp = (n) => '£' + Math.abs(Number(n) || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -83,17 +84,40 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [venuePath, opening?.id, closing?.id]);
 
+  // Reports cover date RANGES. Only reports fully inside the stock period can
+  // be used — a report straddling the boundary can't be apportioned between
+  // periods, so it's excluded and flagged instead of silently skewing figures.
+  const splitReports = useMemo(() => {
+    if (!period || !salesFrom || !salesTo) return null;
+    const inside = [], partial = [];
+    for (const r of period.salesReports) {
+      const { from, to } = reportRange(r);
+      (from >= salesFrom && to < salesTo ? inside : partial).push(r);
+    }
+    return { inside, partial };
+  }, [period, salesFrom, salesTo]);
+
   const result = useMemo(() => {
-    if (!period || !opening || !closing) return null;
-    return computeVariance({ opening, closing, ...period, mappingsByKey, items });
-  }, [period, opening, closing, mappingsByKey, items]);
+    if (!splitReports || !opening || !closing) return null;
+    return computeVariance({
+      opening, closing,
+      deliveries: period.deliveries, wastage: period.wastage,
+      salesReports: splitReports.inside,
+      mappingsByKey, items,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splitReports, period, opening, closing, mappingsByKey, items]);
 
   const coverage = useMemo(() => {
-    if (!period || !salesFrom || !salesTo) return null;
+    if (!splitReports || !salesFrom || !salesTo) return null;
     const expected = tradingDatesBetween(salesFrom, salesTo);
-    const have = new Set(period.salesReports.map((r) => r.reportDate));
-    return { expected, missing: expected.filter((d) => !have.has(d)) };
-  }, [period, salesFrom, salesTo]);
+    const covered = new Set();
+    for (const r of splitReports.inside) {
+      const { from, to } = reportRange(r);
+      for (const d of tradingDatesBetween(from, addDays(to, 1))) covered.add(d);
+    }
+    return { expected, missing: expected.filter((d) => !covered.has(d)) };
+  }, [splitReports, salesFrom, salesTo]);
 
   const fmtAmt = (row, qty) => {
     const n = Math.round(qty * 100) / 100;
@@ -146,6 +170,14 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
             {coverage.missing.length > 0 && (
               <div style={{ fontSize: '0.78rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
                 Missing {coverage.missing.map(prettyIso).join(', ')} — shortages will look bigger than they are until these are uploaded.
+              </div>
+            )}
+            {splitReports.partial.length > 0 && (
+              <div style={{ fontSize: '0.78rem', color: colors.warning, marginTop: '0.25rem' }}>
+                {splitReports.partial.map((r) => {
+                  const { from, to } = reportRange(r);
+                  return `The ${prettyIso(from)}–${prettyIso(to)} report (${daysInRange(from, to)} days) straddles this period's boundary and is excluded — its days can't be split between periods.`;
+                }).join(' ')}
               </div>
             )}
             {result.salesTotals.totalValue > result.salesTotals.mappedValue && (

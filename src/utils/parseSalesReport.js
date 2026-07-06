@@ -130,3 +130,32 @@ export function grossProfitPct(totals) {
   if (!totals || !(totals.valueExcVAT > 0)) return null;
   return totals.margin / totals.valueExcVAT;
 }
+
+// ---- date-range helpers (reports can cover a single day or a whole period) ----
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** ISO date shifted by n days. */
+export function addDays(isoDate, n) {
+  const d = new Date(`${isoDate}T12:00:00`);
+  d.setDate(d.getDate() + n);
+  return iso(d);
+}
+
+/** Inclusive day count of a from..to range (min 1). */
+export function daysInRange(from, to) {
+  const a = new Date(`${from}T12:00:00`);
+  const b = new Date(`${to}T12:00:00`);
+  return Math.max(1, Math.round((b - a) / 86400000) + 1);
+}
+
+/**
+ * A saved report's inclusive trading-date range. Tolerant of legacy docs that
+ * carry only a single reportDate.
+ */
+export function reportRange(report) {
+  const from = report.fromDate || report.reportDate;
+  const to = report.toDate || report.reportDate;
+  return { from, to };
+}
