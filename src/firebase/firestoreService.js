@@ -858,6 +858,69 @@ export async function deleteSalesReport(venuePath, reportId) {
 }
 
 // ============================================
+// TILL PRODUCTS  ({venuePath}/tillProducts — till line → stock item mapping)
+// ============================================
+
+/** Live map of till-product mappings (doc id = till ProductID or name key). */
+export function subscribeToTillProducts(venuePath, onData, onError) {
+  return onSnapshot(
+    collection(db, `${venuePath}/tillProducts`),
+    (snap) => onData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in till products listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Save (merge) one till-product mapping. */
+export async function saveTillProduct(venuePath, key, data) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    await setDoc(doc(db, `${venuePath}/tillProducts/${key}`), {
+      ...data, accountId, venueId, mappedAt: Timestamp.now(),
+    }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving till product mapping:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Remove a till-product mapping (back to unmapped). */
+export async function deleteTillProduct(venuePath, key) {
+  try {
+    await deleteDoc(doc(db, `${venuePath}/tillProducts/${key}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting till product mapping:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Save many till-product mappings in one batched write. entries = [{ key, data }]. */
+export async function bulkSaveTillProducts(venuePath, entries) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const now = Timestamp.now();
+    let batch = writeBatch(db);
+    let inBatch = 0;
+    let count = 0;
+    for (const { key, data } of entries) {
+      if (!key) continue;
+      batch.set(doc(db, `${venuePath}/tillProducts/${key}`), { ...data, accountId, venueId, mappedAt: now }, { merge: true });
+      count++;
+      if (++inBatch === 500) { await batch.commit(); batch = writeBatch(db); inBatch = 0; }
+    }
+    if (inBatch > 0) await batch.commit();
+    return { success: true, count };
+  } catch (error) {
+    console.error('Error bulk-saving till product mappings:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // VENUE  (the venue document at {venuePath} → { name })
 // ============================================
 

@@ -50,6 +50,12 @@ export {
   subscribeToSalesReports,
   deleteSalesReport,
 
+  // Till products (till line → stock item mapping)
+  subscribeToTillProducts,
+  saveTillProduct,
+  deleteTillProduct,
+  bulkSaveTillProducts,
+
   // Venue (the venue document → name)
   subscribeToVenue,
   getVenue,

@@ -15,8 +15,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { saveSalesReport, subscribeToSalesReports, deleteSalesReport } from '../services/apiService';
+import { saveSalesReport, subscribeToSalesReports, deleteSalesReport, subscribeToTillProducts } from '../services/apiService';
 import { parseSalesReport, grossProfitPct } from '../utils/parseSalesReport';
+import { productKeyFor, computeDepletion } from '../utils/tillMapping';
+import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
+import { useStockData } from '../contexts/StockDataContext';
+import TillMapping from '../components/TillMapping';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -38,8 +42,12 @@ function Sales() {
   const colors = getThemeColors(isDark);
   const accent = colors.primary;
 
+  const { items } = useStockData();
   const fileInputRef = useRef(null);
+  const [pageView, setPageView] = useState('reports'); // 'reports' | 'products'
   const [reports, setReports] = useState([]);
+  const [tillProducts, setTillProducts] = useState([]);
+  const [detailTab, setDetailTab] = useState('lines'); // 'lines' | 'stock'
   const [parsed, setParsed] = useState(null); // { lines, totals, reportDate, skipped, fileName } | { error }
   const [reportDate, setReportDate] = useState('');
   const [saving, setSaving] = useState(false);
@@ -55,8 +63,34 @@ function Sales() {
   useEffect(() => {
     if (!selectedPub) return;
     const unsub = subscribeToSalesReports(selectedPub.path, (list) => setReports(list || []));
-    return () => unsub();
+    const unsubMap = subscribeToTillProducts(selectedPub.path, (list) => setTillProducts(list || []));
+    return () => { unsub(); unsubMap(); };
   }, [selectedPub]);
+
+  const mappingsByKey = useMemo(
+    () => Object.fromEntries(tillProducts.map((d) => [d.id, d])),
+    [tillProducts]
+  );
+
+  // Every till product seen across the loaded reports (newest name wins),
+  // with lifetime qty/value so the mapper can rank by importance.
+  const productUniverse = useMemo(() => {
+    const map = new Map();
+    for (const r of reports) {
+      for (const l of r.lines || []) {
+        const key = productKeyFor(l);
+        const cur = map.get(key);
+        if (cur) {
+          cur.qty += Number(l.qty) || 0;
+          cur.value += Number(l.valueIncVAT) || 0;
+          if (!cur.size && l.size) cur.size = l.size;
+        } else {
+          map.set(key, { key, productId: l.productId || '', name: l.name, size: l.size || '', qty: Number(l.qty) || 0, value: Number(l.valueIncVAT) || 0 });
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => b.value - a.value);
+  }, [reports]);
 
   const openReport = reports.find((r) => r.id === openId) || null;
   const openLines = useMemo(() => {
@@ -66,6 +100,12 @@ function Sales() {
       .filter((l) => !q || (l.name || '').toLowerCase().includes(q))
       .sort((a, b) => (b[sortBy] || 0) - (a[sortBy] || 0));
   }, [openReport, sortBy, search]);
+
+  // Expected stock depletion for the open report, via the till-product mappings.
+  const openDepletion = useMemo(
+    () => (openReport ? computeDepletion(openReport.lines, mappingsByKey) : null),
+    [openReport, mappingsByKey]
+  );
 
   if (!admin) return <Navigate to="/" replace />;
 
@@ -141,6 +181,31 @@ function Sales() {
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Sales</h1>
       </div>
 
+      {/* Reports / Products tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        {[['reports', 'Reports'], ['products', 'Till products']].map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setPageView(k)}
+            style={{ flex: 1, padding: '0.6rem', border: 'none', borderRadius: '8px', backgroundColor: pageView === k ? accent : colors.bgLight, color: pageView === k ? colors.onPrimary : colors.textPrimary, fontWeight: pageView === k ? 700 : 500, cursor: 'pointer' }}
+          >{label}</button>
+        ))}
+      </div>
+
+      {pageView === 'products' ? (
+        <TillMapping
+          venuePath={selectedPub.path}
+          items={items}
+          tillProducts={tillProducts}
+          products={productUniverse}
+          colors={colors}
+          accent={accent}
+          onAccent={colors.onPrimary}
+          showToast={showToast}
+          mappedBy={userProfile?.displayName || currentUser?.email || ''}
+        />
+      ) : (
+      <>
       {/* Upload */}
       {!parsed ? (
         <div
@@ -226,6 +291,49 @@ function Sales() {
                       {[r.fileName, r.uploadedBy, r.uploadedAt?.toDate ? r.uploadedAt.toDate().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''].filter(Boolean).join(' · ')}
                     </div>
 
+                    {/* Mapping coverage */}
+                    {openDepletion && (
+                      <div style={{ fontSize: '0.8rem', color: openDepletion.unmappedLines > 0 ? colors.warning : colors.success }}>
+                        {openDepletion.mappedLines + openDepletion.ignoredLines} of {(r.lines || []).length} lines mapped to stock
+                        {openDepletion.totalValue > 0 && ` · ${pct(openDepletion.mappedValue / openDepletion.totalValue)} of value`}
+                        {openDepletion.unmappedLines > 0 && (
+                          <button onClick={() => setPageView('products')} style={{ marginLeft: '0.4rem', background: 'none', border: 'none', color: accent, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, textDecoration: 'underline', padding: 0 }}>
+                            map the rest
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Lines / Stock used toggle */}
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      {[['lines', 'Lines'], ['stock', 'Stock used']].map(([k, label]) => (
+                        <button key={k} onClick={() => setDetailTab(k)} style={{ padding: '0.4rem 0.85rem', borderRadius: '9999px', border: 'none', backgroundColor: detailTab === k ? accent : colors.bgLight, color: detailTab === k ? colors.onPrimary : colors.textPrimary, fontWeight: detailTab === k ? 700 : 500, fontSize: '0.8rem', cursor: 'pointer' }}>{label}</button>
+                      ))}
+                    </div>
+
+                    {detailTab === 'stock' ? (
+                      /* Expected depletion per stock item */
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {(openDepletion?.perItem || []).map((d) => {
+                          const item = items.find((i) => i.id === d.itemId);
+                          const amount = item
+                            ? formatCountOverview({ quantity: d.quantity }, parseUnitInfo(item))
+                            : `${d.quantity}${d.baseLabel ? ` ${d.baseLabel}` : ''}`;
+                          return (
+                            <div key={d.itemId} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', padding: '0.4rem 0.1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
+                              <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.itemName}</span>
+                              <span style={{ flexShrink: 0, fontSize: '0.85rem', fontWeight: 600, color: colors.textPrimary }}>{amount}</span>
+                            </div>
+                          );
+                        })}
+                        {(openDepletion?.perItem || []).length === 0 && (
+                          <div style={{ fontSize: '0.85rem', color: colors.textSecondary, padding: '0.5rem 0' }}>
+                            No lines mapped to stock yet — use the Till products tab.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                    <>
                     {/* Line explorer */}
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…" style={{ ...input, flex: 1, minWidth: 0 }} />
@@ -237,9 +345,13 @@ function Sales() {
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {openLines.slice(0, 300).map((l, i) => {
                         const lineGp = l.valueExcVAT > 0 && l.cost > 0 ? (l.margin / l.valueExcVAT) : null;
+                        const mapped = mappingsByKey[productKeyFor(l)];
                         return (
                           <div key={`${l.productId || l.name}-${i}`} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', padding: '0.4rem 0.1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
-                            <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.name}</span>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {l.name}
+                              {!mapped && <span title="Not mapped to stock" style={{ color: colors.warning }}> •</span>}
+                            </span>
                             <span style={{ flexShrink: 0, fontSize: '0.82rem', color: colors.textSecondary, width: '48px', textAlign: 'right' }}>×{l.qty}</span>
                             <span style={{ flexShrink: 0, fontSize: '0.85rem', fontWeight: 600, color: colors.textPrimary, width: '76px', textAlign: 'right' }}>{gbp(l.valueIncVAT)}</span>
                             <span style={{ flexShrink: 0, fontSize: '0.72rem', color: colors.textMuted, width: '52px', textAlign: 'right' }}>{lineGp == null ? '—' : pct(lineGp)}</span>
@@ -248,6 +360,8 @@ function Sales() {
                       })}
                       {openLines.length === 0 && <div style={{ fontSize: '0.85rem', color: colors.textSecondary, padding: '0.5rem 0' }}>No matching lines.</div>}
                     </div>
+                    </>
+                    )}
 
                     {/* Delete */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -263,6 +377,8 @@ function Sales() {
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* Toast */}
