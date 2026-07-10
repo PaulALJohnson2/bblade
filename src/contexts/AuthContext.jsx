@@ -158,9 +158,10 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // Live tenant data — only while authorized.
+  const [membersLoaded, setMembersLoaded] = useState(false);
   useEffect(() => {
     if (!authorized) {
-      setVenueName(''); setAccountName(''); setEntitlements({}); setMembers([]);
+      setVenueName(''); setAccountName(''); setEntitlements({}); setMembers([]); setMembersLoaded(false);
       return;
     }
     const unsubVenue = subscribeToVenue(PATH, (d) => setVenueName(d?.name || ''), (e) => console.error(e));
@@ -168,7 +169,7 @@ export const AuthProvider = ({ children }) => {
       setAccountName(d?.name || '');
       setEntitlements(d?.entitlements || {});
     }, (e) => console.error(e));
-    const unsubMembers = subscribeToMembers(activeAccountId, (list) => setMembers(list || []), (e) => console.error(e));
+    const unsubMembers = subscribeToMembers(activeAccountId, (list) => { setMembers(list || []); setMembersLoaded(true); }, (e) => console.error(e));
     return () => { unsubVenue(); unsubAcct(); unsubMembers(); };
   }, [authorized, PATH, activeAccountId]);
 
@@ -269,13 +270,25 @@ export const AuthProvider = ({ children }) => {
     try { localStorage.setItem('bb_active_tenant', JSON.stringify({ accountId, venueId })); } catch { /* ignore */ }
   };
 
-  // Counts are attributed to the signed-in user. Prefer the member record's name
-  // (set by an admin) over the Google profile name so attribution shows real
-  // names. Resolved from the live members subscription once it loads.
-  const memberName = members.find(
+  // The signed-in user's own member record (matched by email from the live
+  // members subscription). Drives display name and per-member feature flags.
+  const currentMember = members.find(
     (m) => m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase()
-  )?.displayName || '';
-  const displayName = memberName || currentUser?.displayName || currentUser?.email || 'Staff';
+  ) || null;
+
+  // Counts are attributed to the signed-in user. Prefer the member record's name
+  // (set by an admin) over the Google profile name so attribution shows real names.
+  const displayName = currentMember?.displayName || currentUser?.displayName || currentUser?.email || 'Staff';
+
+  // Which stock sections this user may see, from their member department:
+  // bar → bar only, kitchen → kitchen only, both → both. Owners/managers and
+  // super-admins (no member record) are never restricted; same brief grace
+  // while the members list loads as canAccessStock.
+  const department = currentMember?.department || 'bar';
+  const allowedSections =
+    role === 'owner' || role === 'manager' || !currentMember || department === 'both'
+      ? ['bar', 'kitchen']
+      : [department];
 
   const value = {
     currentUser,
@@ -312,8 +325,17 @@ export const AuthProvider = ({ children }) => {
     saveMember,
     deleteMember,
 
-    // Role helpers — derived from the signed-in member's role.
-    canAccessStock: () => true,
+    // The signed-in user's member record (null for super-admins / until loaded).
+    currentMember,
+    // Stock sections this user may see (['bar'], ['kitchen'] or both).
+    allowedSections,
+
+    // Role helpers — derived from the signed-in member's role + flags.
+    // canAccessStock: owners/managers always; staff need the member's
+    // "With stock" tick. While the members list is still loading we allow
+    // rather than bounce a legitimate deep link — it settles in a moment.
+    canAccessStock: () =>
+      role === 'owner' || role === 'manager' || !membersLoaded || !!currentMember?.withStock,
     canEdit: () => true,
     isSuperAdmin: () => role === 'owner',
     isAdmin: () => role === 'owner' || role === 'manager',

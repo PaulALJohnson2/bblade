@@ -20,6 +20,15 @@ import Tile from '../components/Tile';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
+// Which side of the pub a member works — will drive feature access per
+// department later. 'both' = works across bar and kitchen.
+const DEPARTMENTS = [
+  ['bar', 'Bar'],
+  ['kitchen', 'Kitchen'],
+  ['both', 'Bar & kitchen'],
+];
+const departmentLabel = (d) => (DEPARTMENTS.find(([k]) => k === d) || DEPARTMENTS[0])[1];
+
 function Admin() {
   const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -31,7 +40,9 @@ function Admin() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('staff');
+  const [newDepartment, setNewDepartment] = useState('bar');
   const [newOnRota, setNewOnRota] = useState(true);
+  const [newWithStock, setNewWithStock] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [error, setError] = useState(null);
@@ -39,7 +50,9 @@ function Admin() {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState('staff');
+  const [editDepartment, setEditDepartment] = useState('bar');
   const [editOnRota, setEditOnRota] = useState(true);
+  const [editWithStock, setEditWithStock] = useState(false);
 
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
@@ -72,8 +85,8 @@ function Admin() {
       return;
     }
     setError(null);
-    const res = await saveMember(null, { displayName, email, role: newRole, venueAccess: 'all', active: true, onRota: newOnRota });
-    if (res.success) { setNewName(''); setNewEmail(''); setNewRole('staff'); setNewOnRota(true); }
+    const res = await saveMember(null, { displayName, email, role: newRole, department: newDepartment, venueAccess: 'all', active: true, onRota: newOnRota, withStock: newWithStock });
+    if (res.success) { setNewName(''); setNewEmail(''); setNewRole('staff'); setNewDepartment('bar'); setNewOnRota(true); setNewWithStock(false); }
     else setError('Could not add staff: ' + res.error);
   };
 
@@ -83,7 +96,9 @@ function Admin() {
     setEditName(member.displayName || '');
     setEditEmail(member.email || '');
     setEditRole(member.role || 'staff');
+    setEditDepartment(member.department || 'bar');
     setEditOnRota(member.onRota !== false);
+    setEditWithStock(!!member.withStock);
   };
 
   const handleSaveEdit = async () => {
@@ -99,7 +114,7 @@ function Admin() {
       return;
     }
     setError(null);
-    const res = await saveMember(editingId, { displayName, email, role: editRole, onRota: editOnRota });
+    const res = await saveMember(editingId, { displayName, email, role: editRole, department: editDepartment, onRota: editOnRota, withStock: editWithStock });
     if (res.success) setEditingId(null);
     else setError('Could not save staff: ' + res.error);
   };
@@ -305,9 +320,23 @@ function Admin() {
           >
             {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
+          <select
+            value={newDepartment}
+            onChange={(e) => setNewDepartment(e.target.value)}
+            style={{
+              padding: '0.75rem', fontSize: '1rem', borderRadius: '8px',
+              border: `2px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary,
+            }}
+          >
+            {DEPARTMENTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
             <input type="checkbox" checked={newOnRota} onChange={(e) => setNewOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
             On rota
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input type="checkbox" checked={newWithStock} onChange={(e) => setNewWithStock(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+            With stock
           </label>
           <button onClick={handleAddMember} style={primaryBtn}>Add</button>
         </div>
@@ -351,9 +380,23 @@ function Admin() {
                     >
                       {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
+                    <select
+                      value={editDepartment}
+                      onChange={(e) => setEditDepartment(e.target.value)}
+                      style={{
+                        padding: '0.75rem', fontSize: '1rem', borderRadius: '8px',
+                        border: `2px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary,
+                      }}
+                    >
+                      {DEPARTMENTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                    </select>
                     <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
                       <input type="checkbox" checked={editOnRota} onChange={(e) => setEditOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                       On rota
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={editWithStock} onChange={(e) => setEditWithStock(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                      With stock
                     </label>
                     <button onClick={handleSaveEdit} style={primaryBtn}>Save</button>
                     <button
@@ -373,6 +416,20 @@ function Admin() {
                           textTransform: 'uppercase', letterSpacing: '0.04em',
                         }}>
                           {member.role}
+                        </span>
+                      )}
+                      <span style={{
+                        marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}>
+                        · {departmentLabel(member.department)}
+                      </span>
+                      {member.withStock && (
+                        <span style={{
+                          marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                          textTransform: 'uppercase', letterSpacing: '0.04em',
+                        }}>
+                          · with stock
                         </span>
                       )}
                       {member.onRota === false && (

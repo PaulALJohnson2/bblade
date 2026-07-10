@@ -3,70 +3,83 @@ rules_version = '2';
 // ===========================================================================
 //  BBlade — Firestore rules
 //
-//  Access model (current): a verified Google sign-in is required for all data.
-//  The member email allowlist that decides *who* may use an account is still
-//  enforced in the client (AuthContext), NOT here — so any signed-in user can
-//  technically reach this account's data via the API. These rules scope access
-//  to the real data shape and block everything else, but do not yet provide
-//  per-tenant / per-role isolation.
+//  Access model: authentication is provisioned from the members list (see
+//  functions/index.js) — self sign-up is disabled and the gateUserSignIn
+//  blocking function rejects non-members, stamping { accountId, role } into
+//  every allowed user's token (platform staff additionally get platformAdmin).
+//  These rules trust those claims:
 //
-//  NEXT (proper lockdown): stamp an `accountId` (+ `role`) custom claim on each
-//  user via a Cloud Function when they're added as a member, then tighten to:
-//      allow read, write: if request.auth.token.accountId == accountId;
-//  with role checks (e.g. owner/manager) on member + venue writes.
+//    - member(account):  any signed-in member of THIS account (tenant isolation)
+//    - manager(account): the account's owners/managers
+//    - platformAdmin:    BBlade staff — full access across accounts
+//
+//  Day-to-day venue data (stock, wastage, rota reads) is member-level; account
+//  configuration and back-office data (members, venues, sales, deliveries,
+//  till mappings, rota writes) is manager-level. Department / with-stock
+//  scoping stays client-side for now — those flags live on member docs, not
+//  in token claims.
 // ===========================================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // A real, verified Google account.
-    function signedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
+    function platformAdmin() {
+      return request.auth != null && request.auth.token.platformAdmin == true;
+    }
+    function member(accountId) {
+      return platformAdmin()
+        || (request.auth != null && request.auth.token.accountId == accountId);
+    }
+    function manager(accountId) {
+      return platformAdmin()
+        || (member(accountId) && request.auth.token.role in ['owner', 'manager']);
     }
 
-    // Customer account (name, entitlements) and everything beneath it.
+    // Customer account (name, entitlements).
     match /accounts/{accountId} {
-      allow read, write: if signedIn();
+      allow read: if member(accountId);
+      allow write: if manager(accountId);
 
-      // Staff / members (identity, role, venue access).
+      // Staff / members (identity, role, department, feature flags).
+      // All members may read (names drive attribution and rota display);
+      // only managers may change the staff list.
       match /members/{memberId} {
-        allow read, write: if signedIn();
+        allow read: if member(accountId);
+        allow write: if manager(accountId);
       }
 
-      // Venues, and the stock data within each.
       match /venues/{venueId} {
-        allow read, write: if signedIn();
+        allow read: if member(accountId);
+        allow write: if manager(accountId);
 
+        // ---- day-to-day staff data ----
         match /stockItems/{itemId} {
-          allow read, write: if signedIn();
+          allow read, write: if member(accountId);
         }
-
         match /stockSessions/{sessionId} {
-          allow read, write: if signedIn();
+          allow read, write: if member(accountId);
         }
-
         match /wastageLog/{entryId} {
-          allow read, write: if signedIn();
+          allow read, write: if member(accountId);
         }
-
-        match /deliveryLog/{entryId} {
-          allow read, write: if signedIn();
-        }
-
-        match /salesReports/{reportId} {
-          allow read, write: if signedIn();
-        }
-
-        match /tillProducts/{productId} {
-          allow read, write: if signedIn();
-        }
-
         match /rotas/{rotaId} {
-          allow read, write: if signedIn();
+          allow read: if member(accountId);
+          allow write: if manager(accountId);
+        }
+        match /rotaPrefs/{docId} {
+          allow read: if member(accountId);
+          allow write: if manager(accountId);
         }
 
-        match /rotaPrefs/{docId} {
-          allow read, write: if signedIn();
+        // ---- owner/manager features ----
+        match /deliveryLog/{entryId} {
+          allow read, write: if manager(accountId);
+        }
+        match /salesReports/{reportId} {
+          allow read, write: if manager(accountId);
+        }
+        match /tillProducts/{productId} {
+          allow read, write: if manager(accountId);
         }
       }
     }

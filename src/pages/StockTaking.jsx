@@ -48,7 +48,7 @@ import StockBuilder from '../components/StockBuilder';
 const OTHER_CATEGORY = '__other__';
 
 function StockTaking() {
-  const { currentUser, userProfile, members, selectedPub, canAccessStock, canEdit, isSuperAdmin, isAdmin } = useAuth();
+  const { currentUser, userProfile, members, selectedPub, canAccessStock, canEdit, isSuperAdmin, isAdmin, allowedSections } = useAuth();
 
   // Resolve a stored name/email to the member's real name. Older sessions stored
   // the email as createdByName; map it back to a display name where we can.
@@ -73,7 +73,13 @@ function StockTaking() {
 
   // Stock items come from the app-wide StockDataProvider (warm on app load), so
   // opening this page is instant instead of re-subscribing on every navigation.
-  const { items: allItems, itemsLoading: loading, itemsError: error } = useStockData();
+  // Scoped to the user's department sections (bar/kitchen) at the source, so
+  // every list, tab and builder below only ever sees what they're allowed.
+  const { items: rawItems, itemsLoading: loading, itemsError: error } = useStockData();
+  const allItems = useMemo(
+    () => rawItems.filter((i) => allowedSections.includes(i.section === 'kitchen' ? 'kitchen' : 'bar')),
+    [rawItems, allowedSections],
+  );
 
   // Session state
   const [allSessions, setAllSessions] = useState([]);
@@ -1229,7 +1235,7 @@ function StockTaking() {
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
-                  {openBar ? (
+                  {allowedSections.includes('bar') && (openBar ? (
                     <div style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
@@ -1258,8 +1264,8 @@ function StockTaking() {
                     >
                       + Bar Stock Take
                     </button>
-                  )}
-                  {openKitchen ? (
+                  ))}
+                  {allowedSections.includes('kitchen') && (openKitchen ? (
                     <div style={{
                       flex: 1,
                       padding: '0.75rem 1rem',
@@ -1288,7 +1294,7 @@ function StockTaking() {
                     >
                       + Kitchen Stock Take
                     </button>
-                  )}
+                  ))}
                 </div>
               </div>
             );
@@ -1304,9 +1310,10 @@ function StockTaking() {
               const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
               return bTime - aTime;
             });
-            const barSessions = sortSessions(allSessions.filter(s => s.section === 'bar'));
-            const kitchenSessions = sortSessions(allSessions.filter(s => s.section === 'kitchen'));
-            const otherSessions = allSessions.filter(s => !s.section);
+            // Session lists are department-scoped like the items themselves.
+            const barSessions = allowedSections.includes('bar') ? sortSessions(allSessions.filter(s => s.section === 'bar')) : [];
+            const kitchenSessions = allowedSections.includes('kitchen') ? sortSessions(allSessions.filter(s => s.section === 'kitchen')) : [];
+            const otherSessions = allowedSections.length > 1 ? allSessions.filter(s => !s.section) : [];
 
             const renderSessionCard = (session) => {
               const isInProgress = session.status === 'in_progress';
@@ -1559,8 +1566,9 @@ function StockTaking() {
             />
           </div>
 
-          {/* Section Tabs - hidden when session has a section locked */}
-          {!currentSession?.section && (
+          {/* Section Tabs - hidden when session has a section locked, or when
+              the user's department only allows one section (nothing to switch) */}
+          {!currentSession?.section && allowedSections.length > 1 && (
             <div style={{
               display: 'flex',
               gap: '0.5rem',

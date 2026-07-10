@@ -85,6 +85,7 @@ export {
   deleteMember,
 
   // Rotas (weekly staff rota)
+  hasPublishedRota,
   subscribeToRota,
   saveRota,
   setRotaPublished,

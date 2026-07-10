@@ -1,11 +1,16 @@
 /**
  * Home — the post-login dashboard. A 2-column grid of square tiles that route to
- * each area of the app (Stock Count, Wastage today; more to come like Rotas).
+ * each area of the app.
+ *
+ * Owners/managers see every tile. Normal staff only see day-to-day features:
+ * Wastage, and Rota once at least one week has been published (before that
+ * there's nothing for them to look at).
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { hasPublishedRota } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import Tile from '../components/Tile';
@@ -14,14 +19,28 @@ import Tile from '../components/Tile';
 // Owner/manager features (sales, reports, settings) belong on /admin.
 function Home() {
   const navigate = useNavigate();
-  const { pubName } = useAuth();
+  const { pubName, isAdmin, selectedPub, currentMember } = useAuth();
+  const admin = !!(isAdmin && isAdmin());
+  // Strict (no loading-grace) so the tile pops in rather than flashing away.
+  const stockAccess = admin || !!currentMember?.withStock;
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+
+  // Staff only get the Rota tile once a rota has actually been published.
+  const [rotaLive, setRotaLive] = useState(false);
+  useEffect(() => {
+    if (admin || !selectedPub?.path) return;
+    let alive = true;
+    hasPublishedRota(selectedPub.path).then((res) => {
+      if (alive && res.success) setRotaLive(res.data);
+    });
+    return () => { alive = false; };
+  }, [admin, selectedPub?.path]);
 
   const tiles = [
     {
       key: 'stock', label: 'Stock Count', desc: 'Count bar & kitchen stock',
-      to: '/stock', accent: colors.primary,
+      to: '/stock', accent: colors.primary, needsStockAccess: true,
       icon: ['M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z', 'M9 5h6', 'M8 11h8', 'M8 15h8'],
     },
     {
@@ -31,15 +50,23 @@ function Home() {
     },
     {
       key: 'deliveries', label: 'Deliveries', desc: 'Log stock coming in',
-      to: '/deliveries', accent: colors.delivery,
+      to: '/deliveries', accent: colors.delivery, adminOnly: true,
       icon: ['M2 6h11v9H2z', 'M13 9h4l3.5 3.5V15H13', 'M5 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0', 'M14 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0'],
     },
     {
       key: 'rota', label: 'Rota', desc: 'See your shifts',
-      to: '/rota', accent: colors.primary,
+      to: '/rota', accent: colors.primary, staffNeedsPublishedRota: true,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
     },
   ];
+
+  const visibleTiles = tiles.filter((t) => {
+    if (t.needsStockAccess) return stockAccess;
+    if (admin) return true;
+    if (t.adminOnly) return false;
+    if (t.staffNeedsPublishedRota) return rotaLive;
+    return true;
+  });
 
   return (
     <div style={{ maxWidth: '560px', margin: '0 auto' }}>
@@ -50,7 +77,7 @@ function Home() {
         What would you like to do?
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        {tiles.map((t) => (
+        {visibleTiles.map((t) => (
           <Tile
             key={t.key}
             label={t.label}

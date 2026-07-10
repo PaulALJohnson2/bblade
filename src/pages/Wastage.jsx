@@ -30,7 +30,7 @@ function wasteSummary(e) {
 
 function Wastage() {
   const navigate = useNavigate();
-  const { currentUser, userProfile, selectedPub } = useAuth();
+  const { currentUser, userProfile, selectedPub, allowedSections } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = colors.wastage;
@@ -38,6 +38,17 @@ function Wastage() {
   const { items } = useStockData();
   const [recent, setRecent] = useState([]);
   const [section, setSection] = useState('bar');
+
+  // Department scoping: bar staff only see bar, kitchen only kitchen. Snap the
+  // active tab into the allowed set if it isn't (e.g. kitchen-only staff).
+  useEffect(() => {
+    if (!allowedSections.includes(section)) {
+      setSection(allowedSections[0]);
+      setCategoryFilter('');
+      resetEntry();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedSections, section]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedId, setSelectedId] = useState(null);
@@ -136,11 +147,18 @@ function Wastage() {
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Wastage</h1>
       </div>
 
-      {/* Section tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        <button onClick={() => { setSection('bar'); setCategoryFilter(''); resetEntry(); }} style={tab(section === 'bar')}>Bar</button>
-        <button onClick={() => { setSection('kitchen'); setCategoryFilter(''); resetEntry(); }} style={tab(section === 'kitchen')}>Kitchen</button>
-      </div>
+      {/* Section tabs — only the sections the user's department allows; hidden
+          entirely when there's just one (nothing to switch) */}
+      {allowedSections.length > 1 && (
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+          {allowedSections.includes('bar') && (
+            <button onClick={() => { setSection('bar'); setCategoryFilter(''); resetEntry(); }} style={tab(section === 'bar')}>Bar</button>
+          )}
+          {allowedSections.includes('kitchen') && (
+            <button onClick={() => { setSection('kitchen'); setCategoryFilter(''); resetEntry(); }} style={tab(section === 'kitchen')}>Kitchen</button>
+          )}
+        </div>
+      )}
 
       {/* Search */}
       <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search items…" style={{ ...input, marginBottom: '0.6rem' }} />
@@ -232,14 +250,14 @@ function Wastage() {
         })}
       </div>
 
-      {/* Recent wastage */}
+      {/* Recent wastage — scoped to the user's department sections */}
       <div style={{ marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1.05rem', color: colors.textPrimary, margin: '0 0 0.75rem' }}>Recent wastage</h2>
-        {recent.length === 0 ? (
+        {recent.filter((e) => allowedSections.includes(e.section === 'kitchen' ? 'kitchen' : 'bar')).length === 0 ? (
           <div style={{ color: colors.textSecondary, fontSize: '0.9rem' }}>Nothing logged yet.</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {recent.map((e) => {
+            {recent.filter((e) => allowedSections.includes(e.section === 'kitchen' ? 'kitchen' : 'bar')).map((e) => {
               const when = e.wastedAt?.toDate ? e.wastedAt.toDate().toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
               const confirming = confirmUndo === e.id;
               return (

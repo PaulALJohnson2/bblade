@@ -1264,6 +1264,22 @@ export function subscribeToRota(venuePath, weekId, onData, onError) {
   );
 }
 
+/**
+ * Whether any week's rota has been published (sent to staff). Drives whether
+ * staff see the Rota tile at all — before the first published rota there's
+ * nothing for them to look at.
+ */
+export async function hasPublishedRota(venuePath) {
+  try {
+    const q = query(collection(db, `${venuePath}/rotas`), where('published', '==', true), limit(1));
+    const snapshot = await getDocs(q);
+    return { success: true, data: !snapshot.empty };
+  } catch (error) {
+    console.error('Error checking published rotas:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Create or overwrite a week's rota. weekId is the Monday's ISO date. */
 export async function saveRota(venuePath, weekId, data) {
   try {

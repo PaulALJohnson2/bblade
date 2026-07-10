@@ -7,7 +7,7 @@
  */
 
 import React, { Suspense, lazy, useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { StockDataProvider } from './contexts/StockDataContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -36,6 +36,21 @@ const Sales = lazy(importSales);
 const Admin = lazy(importAdmin);
 const SuperAdmin = lazy(importSuper);
 const Rota = lazy(importRota);
+
+// Owner/manager-only routes. Staff see only day-to-day features (Home decides
+// their tiles); this stops direct URLs reaching the rest. Rota and Wastage
+// stay open to everyone — the Rota page itself only shows published weeks to
+// staff. (/admin self-guards the same way.)
+function AdminOnly({ children }) {
+  const { isAdmin } = useAuth();
+  return isAdmin && isAdmin() ? children : <Navigate to="/" replace />;
+}
+
+// Stock is admin OR any member with the "With stock" tick.
+function StockAllowed({ children }) {
+  const { canAccessStock } = useAuth();
+  return canAccessStock && canAccessStock() ? children : <Navigate to="/" replace />;
+}
 
 const PageLoader = () => (
   <div
@@ -202,10 +217,10 @@ function Shell() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/stock" element={<StockTaking />} />
+            <Route path="/stock" element={<StockAllowed><StockTaking /></StockAllowed>} />
             <Route path="/wastage" element={<Wastage />} />
-            <Route path="/deliveries" element={<Deliveries />} />
-            <Route path="/sales" element={<Sales />} />
+            <Route path="/deliveries" element={<AdminOnly><Deliveries /></AdminOnly>} />
+            <Route path="/sales" element={<AdminOnly><Sales /></AdminOnly>} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/rota" element={<Rota />} />
             <Route path="/super" element={<SuperAdmin />} />
