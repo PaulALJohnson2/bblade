@@ -1,13 +1,13 @@
 /**
- * AuthContext — Google sign-in + per-account authorization.
+ * AuthContext — Google / email-link sign-in + per-account authorization.
  *
- * Flow:
- *   1. User signs in with Google (Firebase Auth).
- *   2. We check the account's `members` for one whose `email` matches — that's
- *      the allowlist. Match → authorized (with the member's role). No match →
- *      access denied + signed out. (Bootstrap: if no member has an email yet,
- *      the first signed-in user is allowed, so you can't lock yourself out.)
- *   3. Once authorized, the tenant's live data (venue, account, members) loads.
+ * Authorization is enforced SERVER-SIDE: accounts are provisioned from the
+ * members list by the syncMemberAuth Cloud Function (self sign-up is disabled
+ * project-wide), and the gateUserSignIn blocking function rejects any sign-in
+ * that isn't a provisioned member or super-admin. So by the time a user reaches
+ * this context they ARE authorized — we just read { accountId, role } from the
+ * ID token claims. No Firestore read in the critical path: nothing to race,
+ * and it works offline from the cached token.
  *
  * Tenant is still the hardcoded ACCOUNT_ID/VENUE_ID (single pub, no switcher).
  * Counts are attributed to the signed-in user. StockTaking consumes useAuth()
@@ -34,7 +34,6 @@ import {
   subscribeToAccount,
   saveAccount as saveAccountSvc,
   subscribeToMembers,
-  getMembers,
   saveMember as saveMemberSvc,
   deleteMember as deleteMemberSvc,
 } from '../services/apiService';
@@ -71,10 +70,6 @@ export const AuthProvider = ({ children }) => {
   const [completingEmailLink, setCompletingEmailLink] = useState(
     () => typeof window !== 'undefined' && isSignInWithEmailLink(auth, window.location.href),
   );
-  // Preferred display name resolved from the matched Member record (falls back
-  // to the Google profile name / email). Drives count attribution + the header.
-  const [memberName, setMemberName] = useState('');
-
   // ---- tenant data (loaded once authorized) ----
   const [venueName, setVenueName] = useState('');
   const [accountName, setAccountName] = useState('');
@@ -94,18 +89,12 @@ export const AuthProvider = ({ children }) => {
         setCurrentUser(null);
         setAuthorized(false);
         setRole('staff');
-        setMemberName('');
         setIsPlatformAdmin(false);
         setLoading(false);
         return;
       }
 
       try {
-        // Ensure the auth token is minted before any Firestore read, otherwise
-        // a redirect sign-in can fire reads before the token attaches and get
-        // permission-denied.
-        await user.getIdToken();
-
         // Platform super-admins: full access to any account, no member check.
         // They land on their last-opened account (localStorage), else the default.
         if (isSuperAdminEmail(user.email)) {
@@ -118,59 +107,47 @@ export const AuthProvider = ({ children }) => {
             }
           } catch { /* ignore bad localStorage */ }
           setRole('owner');
-          setMemberName('');
           setCurrentUser(user);
           setAuthorized(true);
           setAuthError(null);
           return; // finally{} clears loading
         }
 
-        // Normal user → default account, authorize against its members.
-        setIsPlatformAdmin(false);
-        setActiveAccountId(ACCOUNT_ID);
-        setActiveVenueId(VENUE_ID);
-        const res = await getMembers(ACCOUNT_ID);
-        if (!res.success) {
-          // Don't silently treat a failed access check as a bootstrap; surface it.
-          throw new Error(res.error || 'permission-denied');
+        // Anyone else who completed sign-in was allowed by the server gate
+        // (gateUserSignIn), which stamped { accountId, role } claims when the
+        // account was provisioned from the members list. Read them from the
+        // token — cached, offline-safe, no Firestore read to race or fail.
+        let token = await user.getIdTokenResult();
+        if (!token.claims.accountId) {
+          // Session predates provisioning — refresh once to pick up the
+          // claims stamped by the backfill / their first gated sign-in.
+          token = await user.getIdTokenResult(true);
         }
-        const list = res.data;
-        const withEmail = list.filter((m) => m.email);
-        const match = list.find(
-          (m) => m.email && user.email && m.email.toLowerCase() === user.email.toLowerCase()
-        );
 
-        if (withEmail.length === 0 || match) {
-          // Authorized (matched member, or bootstrap when no allowlist exists yet)
-          setRole(match?.role || 'owner');
-          // Prefer the member's real name; fall back to Google name / email.
-          setMemberName(match?.displayName || '');
+        if (token.claims.accountId) {
+          setIsPlatformAdmin(false);
+          setActiveAccountId(token.claims.accountId);
+          setActiveVenueId(VENUE_ID);
+          setRole(token.claims.role || 'staff');
           setCurrentUser(user);
           setAuthorized(true);
           setAuthError(null);
         } else {
+          // Shouldn't happen (the server gate rejects non-members before the
+          // sign-in completes), but fail closed if it ever does.
           setAuthError(
             'Access denied — this account is not authorised. Ask an administrator to add you.'
           );
-          // If this Firebase account was just created (e.g. someone requested an
-          // email link to an address that isn't on the allowlist), delete the
-          // record so we don't accumulate orphan accounts. Falls back to sign-out.
-          // Note: not a security boundary — see role-enforced-rules.
-          const created = user.metadata?.creationTime;
-          const lastSeen = user.metadata?.lastSignInTime;
-          try {
-            if (created && created === lastSeen) await user.delete();
-            else await signOut(auth);
-          } catch {
-            await signOut(auth);
-          }
+          await signOut(auth);
           setCurrentUser(null);
           setAuthorized(false);
         }
       } catch (err) {
+        // Transient (e.g. token refresh while offline). Keep the Firebase
+        // session — signing out here would burn a one-time email link — so a
+        // retry / reload can complete without a fresh sign-in.
         console.error('Authorization error:', err);
-        setAuthError('Could not verify access. Please try again.');
-        await signOut(auth);
+        setAuthError('Could not verify access. Please check your connection and try again.');
         setCurrentUser(null);
         setAuthorized(false);
       } finally {
@@ -201,7 +178,12 @@ export const AuthProvider = ({ children }) => {
     if (!isSignInWithEmailLink(auth, window.location.href)) return;
     let email = window.localStorage.getItem('emailForSignIn');
     if (!email) {
-      // Link opened on a different device — confirm the address (anti-injection).
+      // Link opened outside the requesting browser — the address travels in
+      // the continue URL (see sendEmailLink), so no need to ask for it.
+      email = new URLSearchParams(window.location.search).get('email');
+    }
+    if (!email) {
+      // Last resort (older links without the email param).
       email = window.prompt('Please confirm your email to finish signing in');
     }
     if (!email) { setCompletingEmailLink(false); return; }
@@ -251,7 +233,15 @@ export const AuthProvider = ({ children }) => {
   const sendEmailLink = async (email) => {
     setAuthError(null);
     try {
-      const actionCodeSettings = { url: `${window.location.origin}/login`, handleCodeInApp: true };
+      // Carry the email in the continue URL so completing the link never has
+      // to prompt for it — the link may open in a different browser/profile
+      // than the one that requested it (e.g. from a mail app), where the
+      // localStorage copy doesn't exist. The link's one-time code is bound to
+      // this email, so Firebase still rejects any mismatch.
+      const actionCodeSettings = {
+        url: `${window.location.origin}/login?email=${encodeURIComponent(email)}`,
+        handleCodeInApp: true,
+      };
       await sendSignInLinkToEmail(auth, email, actionCodeSettings);
       window.localStorage.setItem('emailForSignIn', email);
       return { success: true };
@@ -280,7 +270,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Counts are attributed to the signed-in user. Prefer the member record's name
-  // (set by an admin) over the Google profile name so attribution shows real names.
+  // (set by an admin) over the Google profile name so attribution shows real
+  // names. Resolved from the live members subscription once it loads.
+  const memberName = members.find(
+    (m) => m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase()
+  )?.displayName || '';
   const displayName = memberName || currentUser?.displayName || currentUser?.email || 'Staff';
 
   const value = {
