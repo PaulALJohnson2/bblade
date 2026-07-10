@@ -355,6 +355,23 @@ export async function reopenStockSession(venuePath, sessionId) {
   }
 }
 
+/**
+ * Hide (or unhide) a completed session from variance reports. The count and
+ * its data are kept — it just stops being a period boundary, so its period
+ * merges into the neighbouring one.
+ */
+export async function setStockSessionVarianceHidden(venuePath, sessionId, hidden) {
+  try {
+    await updateDoc(doc(db, `${venuePath}/stockSessions/${sessionId}`), {
+      hiddenFromVariance: !!hidden,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating stock session:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Delete/cancel a session. */
 export async function deleteStockSession(venuePath, sessionId) {
   try {

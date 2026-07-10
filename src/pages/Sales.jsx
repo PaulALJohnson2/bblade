@@ -225,6 +225,7 @@ function Sales() {
           onAccent={colors.onPrimary}
           showToast={showToast}
           onGoToProducts={() => setPageView('products')}
+          canDelete={admin}
         />
       ) : pageView === 'products' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

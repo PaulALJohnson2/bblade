@@ -29,6 +29,7 @@ export {
   completeStockSession,
   reopenStockSession,
   deleteStockSession,
+  setStockSessionVarianceHidden,
   getAllStockSessions,
   subscribeToStockSessions,
   subscribeToStockSession,

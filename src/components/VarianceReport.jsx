@@ -10,12 +10,15 @@
  * in their own list rather than pretending a variance.
  *
  * Props: venuePath, items, mappingsByKey, colors, accent, onAccent, showToast,
- *        onGoToProducts (jump to the mapping tab)
+ *        onGoToProducts (jump to the mapping tab), canDelete (admins may
+ *        remove a count from variance — a hiddenFromVariance flag on the
+ *        session, the stock take itself is kept and restorable here)
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   getAllStockSessions, getDeliveriesBetween, getWastageBetween, getSalesReportsBetween,
+  setStockSessionVarianceHidden,
 } from '../services/apiService';
 import { computeVariance, tradingStartDate, tradingDatesBetween } from '../utils/varianceReport';
 import { reportRange, addDays, daysInRange } from '../utils/parseSalesReport';
@@ -32,12 +35,13 @@ const prettyIso = (iso) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 };
 
-function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAccent, showToast, onGoToProducts }) {
-  const [sessions, setSessions] = useState(null); // completed, newest first
+function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAccent, showToast, onGoToProducts, canDelete }) {
+  const [allCompleted, setAllCompleted] = useState(null); // completed, newest first (incl. hidden)
   const [closingId, setClosingId] = useState(null);
   const [period, setPeriod] = useState(null);     // { deliveries, wastage, salesReports } for the chosen pair
   const [loading, setLoading] = useState(false);
   const [showNotCounted, setShowNotCounted] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -46,11 +50,23 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
       const completed = (res.success ? res.data : [])
         .filter((s) => s.status === 'completed' && s.completedAt)
         .sort((a, b) => b.completedAt.toMillis() - a.completedAt.toMillis());
-      setSessions(completed);
-      if (completed.length >= 2) setClosingId(completed[0].id);
+      setAllCompleted(completed);
+      const visible = completed.filter((s) => !s.hiddenFromVariance);
+      if (visible.length >= 2) setClosingId(visible[0].id);
     });
     return () => { alive = false; };
   }, [venuePath]);
+
+  // Hidden counts aren't period boundaries — their period merges into the
+  // neighbouring one. The stock take itself is untouched (and restorable below).
+  const sessions = useMemo(
+    () => (allCompleted ? allCompleted.filter((s) => !s.hiddenFromVariance) : null),
+    [allCompleted],
+  );
+  const hidden = useMemo(
+    () => (allCompleted ? allCompleted.filter((s) => s.hiddenFromVariance) : []),
+    [allCompleted],
+  );
 
   const closing = sessions?.find((s) => s.id === closingId) || null;
   const opening = useMemo(() => {
@@ -125,6 +141,23 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
     };
   }, [splitReports, salesFrom, salesTo]);
 
+  const setHidden = async (session, hide) => {
+    const res = await setStockSessionVarianceHidden(venuePath, session.id, hide);
+    setConfirmingDelete(false);
+    if (!res.success) {
+      showToast('Could not update: ' + res.error);
+      return;
+    }
+    showToast(hide
+      ? `Removed the ${fmtWhen(session.completedAt)} count from variance — the stock take is kept`
+      : `Restored the ${fmtWhen(session.completedAt)} count`);
+    setAllCompleted((prev) => prev.map((s) => (s.id === session.id ? { ...s, hiddenFromVariance: hide } : s)));
+    if (hide && closingId === session.id) {
+      const visible = allCompleted.filter((s) => !s.hiddenFromVariance && s.id !== session.id);
+      setClosingId(visible.length >= 2 ? visible[0].id : null);
+    }
+  };
+
   const fmtAmt = (row, qty) => {
     const n = Math.round(qty * 100) / 100;
     return row.item ? formatCountOverview({ quantity: n }, parseUnitInfo(row.item)) : String(n);
@@ -137,9 +170,23 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
   if (!sessions) return <div style={{ color: colors.textSecondary, fontSize: '0.9rem' }}>Loading stock takes…</div>;
   if (sessions.length < 2) {
     return (
-      <div style={{ color: colors.textSecondary, fontSize: '0.9rem' }}>
-        Variance needs two completed stock takes — the period runs from one count to the next.
-        {sessions.length === 1 ? ' One is done; complete the next and the report appears here.' : ' Complete your first two counts and the report appears here.'}
+      <div style={{ color: colors.textSecondary, fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div>
+          Variance needs two completed stock takes — the period runs from one count to the next.
+          {sessions.length === 1 ? ' One is done; complete the next and the report appears here.' : ' Complete your first two counts and the report appears here.'}
+        </div>
+        {canDelete && hidden.length > 0 && (
+          <div style={{ fontSize: '0.82rem' }}>
+            Hidden from variance:{' '}
+            {hidden.map((s, i) => (
+              <span key={s.id}>
+                {i > 0 && ' · '}
+                {fmtWhen(s.completedAt)}{' '}
+                <button onClick={() => setHidden(s, false)} style={{ background: 'none', border: 'none', color: accent, cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, textDecoration: 'underline', padding: 0 }}>restore</button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -151,7 +198,7 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
       {/* Period picker */}
       <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <label style={{ fontSize: '0.75rem', color: colors.textSecondary }}>Stock take (period ends at this count)</label>
-        <select value={closingId || ''} onChange={(e) => setClosingId(e.target.value)} style={select}>
+        <select value={closingId || ''} onChange={(e) => { setClosingId(e.target.value); setConfirmingDelete(false); }} style={select}>
           {sessions.slice(0, -1).map((s) => (
             <option key={s.id} value={s.id}>{fmtWhen(s.completedAt)}</option>
           ))}
@@ -160,6 +207,33 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
           <div style={{ fontSize: '0.82rem', color: colors.textPrimary }}>
             {fmtWhen(opening.completedAt)} → {fmtWhen(closing.completedAt)}
             <span style={{ color: colors.textSecondary }}> · trading days {prettyIso(salesFrom)}–{prettyIso(tradingDatesBetween(salesFrom, salesTo).at(-1) || salesFrom)}</span>
+          </div>
+        )}
+        {/* Admins can remove a count from variance (flag only — the stock
+            take keeps all its data and can be restored below). */}
+        {canDelete && closing && (confirmingDelete ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ flex: 1, fontSize: '0.78rem', color: colors.textSecondary }}>
+              Removes the {fmtWhen(closing.completedAt)} count from variance reports; its period merges into the next one. The stock take itself is kept.
+            </span>
+            <button onClick={() => setHidden(closing, true)} style={{ padding: '0.5rem 0.85rem', backgroundColor: colors.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>Remove</button>
+            <button onClick={() => setConfirmingDelete(false)} style={{ padding: '0.5rem 0.85rem', backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0 }}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmingDelete(true)} style={{ alignSelf: 'flex-start', padding: '0.45rem 0.75rem', backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>
+            Remove from variance
+          </button>
+        ))}
+        {canDelete && hidden.length > 0 && (
+          <div style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
+            Hidden from variance:{' '}
+            {hidden.map((s, i) => (
+              <span key={s.id}>
+                {i > 0 && ' · '}
+                {fmtWhen(s.completedAt)}{' '}
+                <button onClick={() => setHidden(s, false)} style={{ background: 'none', border: 'none', color: accent, cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, textDecoration: 'underline', padding: 0 }}>restore</button>
+              </span>
+            ))}
           </div>
         )}
       </div>
