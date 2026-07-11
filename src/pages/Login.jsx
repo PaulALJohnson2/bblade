@@ -1,8 +1,14 @@
 /**
- * Login — Google sign-in for Bar Blade.
+ * Login — Google, email+password, or one-time email link.
  *
- * After a successful sign-in, AuthContext authorizes the account against the
- * member allowlist and redirects (or shows "access denied" here).
+ * Password is the primary email method: it signs in inside the current
+ * context (crucially, inside the installed PWA — an email link always opens
+ * in the system browser instead, leaving the app signed out). First-time
+ * staff set a password via the "Set / reset my password" email; accounts are
+ * provisioned from the members list so there's nothing to register.
+ *
+ * After a successful sign-in, AuthContext authorizes from the token claims
+ * stamped by the server gate and redirects (or shows "access denied" here).
  */
 
 import React, { useEffect, useState } from 'react';
@@ -12,14 +18,16 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
 function Login() {
-  const { loginWithGoogle, sendEmailLink, completingEmailLink, currentUser, authorized, authError } = useAuth();
+  const { loginWithGoogle, loginWithPassword, sendPasswordSetEmail, sendEmailLink, completingEmailLink, currentUser, authorized, authError } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
   const [sendingLink, setSendingLink] = useState(false);
-  const [linkSentTo, setLinkSentTo] = useState(null);
+  const [linkSentTo, setLinkSentTo] = useState(null); // { kind: 'password' | 'signin', to }
   const [linkError, setLinkError] = useState(null);
 
   // Once signed in + authorized, leave the login page.
@@ -39,14 +47,36 @@ function Login() {
     if (!res?.success) setBusy(false);
   };
 
+  const handlePasswordLogin = async () => {
+    const addr = email.trim();
+    if (!addr || !password) return;
+    setSigningIn(true);
+    setLinkError(null);
+    const res = await loginWithPassword(addr, password);
+    setSigningIn(false);
+    if (res?.success) setBusy(true); // hold the loader through the claims check + redirect
+    else setLinkError(res?.error || 'Sign-in failed. Please try again.');
+  };
+
+  const handleSendPasswordEmail = async () => {
+    const addr = email.trim();
+    if (!addr) { setLinkError('Enter your email above first.'); return; }
+    setSendingLink(true);
+    setLinkError(null);
+    const res = await sendPasswordSetEmail(addr);
+    setSendingLink(false);
+    if (res?.success) setLinkSentTo({ kind: 'password', to: addr });
+    else setLinkError("Couldn't send the email. Please check the address and try again.");
+  };
+
   const handleSendLink = async () => {
     const addr = email.trim();
-    if (!addr) return;
+    if (!addr) { setLinkError('Enter your email above first.'); return; }
     setSendingLink(true);
     setLinkError(null);
     const res = await sendEmailLink(addr);
     setSendingLink(false);
-    if (res?.success) setLinkSentTo(addr);
+    if (res?.success) setLinkSentTo({ kind: 'signin', to: addr });
     else setLinkError("Couldn't send a sign-in link. Please check the address and try again.");
   };
 
@@ -145,18 +175,25 @@ function Login() {
           <div style={{ flex: 1, height: '1px', backgroundColor: colors.borderLight }} />
         </div>
 
-        {/* Passwordless email-link sign-in (for staff without a Google account) */}
+        {/* Email + password (works inside the installed app too — the session
+            is created right here, unlike an email link which opens in the
+            browser). First-time staff set their password via the email below. */}
         {linkSentTo ? (
           <div style={{ textAlign: 'left', fontSize: '0.88rem', color: colors.textPrimary }}>
             <p style={{ margin: '0 0 0.5rem' }}>
-              We've emailed a sign-in link to <strong>{linkSentTo}</strong>. Open it on this
-              device to finish signing in.
+              {linkSentTo.kind === 'password' ? (
+                <>We've emailed <strong>{linkSentTo.to}</strong> a link to set your password.
+                Once it's set, come back here and sign in. (Check junk if it doesn't arrive.)</>
+              ) : (
+                <>We've emailed a sign-in link to <strong>{linkSentTo.to}</strong>. Open it on this
+                device to finish signing in. (Check junk if it doesn't arrive.)</>
+              )}
             </p>
             <button
-              onClick={() => { setLinkSentTo(null); setEmail(''); }}
+              onClick={() => { setLinkSentTo(null); setPassword(''); }}
               style={{ background: 'none', border: 'none', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline', padding: 0 }}
             >
-              Use a different email
+              Back to sign in
             </button>
           </div>
         ) : (
@@ -165,9 +202,21 @@ function Login() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendLink()}
               placeholder="you@email.com"
               autoComplete="email"
+              style={{
+                width: '100%', padding: '0.85rem', fontSize: '1rem', boxSizing: 'border-box',
+                border: `1px solid ${colors.border}`, borderRadius: '8px',
+                backgroundColor: colors.bgCard, color: colors.textPrimary,
+              }}
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePasswordLogin()}
+              placeholder="Password"
+              autoComplete="current-password"
               style={{
                 width: '100%', padding: '0.85rem', fontSize: '1rem', boxSizing: 'border-box',
                 border: `1px solid ${colors.border}`, borderRadius: '8px',
@@ -178,17 +227,33 @@ function Login() {
               <div style={{ fontSize: '0.82rem', color: colors.error, textAlign: 'left' }}>{linkError}</div>
             )}
             <button
-              onClick={handleSendLink}
-              disabled={sendingLink || !email.trim()}
+              onClick={handlePasswordLogin}
+              disabled={signingIn || !email.trim() || !password}
               style={{
                 width: '100%', padding: '0.85rem', fontSize: '1rem', fontWeight: 600,
-                borderRadius: '8px', border: 'none', cursor: sendingLink || !email.trim() ? 'default' : 'pointer',
+                borderRadius: '8px', border: 'none', cursor: signingIn || !email.trim() || !password ? 'default' : 'pointer',
                 backgroundColor: colors.primary, color: colors.onPrimary,
-                opacity: sendingLink || !email.trim() ? 0.6 : 1,
+                opacity: signingIn || !email.trim() || !password ? 0.6 : 1,
               }}
             >
-              {sendingLink ? 'Sending…' : 'Email me a sign-in link'}
+              {signingIn ? 'Signing in…' : 'Sign in'}
             </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '0.15rem' }}>
+              <button
+                onClick={handleSendPasswordEmail}
+                disabled={sendingLink}
+                style={{ background: 'none', border: 'none', color: colors.primary, cursor: 'pointer', fontSize: '0.82rem', textDecoration: 'underline', padding: 0 }}
+              >
+                Set / reset my password
+              </button>
+              <button
+                onClick={handleSendLink}
+                disabled={sendingLink}
+                style={{ background: 'none', border: 'none', color: colors.textSecondary, cursor: 'pointer', fontSize: '0.82rem', textDecoration: 'underline', padding: 0 }}
+              >
+                Email me a one-time link
+              </button>
+            </div>
           </div>
         )}
       </div>

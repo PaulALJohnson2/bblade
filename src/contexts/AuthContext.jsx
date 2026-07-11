@@ -25,6 +25,8 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { ACCOUNT_ID, VENUE_ID, venuePath, isSuperAdminEmail } from '../config/app';
@@ -132,24 +134,51 @@ export const AuthProvider = ({ children }) => {
           setCurrentUser(user);
           setAuthorized(true);
           setAuthError(null);
+          // Remember the verified authorization so a persisted login still
+          // restores when the next launch can't refresh the token (offline /
+          // dead-signal cellars) — see the catch below.
+          try {
+            localStorage.setItem('bb_auth_ok', JSON.stringify({
+              uid: user.uid, accountId: token.claims.accountId, role: token.claims.role || 'staff',
+            }));
+          } catch { /* storage unavailable — fallback just won't apply */ }
         } else {
           // Shouldn't happen (the server gate rejects non-members before the
           // sign-in completes), but fail closed if it ever does.
           setAuthError(
             'Access denied — this account is not authorised. Ask an administrator to add you.'
           );
+          try { localStorage.removeItem('bb_auth_ok'); } catch { /* ignore */ }
           await signOut(auth);
           setCurrentUser(null);
           setAuthorized(false);
         }
       } catch (err) {
-        // Transient (e.g. token refresh while offline). Keep the Firebase
-        // session — signing out here would burn a one-time email link — so a
-        // retry / reload can complete without a fresh sign-in.
-        console.error('Authorization error:', err);
-        setAuthError('Could not verify access. Please check your connection and try again.');
-        setCurrentUser(null);
-        setAuthorized(false);
+        // Token refresh failed — almost always offline (expired cached token
+        // needs the network to renew). The login itself is still persisted by
+        // Firebase, so restore the last authorization we verified for this
+        // same user instead of bouncing them to the login screen. Firestore
+        // works from its offline cache; the server re-checks everything on
+        // reconnect. Only unknown users (never verified here) are held back.
+        let cached = null;
+        try { cached = JSON.parse(localStorage.getItem('bb_auth_ok') || 'null'); } catch { /* ignore */ }
+        if (cached?.uid === user.uid && cached?.accountId) {
+          console.warn('Token refresh failed; restoring cached authorization (offline?):', err?.message);
+          setIsPlatformAdmin(false);
+          setActiveAccountId(cached.accountId);
+          setActiveVenueId(VENUE_ID);
+          setRole(cached.role || 'staff');
+          setCurrentUser(user);
+          setAuthorized(true);
+          setAuthError(null);
+        } else {
+          // Keep the Firebase session — signing out would burn a one-time
+          // email link — so a retry / reload can complete without a fresh sign-in.
+          console.error('Authorization error:', err);
+          setAuthError('Could not verify access. Please check your connection and try again.');
+          setCurrentUser(null);
+          setAuthorized(false);
+        }
       } finally {
         setLoading(false);
       }
@@ -229,6 +258,39 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Password sign-in. Runs entirely inside the current context (browser OR
+  // installed PWA), so the session lands where the user actually is — unlike
+  // an email link, which opens in the system browser.
+  const loginWithPassword = async (email, password) => {
+    setAuthError(null);
+    try {
+      await signInWithEmailAndPassword(auth, String(email).trim(), password);
+      return { success: true };
+    } catch (error) {
+      const code = error?.code || '';
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found' || code === 'auth/invalid-email') {
+        return { success: false, error: "Wrong email or password. If you haven't set a password yet, use “Set / reset my password” below." };
+      }
+      if (code === 'auth/too-many-requests') {
+        return { success: false, error: 'Too many attempts — wait a few minutes or reset your password.' };
+      }
+      return { success: false, error: error.message };
+    }
+  };
+
+  // "Set your password" — Firebase's reset-password email also sets the FIRST
+  // password on accounts provisioned without one, so this covers both first-time
+  // setup and forgotten passwords.
+  const sendPasswordSetEmail = async (email) => {
+    try {
+      await sendPasswordResetEmail(auth, String(email).trim(), { url: `${window.location.origin}/login` });
+      return { success: true };
+    } catch (error) {
+      console.error('sendPasswordSetEmail failed:', error);
+      return { success: false, error: error.message };
+    }
+  };
+
   // Email-link (passwordless) sign-in: email the user a one-time link. Access is
   // still gated by the members allowlist when they complete sign-in.
   const sendEmailLink = async (email) => {
@@ -253,6 +315,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    try { localStorage.removeItem('bb_auth_ok'); } catch { /* ignore */ }
     await signOut(auth);
   };
 
@@ -298,6 +361,8 @@ export const AuthProvider = ({ children }) => {
     authError,
     clearAuthError: () => setAuthError(null),
     loginWithGoogle,
+    loginWithPassword,
+    sendPasswordSetEmail,
     sendEmailLink,
     completingEmailLink,
     logout,
