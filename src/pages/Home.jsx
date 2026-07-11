@@ -37,7 +37,17 @@ function Home() {
     return () => { alive = false; };
   }, [admin, selectedPub?.path]);
 
+  // Clocking in needs a staff record on the rota (shifts are stored per
+  // member). Admins always see the tile — the Clock page explains how to add
+  // themselves to staff if they lack a member record.
+  const canClock = admin || (!!currentMember && currentMember.onRota !== false);
+
   const tiles = [
+    {
+      key: 'clock', label: 'Clock In', desc: 'Punch in & out of shifts',
+      to: '/clock', accent: colors.success, needsRotaMember: true,
+      icon: ['M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20', 'M12 6v6l4 2'],
+    },
     {
       key: 'stock', label: 'Stock Count', desc: 'Count bar & kitchen stock',
       to: '/stock', accent: colors.primary, needsStockAccess: true,
@@ -61,6 +71,7 @@ function Home() {
   ];
 
   const visibleTiles = tiles.filter((t) => {
+    if (t.needsRotaMember) return canClock;
     if (t.needsStockAccess) return stockAccess;
     if (admin) return true;
     if (t.adminOnly) return false;

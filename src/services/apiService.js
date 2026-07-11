@@ -84,6 +84,16 @@ export {
   saveMember,
   deleteMember,
 
+  // Shifts (punch clock)
+  subscribeToShifts,
+  clockInShift,
+  clockOutShift,
+  addManualShift,
+  updateShiftTimes,
+  approveShiftBackdate,
+  refuseShiftBackdate,
+  deleteShift,
+
   // Rotas (weekly staff rota)
   hasPublishedRota,
   subscribeToRota,

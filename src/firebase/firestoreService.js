@@ -18,6 +18,7 @@
 import {
   collection,
   doc,
+  addDoc,
   setDoc,
   getDoc,
   getDocFromCache,
@@ -141,6 +142,169 @@ export function subscribeToStockItems(venuePath, onData, onError, section = null
       if (onError) onError(error.message);
     }
   );
+}
+
+// ============================================
+// SHIFTS — punch clock (under {venuePath}/shifts/{shiftId})
+//
+// Ported from the standalone Punch app. A shift belongs to a MEMBER (memberId/
+// memberName), not the auth user — so a shared "bar account" device can later
+// clock people in/out on their behalf and attribution still works.
+// Backdated clock-ins keep both times: clockIn = requested start,
+// clockInActual = when the button was really pressed, approvalStatus tracks
+// the manager's decision (approve keeps the requested time; refuse reverts).
+// ============================================
+
+const dayKeyFor = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Live shifts feed, newest clock-in first (capped — a pub's volume is small). */
+export function subscribeToShifts(venuePath, onData, onError) {
+  const q = query(collection(db, `${venuePath}/shifts`), orderBy('clockIn', 'desc'), limit(600));
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in shifts listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/**
+ * Clock a member in. requestedTime (ms) earlier than now records a backdated
+ * start pending manager approval; reason says why.
+ */
+export async function clockInShift(venuePath, { memberId, memberName, station, requestedTime = null, reason = null, byUid = null }) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const now = Date.now();
+    const effective = requestedTime ? Math.min(requestedTime, now) : now;
+    const data = {
+      memberId,
+      memberName: memberName || '',
+      station: station === 'kitchen' ? 'kitchen' : 'bar',
+      clockIn: Timestamp.fromMillis(effective),
+      clockOut: null,
+      dayKey: dayKeyFor(effective),
+      accountId,
+      venueId,
+      createdAt: Timestamp.now(),
+      createdByUid: byUid,
+    };
+    if (requestedTime && effective !== now) {
+      data.clockInActual = Timestamp.fromMillis(now);
+      if (reason) data.clockInReason = reason;
+      data.approvalStatus = 'pending';
+    }
+    const ref = await addDoc(collection(db, `${venuePath}/shifts`), data);
+    return { success: true, id: ref.id };
+  } catch (error) {
+    console.error('Error clocking in:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Clock a shift out (never before its clock-in). */
+export async function clockOutShift(venuePath, shift, atMs = Date.now()) {
+  try {
+    const clockInMs = shift.clockIn?.toMillis ? shift.clockIn.toMillis() : shift.clockIn;
+    const out = Math.max(clockInMs || 0, atMs);
+    await updateDoc(doc(db, `${venuePath}/shifts/${shift.id}`), { clockOut: Timestamp.fromMillis(out) });
+    return { success: true };
+  } catch (error) {
+    console.error('Error clocking out:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: add a shift by hand. */
+export async function addManualShift(venuePath, { memberId, memberName, station, clockIn, clockOut = null }) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    await addDoc(collection(db, `${venuePath}/shifts`), {
+      memberId,
+      memberName: memberName || '',
+      station: station === 'kitchen' ? 'kitchen' : 'bar',
+      clockIn: Timestamp.fromMillis(clockIn),
+      clockOut: clockOut === null ? null : Timestamp.fromMillis(clockOut),
+      dayKey: dayKeyFor(clockIn),
+      accountId,
+      venueId,
+      createdAt: Timestamp.now(),
+      manual: true,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error adding shift:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: edit a shift's times/station. */
+export async function updateShiftTimes(venuePath, shiftId, { clockIn, clockOut, station } = {}) {
+  try {
+    const patch = {};
+    if (clockIn != null) {
+      patch.clockIn = Timestamp.fromMillis(clockIn);
+      patch.dayKey = dayKeyFor(clockIn);
+    }
+    if (clockOut !== undefined) patch.clockOut = clockOut === null ? null : Timestamp.fromMillis(clockOut);
+    if (station !== undefined) patch.station = station;
+    if (Object.keys(patch).length === 0) return { success: true };
+    await updateDoc(doc(db, `${venuePath}/shifts/${shiftId}`), patch);
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating shift:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: accept a backdated clock-in (the requested time stands). */
+export async function approveShiftBackdate(venuePath, shiftId, approverName) {
+  try {
+    await updateDoc(doc(db, `${venuePath}/shifts/${shiftId}`), {
+      approvalStatus: 'approved',
+      approvedBy: approverName || 'unknown',
+      approvedAt: Timestamp.now(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error approving shift:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: refuse a backdate — the shift reverts to when they really pressed the button. */
+export async function refuseShiftBackdate(venuePath, shift) {
+  try {
+    const actual = shift.clockInActual?.toMillis ? shift.clockInActual.toMillis() : shift.clockInActual;
+    if (!actual) return { success: false, error: 'No actual punch time recorded.' };
+    await updateDoc(doc(db, `${venuePath}/shifts/${shift.id}`), {
+      clockIn: Timestamp.fromMillis(actual),
+      dayKey: dayKeyFor(actual),
+      clockInActual: null,
+      clockInReason: null,
+      approvalStatus: null,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error refusing backdate:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: delete a shift outright. */
+export async function deleteShift(venuePath, shiftId) {
+  try {
+    await deleteDoc(doc(db, `${venuePath}/shifts/${shiftId}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting shift:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 // ============================================

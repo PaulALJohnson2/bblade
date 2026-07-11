@@ -25,6 +25,7 @@ const importSales = () => import('./pages/Sales');
 const importAdmin = () => import('./pages/Admin');
 const importSuper = () => import('./pages/SuperAdmin');
 const importRota = () => import('./pages/Rota');
+const importClock = () => import('./pages/Clock');
 
 // Home is the landing hub — eager (in the main bundle) so it never shows a
 // loading fallback. The heavier feature pages stay code-split + preloaded.
@@ -36,6 +37,7 @@ const Sales = lazy(importSales);
 const Admin = lazy(importAdmin);
 const SuperAdmin = lazy(importSuper);
 const Rota = lazy(importRota);
+const ClockPage = lazy(importClock);
 
 // Owner/manager-only routes. Staff see only day-to-day features (Home decides
 // their tiles); this stops direct URLs reaching the rest. Rota and Wastage
@@ -223,6 +225,7 @@ function Shell() {
             <Route path="/sales" element={<AdminOnly><Sales /></AdminOnly>} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/rota" element={<Rota />} />
+            <Route path="/clock" element={<ClockPage />} />
             <Route path="/super" element={<SuperAdmin />} />
           </Routes>
         </Suspense>

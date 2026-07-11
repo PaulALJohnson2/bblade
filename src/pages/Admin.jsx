@@ -16,6 +16,7 @@ import StockListAdmin from '../components/StockListAdmin';
 import StockManager from '../components/StockManager';
 import StockOverview from '../components/StockOverview';
 import WastageReport from '../components/WastageReport';
+import Timesheets from '../components/Timesheets';
 import Tile from '../components/Tile';
 
 const ROLES = ['owner', 'manager', 'staff'];
@@ -30,7 +31,7 @@ const DEPARTMENTS = [
 const departmentLabel = (d) => (DEPARTMENTS.find(([k]) => k === d) || DEPARTMENTS[0])[1];
 
 function Admin() {
-  const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin } = useAuth();
+  const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin, userProfile } = useAuth();
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const colors = getThemeColors(isDark);
@@ -173,11 +174,13 @@ function Admin() {
       icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
     { key: 'rota', label: 'Rotas', desc: 'Build weekly staff rota', accent: colors.primary, show: admin, to: '/rota?edit=1',
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'] },
+    { key: 'timesheets', label: 'Timesheets', desc: 'Clock-ins, hours & approvals', accent: colors.primary, show: admin,
+      icon: ['M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20', 'M12 6v6l4 2'] },
     { key: 'sales', label: 'Sales', desc: 'Till sales reports', accent: colors.primary, show: admin, to: '/sales',
       icon: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'] },
   ].filter((t) => t.show);
 
-  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview' };
+  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets' };
 
   // ---- Hub: a 2-column grid of tiles into each settings section ----
   if (!view) {
@@ -248,6 +251,27 @@ function Admin() {
       </div>
     );
   }
+  if (view === 'timesheets') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        {error && (
+          <div style={{ padding: '0.75rem 1rem', backgroundColor: colors.errorDark, color: 'white', borderRadius: '8px', marginBottom: '1rem' }}>
+            {error}
+          </div>
+        )}
+        {selectedPub?.path && (
+          <Timesheets
+            venuePath={selectedPub.path}
+            members={members}
+            approverName={userProfile?.displayName || ''}
+            colors={colors}
+            showToast={(m) => setError(m)}
+          />
+        )}
+      </div>
+    );
+  }
 
   // view === 'account'
   return (
@@ -288,8 +312,9 @@ function Admin() {
         <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: colors.textPrimary }}>Staff</h2>
         <p style={{ margin: '0 0 1rem', color: colors.textSecondary, fontSize: '0.85rem' }}>
           Add the people who do stock takes. An email authorises that person to
-          sign in — with Google or a passwordless email link (no Google account
-          needed); leave it blank for someone who only needs crediting on counts
+          sign in — with Google, or with a password they set via the "Set / reset
+          my password" email on the login screen (no Google account needed);
+          leave it blank for someone who only needs crediting on counts
           (no login). Pick who you are in the header when counting.
         </p>
 
