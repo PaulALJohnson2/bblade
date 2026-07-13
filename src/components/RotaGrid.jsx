@@ -294,7 +294,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 return (
                   <div
                     key={d.key}
-                    style={{ ...dayCell, backgroundColor: rowBg || (readOnly && n === 0 && !leave ? colors.bgLight : undefined), cursor: readOnly ? 'default' : 'pointer' }}
+                    style={{ ...dayCell, backgroundColor: rowBg, cursor: readOnly ? 'default' : 'pointer' }}
                     onClick={readOnly ? undefined : () => onCellClick(row, d.key)}
                     role={readOnly ? undefined : 'button'}
                     tabIndex={readOnly ? undefined : 0}
@@ -314,22 +314,23 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                           <span
                             key={i}
                             style={{
-                              fontSize: timeFont, fontWeight: 800, color: accent, textAlign: 'center',
+                              fontSize: timeFont, fontWeight: 700, color: accent, textAlign: 'center',
                               // Full-screen and compact keep each range on one line
                               // (font shrinks to fit); only the laptop grid wraps.
                               whiteSpace: (fill || compact) ? 'nowrap' : 'normal',
                             }}
                           >
                             <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.start, timeFormat)}</span>
-                            <span style={{ padding: compact ? '0 0.04rem' : '0 0.3rem' }}>–</span>
+                            <span style={{ padding: compact ? '0 0.04rem' : '0 0.15rem', color: colors.textMuted }}>–</span>
                             <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.end, timeFormat)}</span>
                           </span>
                         ))}
                       </div>
                     ) : readOnly ? (
-                      // In the published staff view, every empty day reads "Off"
-                      // in a lightly greyed cell.
-                      <span style={{ color: colors.textMuted, fontSize: compact ? '0.62rem' : (fill ? '0.85rem' : '1rem'), fontWeight: 600, fontStyle: 'italic' }}>Off</span>
+                      // Empty day in the staff view: a faint dash reads "off"
+                      // without an "Off" label (+ cell fill) in every empty cell,
+                      // which made a mostly-off week look cluttered.
+                      <span style={{ color: colors.textMuted, fontSize: compact ? '0.7rem' : '1rem', opacity: 0.4 }}>–</span>
                     ) : (
                       <span style={{ color: colors.textMuted, fontSize: compact ? '1.1rem' : '1.8rem', opacity: 0.4 }}>+</span>
                     )}
