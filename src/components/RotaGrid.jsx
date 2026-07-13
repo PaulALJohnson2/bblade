@@ -33,12 +33,14 @@ const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
 const HILITE = { light: '#EAF1F8', dark: '#1B2735' };
 
 // Compact shift-time label. 12-hour (default): 17:00 → 5, 09:30 → 9:30, and
-// 12/0 map to 12 (noon/midnight). 24-hour: 17:00 → 17, 09:30 → 09:30 (leading
-// zeros kept, as is conventional). Whole hours drop the ":00" in both.
+// 12/0 map to 12 (noon/midnight). 24-hour is always the full HH:MM on both
+// ends (e.g. 07:00, 09:30, 23:45) so every value is the same width — the grid
+// reads as a tidy aligned table instead of a ragged mix of 07–15 and 16–23:45.
+// 12-hour stays compact (drops a whole hour's ":00": 17:00 → 5).
 function fmtTime(t, format = '12h') {
   if (t === 'close') return 'close';
   const [h, m] = t.split(':');
-  if (format === '24h') return m === '00' ? h : `${h}:${m}`;
+  if (format === '24h') return `${h}:${m}`;
   const hour = parseInt(h, 10) % 12 || 12;
   return m === '00' ? String(hour) : `${hour}:${m}`;
 }
@@ -290,7 +292,9 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 // line; longer half-hour ranges just size down a touch.
                 if (compact) timeFont = maxLen <= 5 ? '0.95rem' : maxLen <= 7 ? '0.85rem' : maxLen <= 10 ? '0.72rem' : '0.62rem';
                 else if (fill) timeFont = split ? '0.72rem' : (maxLen <= 5 ? '1.5rem' : maxLen <= 7 ? '1.25rem' : '0.95rem');
-                else timeFont = split ? '1rem' : '1.4rem'; // laptop in-page
+                // Laptop in-page: size to length so a full HH:MM–HH:MM (24h) stays
+                // on one line instead of wrapping (which read as ragged/messy).
+                else timeFont = split ? '1rem' : (maxLen <= 5 ? '1.4rem' : maxLen <= 8 ? '1.2rem' : '1rem');
                 return (
                   <div
                     key={d.key}

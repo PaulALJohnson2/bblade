@@ -44,7 +44,7 @@ function addDays(d, n) {
 const fmtHour = (t, format = '12h') => {
   if (t === 'close') return 'close';
   const [h, m] = t.split(':');
-  if (format === '24h') return m === '00' ? h : `${h}:${m}`;
+  if (format === '24h') return `${h}:${m}`; // full HH:MM, matching the grid
   const hr = parseInt(h, 10) % 12 || 12;
   return m === '00' ? String(hr) : `${hr}:${m}`;
 };
