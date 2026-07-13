@@ -31,8 +31,9 @@
 
 const { beforeUserCreated, beforeUserSignedIn, HttpsError } = require('firebase-functions/v2/identity');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onCall, HttpsError: CallableError } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const logger = require('firebase-functions/logger');
 
@@ -44,6 +45,27 @@ const SUPER_ADMINS = ['contact@pauljohnson.me', 'barblade3@gmail.com'];
 
 const normEmail = (email) => String(email || '').trim().toLowerCase();
 const isSuperAdmin = (email) => SUPER_ADMINS.includes(normEmail(email));
+
+// ---------------------------------------------------------------------------
+// Initial passwords: a readable "Adjective-Noun-123" an admin can relay by
+// hand (no email delivery — see the sign-in email deliverability issues with
+// iCloud). The user is forced to change it on first sign-in.
+// ---------------------------------------------------------------------------
+const PW_ADJECTIVES = [
+  'Brave', 'Sunny', 'Clever', 'Happy', 'Swift', 'Bright', 'Calm', 'Bold', 'Lucky', 'Merry',
+  'Nimble', 'Quiet', 'Royal', 'Cosy', 'Jolly', 'Keen', 'Witty', 'Grand', 'Amber', 'Silver',
+  'Golden', 'Mellow', 'Breezy', 'Cheery', 'Frosty', 'Spicy', 'Zesty', 'Plucky', 'Dapper', 'Snappy',
+];
+const PW_NOUNS = [
+  'Otter', 'Falcon', 'Maple', 'River', 'Harbor', 'Comet', 'Willow', 'Badger', 'Heron', 'Pebble',
+  'Meadow', 'Anchor', 'Cedar', 'Robin', 'Thistle', 'Copper', 'Lantern', 'Marble', 'Sparrow', 'Beacon',
+  'Cobble', 'Ferret', 'Juniper', 'Kestrel', 'Bramble', 'Nutmeg', 'Puffin', 'Quill', 'Tulip', 'Walnut',
+];
+function generateMemorablePassword() {
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const num = 100 + Math.floor(Math.random() * 900); // 100–999
+  return `${pick(PW_ADJECTIVES)}-${pick(PW_NOUNS)}-${num}`;
+}
 
 // ---------------------------------------------------------------------------
 // Provisioning: members/{memberId} ⇄ Firebase Auth users
@@ -79,13 +101,19 @@ exports.syncMemberAuth = onDocumentWritten('accounts/{accountId}/members/{member
     user = await auth.getUserByEmail(afterEmail);
   } catch (err) {
     if (err.code !== 'auth/user-not-found') throw err;
+    // New member → generate a memorable initial password, surface it on the
+    // member doc for the admin to relay, and flag that it must be changed on
+    // first sign-in. (Writing back re-triggers this function, but the user then
+    // exists so we don't loop.)
+    const initialPassword = generateMemorablePassword();
     user = await auth.createUser({
       email: afterEmail,
       displayName: after.displayName || undefined,
-      // Not pre-verified: Google / the email link proves ownership at sign-in.
       emailVerified: false,
+      password: initialPassword,
     });
-    logger.info(`Provisioned auth user for member ${afterEmail}`);
+    logger.info(`Provisioned auth user for member ${afterEmail} with an initial password`);
+    await event.data.after.ref.update({ initialPassword, mustChangePassword: true });
   }
 
   const claims = { accountId, role: after.role || 'staff' };
@@ -162,4 +190,68 @@ exports.gateUserCreation = beforeUserCreated(async (event) => {
   if (isSuperAdmin(email)) return;
   const { allowed } = await resolveMemberAccess(email);
   if (!allowed) throw new HttpsError('permission-denied', DENIED);
+});
+
+// ---------------------------------------------------------------------------
+// Password self-service (callables)
+// ---------------------------------------------------------------------------
+
+/** Clear the initial-password flag + stored value on the member(s) for an email. */
+async function clearInitialPassword(email) {
+  const snap = await db.collection(`accounts/${ACCOUNT_ID}/members`).where('email', '==', email).get();
+  await Promise.all(snap.docs.map((d) => d.ref.update({
+    mustChangePassword: false,
+    initialPassword: FieldValue.delete(),
+  })));
+}
+
+/**
+ * The signed-in user sets their own password (used for the forced first-sign-in
+ * change, and any later voluntary change). Clears the must-change flag and the
+ * stored initial password so the admin no longer sees it.
+ */
+exports.changeInitialPassword = onCall(async (request) => {
+  if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
+  const newPassword = String((request.data && request.data.newPassword) || '');
+  if (newPassword.length < 8) {
+    throw new CallableError('invalid-argument', 'Password must be at least 8 characters.');
+  }
+  await getAuth().updateUser(request.auth.uid, { password: newPassword, emailVerified: true });
+  await clearInitialPassword(normEmail(request.auth.token.email));
+  logger.info(`Password changed by ${request.auth.token.email}`);
+  return { success: true };
+});
+
+/**
+ * Manager action: (re)generate a memorable initial password for a member —
+ * for someone who never set one, was locked out, or forgot it. Sets it on the
+ * auth user and flags a forced change on next sign-in.
+ */
+exports.resetMemberPassword = onCall(async (request) => {
+  if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
+  const role = request.auth.token.role;
+  if (!isSuperAdmin(request.auth.token.email) && role !== 'owner' && role !== 'manager') {
+    throw new CallableError('permission-denied', 'Only managers can reset passwords.');
+  }
+  const memberId = String((request.data && request.data.memberId) || '');
+  if (!memberId) throw new CallableError('invalid-argument', 'memberId is required.');
+
+  const ref = db.doc(`accounts/${ACCOUNT_ID}/members/${memberId}`);
+  const doc = await ref.get();
+  if (!doc.exists) throw new CallableError('not-found', 'Member not found.');
+  const email = normEmail(doc.data().email);
+  if (!email) throw new CallableError('failed-precondition', 'This member has no email to sign in with.');
+
+  let user;
+  try {
+    user = await getAuth().getUserByEmail(email);
+  } catch (err) {
+    if (err.code !== 'auth/user-not-found') throw err;
+    user = await getAuth().createUser({ email, emailVerified: false });
+  }
+  const initialPassword = generateMemorablePassword();
+  await getAuth().updateUser(user.uid, { password: initialPassword });
+  await ref.update({ initialPassword, mustChangePassword: true });
+  logger.info(`Initial password reset for ${email} by ${request.auth.token.email}`);
+  return { success: true, initialPassword };
 });

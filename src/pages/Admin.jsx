@@ -33,7 +33,17 @@ const DEPARTMENTS = [
 const departmentLabel = (d) => (DEPARTMENTS.find(([k]) => k === d) || DEPARTMENTS[0])[1];
 
 function Admin() {
-  const { pubName, members, saveVenue, saveMember, deleteMember, selectedPub, isAdmin, userProfile } = useAuth();
+  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, selectedPub, isAdmin, userProfile } = useAuth();
+  const [resettingId, setResettingId] = useState(null);
+
+  const handleResetPassword = async (member) => {
+    setError(null);
+    setResettingId(member.id);
+    const res = await resetMemberPassword(member.id);
+    setResettingId(null);
+    // On success the member's initialPassword updates live and shows in the row.
+    if (!res.success) setError('Could not reset password: ' + res.error);
+  };
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const colors = getThemeColors(isDark);
@@ -349,11 +359,12 @@ function Admin() {
       <div style={card}>
         <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: colors.textPrimary }}>Staff</h2>
         <p style={{ margin: '0 0 1rem', color: colors.textSecondary, fontSize: '0.85rem' }}>
-          Add the people who do stock takes. An email authorises that person to
-          sign in — with Google, or with a password they set via the "Set / reset
-          my password" email on the login screen (no Google account needed);
-          leave it blank for someone who only needs crediting on counts
-          (no login). Pick who you are in the header when counting.
+          Add the people who do stock takes. Giving someone an email sets up their
+          login and generates an initial password (shown below their name) — pass
+          it on, and they set their own the first time they sign in. Use "Reset
+          password" if they're ever locked out. Leave the email blank for someone
+          who only needs crediting on counts (no login). Pick who you are in the
+          header when counting.
         </p>
 
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -470,6 +481,7 @@ function Admin() {
                     </button>
                   </div>
                 ) : (
+                  <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: colors.textPrimary }}>
                       {member.displayName}
@@ -516,6 +528,15 @@ function Admin() {
                       >
                         Edit
                       </button>
+                      {member.email && (
+                        <button
+                          onClick={() => handleResetPassword(member)}
+                          disabled={resettingId === member.id}
+                          style={{ background: 'none', border: 'none', color: colors.textSecondary, cursor: resettingId === member.id ? 'default' : 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                        >
+                          {resettingId === member.id ? 'Resetting…' : 'Reset password'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleRemoveMember(member)}
                         style={{ background: 'none', border: 'none', color: colors.errorDark, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
@@ -523,6 +544,15 @@ function Admin() {
                         Remove
                       </button>
                     </div>
+                  </div>
+                  {member.initialPassword && (
+                    <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.7rem', borderRadius: '8px', backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, fontSize: '0.82rem', color: colors.textPrimary }}>
+                      🔑 Initial password: <strong style={{ fontFamily: 'ui-monospace, Menlo, monospace', letterSpacing: '0.02em' }}>{member.initialPassword}</strong>
+                      <span style={{ display: 'block', color: colors.textSecondary, fontSize: '0.76rem', marginTop: '0.15rem' }}>
+                        Give this to them. It clears once they sign in and set their own password.
+                      </span>
+                    </div>
+                  )}
                   </div>
                 )}
               </div>

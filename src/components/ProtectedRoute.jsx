@@ -6,9 +6,10 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import ChangePassword from '../pages/ChangePassword';
 
 function ProtectedRoute({ children }) {
-  const { currentUser, authorized, loading } = useAuth();
+  const { currentUser, authorized, loading, mustChangePassword } = useAuth();
 
   if (loading) {
     return (
@@ -36,6 +37,12 @@ function ProtectedRoute({ children }) {
 
   if (!currentUser || !authorized) {
     return <Navigate to="/login" replace />;
+  }
+
+  // First sign-in with an admin-issued initial password: force a change before
+  // anything else in the app is reachable.
+  if (mustChangePassword) {
+    return <ChangePassword />;
   }
 
   return children;

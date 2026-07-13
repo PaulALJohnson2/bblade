@@ -28,7 +28,8 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
 } from 'firebase/auth';
-import { auth } from '../firebase/config';
+import { httpsCallable } from 'firebase/functions';
+import { auth, functions } from '../firebase/config';
 import { ACCOUNT_ID, VENUE_ID, venuePath, isSuperAdminEmail } from '../config/app';
 import {
   subscribeToVenue,
@@ -325,6 +326,29 @@ export const AuthProvider = ({ children }) => {
   const saveMember = (memberId, data) => saveMemberSvc(activeAccountId, memberId, data);
   const deleteMember = (memberId) => deleteMemberSvc(activeAccountId, memberId);
 
+  // ---- password self-service (callable Cloud Functions) ----
+  // The signed-in user sets their own password (forced first-sign-in change or a
+  // later voluntary one); the server clears the must-change flag + stored value.
+  const changeMyPassword = async (newPassword) => {
+    try {
+      await httpsCallable(functions, 'changeInitialPassword')({ newPassword });
+      await auth.currentUser?.getIdToken(true); // refresh token (emailVerified flip)
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+  // Manager action: (re)generate a member's initial password. The new password
+  // arrives back on the member doc (live) and is also returned here.
+  const resetMemberPassword = async (memberId) => {
+    try {
+      const res = await httpsCallable(functions, 'resetMemberPassword')({ memberId });
+      return { success: true, initialPassword: res?.data?.initialPassword };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
   // ---- super-admin: switch which account/venue the app is operating on ----
   const switchTenant = (accountId, venueId) => {
     if (!isPlatformAdmin || !accountId || !venueId) return;
@@ -366,6 +390,12 @@ export const AuthProvider = ({ children }) => {
     sendEmailLink,
     completingEmailLink,
     logout,
+
+    // Password self-service. mustChangePassword forces the change screen after a
+    // first sign-in with an admin-issued initial password.
+    changeMyPassword,
+    resetMemberPassword,
+    mustChangePassword: !!currentMember?.mustChangePassword,
 
     // Tenant context (active account/venue — switchable by super-admins)
     accountId: activeAccountId,

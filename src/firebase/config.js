@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getFunctions } from "firebase/functions";
 import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/analytics";
 
 // Bar Blade — Firebase project config.
@@ -40,8 +41,12 @@ const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
 
-// Authentication — Google sign-in.
+// Authentication — email + password sign-in.
 const auth = getAuth(app);
+
+// Callable Cloud Functions (default region us-central1, matching the deployed
+// functions) — password self-service and manager password resets.
+const functions = getFunctions(app);
 
 // Analytics — only initialised in supported (browser) environments so it never
 // breaks local dev or the build. Safe to ignore the returned promise.
@@ -52,4 +57,4 @@ analyticsIsSupported()
   })
   .catch(() => {});
 
-export { app, db, auth, analytics };
+export { app, db, auth, functions, analytics };
