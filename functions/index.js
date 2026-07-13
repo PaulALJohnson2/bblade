@@ -61,10 +61,13 @@ const PW_NOUNS = [
   'Meadow', 'Anchor', 'Cedar', 'Robin', 'Thistle', 'Copper', 'Lantern', 'Marble', 'Sparrow', 'Beacon',
   'Cobble', 'Ferret', 'Juniper', 'Kestrel', 'Bramble', 'Nutmeg', 'Puffin', 'Quill', 'Tulip', 'Walnut',
 ];
+// Mobile-friendly: all lowercase, no separators or symbols (no shift / symbol
+// keyboard), digits 2–9 only (no 0/1 to avoid o/l confusion when read aloud).
+// e.g. "braveotter472".
 function generateMemorablePassword() {
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-  const num = 100 + Math.floor(Math.random() * 900); // 100–999
-  return `${pick(PW_ADJECTIVES)}-${pick(PW_NOUNS)}-${num}`;
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)].toLowerCase();
+  const digit = () => String(2 + Math.floor(Math.random() * 8)); // 2–9
+  return `${pick(PW_ADJECTIVES)}${pick(PW_NOUNS)}${digit()}${digit()}${digit()}`;
 }
 
 // ---------------------------------------------------------------------------
