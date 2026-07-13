@@ -1514,6 +1514,32 @@ export async function saveStaffOrder(venuePath, order) {
   }
 }
 
+/** Live rota display settings (e.g. { timeFormat: '12h' | '24h' }). */
+export function subscribeToRotaSettings(venuePath, onData, onError) {
+  const ref = doc(db, `${venuePath}/rotaPrefs/settings`);
+  return onSnapshot(
+    ref,
+    (snap) => onData(snap.exists() ? (snap.data() || {}) : {}),
+    (error) => {
+      console.error('Error in rota settings listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Persist rota display settings (merged, so callers pass only what changed). */
+export async function saveRotaSettings(venuePath, patch) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const ref = doc(db, `${venuePath}/rotaPrefs/settings`);
+    await setDoc(ref, { accountId, venueId, ...patch, updatedAt: Timestamp.now() }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving rota settings:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Record one use of a start–end shift pattern (increments its counter). */
 export async function bumpShiftPattern(venuePath, start, end) {
   try {

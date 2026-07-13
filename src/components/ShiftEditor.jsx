@@ -27,11 +27,16 @@ const DEFAULT_PRESETS = [
   { label: '9–5', start: '09:00', end: '17:00' },
   { label: '11–3', start: '11:00', end: '15:00' },
   { label: '5–11', start: '17:00', end: '23:00' },
-  { label: '6–12', start: '18:00', end: '00:00' },
+  { label: '6–close', start: '18:00', end: 'close' },
 ];
 
-// End "00:00" reads as midnight (end of day), so only flag a genuine reversal.
-const isInvalid = (s) => s.end !== '00:00' && s.end <= s.start;
+// An end before the start means the shift runs past midnight (a close shift) —
+// legitimate, not an error. "close" is an open-ended finish (real hours come
+// from the clock-out). The only genuine mistake is an end identical to the
+// start (a zero-length / ambiguous shift).
+const isInvalid = (s) => s.end !== 'close' && s.end === s.start;
+// A concrete end earlier than the start (but not midnight) spills into the next day.
+const endsNextDay = (s) => s.end !== 'close' && s.end !== '00:00' && s.end < s.start;
 
 function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onCancel }) {
   const { isDark } = useTheme();
@@ -130,15 +135,20 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onCancel }) 
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={label}>End</div>
                 <select style={select} value={s.end} onChange={(e) => setAt(i, { end: e.target.value })}>
+                  <option value="close">Close (open end)</option>
                   {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t === '00:00' ? '00:00 (midnight)' : t}</option>)}
                 </select>
               </div>
             </div>
-            {isInvalid(s) && (
+            {isInvalid(s) ? (
               <div style={{ color: colors.error, fontSize: '0.78rem', marginTop: '0.35rem' }}>
-                End time must be after the start time.
+                Start and end can't be the same time.
               </div>
-            )}
+            ) : endsNextDay(s) ? (
+              <div style={{ color: colors.textSecondary, fontSize: '0.78rem', marginTop: '0.35rem' }}>
+                Runs past midnight — ends the next day.
+              </div>
+            ) : null}
           </div>
         ))}
 

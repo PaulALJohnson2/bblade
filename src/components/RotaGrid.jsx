@@ -32,18 +32,23 @@ const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
 // Own-row highlight tint.
 const HILITE = { light: '#EAF1F8', dark: '#1B2735' };
 
-// Compact 12-hour shift-time label (no am/pm for now): 17:00 → 5, 09:30 → 9:30,
-// and 12/0 map to 12 (noon/midnight). Whole hours drop the ":00".
-function fmtTime(t) {
+// Compact shift-time label. 12-hour (default): 17:00 → 5, 09:30 → 9:30, and
+// 12/0 map to 12 (noon/midnight). 24-hour: 17:00 → 17, 09:30 → 09:30 (leading
+// zeros kept, as is conventional). Whole hours drop the ":00" in both.
+function fmtTime(t, format = '12h') {
+  if (t === 'close') return 'close';
   const [h, m] = t.split(':');
+  if (format === '24h') return m === '00' ? h : `${h}:${m}`;
   const hour = parseInt(h, 10) % 12 || 12;
   return m === '00' ? String(hour) : `${hour}:${m}`;
 }
 
 // Length of a shift in minutes; midnight end counts as end-of-day and an end
-// at/before the start is treated as running overnight.
+// at/before the start is treated as running overnight. A "close" (open-ended)
+// shift has no planned length — its real hours come from the clock-out — so it
+// contributes nothing to the planned total.
 function shiftMinutes(shift) {
-  if (!shift) return 0;
+  if (!shift || shift.end === 'close') return 0;
   const [sh, sm] = shift.start.split(':').map(Number);
   const [eh, em] = shift.end.split(':').map(Number);
   const s = sh * 60 + sm;
@@ -64,7 +69,7 @@ function fmtHours(min) {
   return String(Number((min / 60).toFixed(2)));
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false, focusDayKey = null }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false, focusDayKey = null, timeFormat = '12h' }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -274,7 +279,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 const n = shifts.length;
                 const split = n >= 2;
                 // Longest range label in the cell, e.g. "9–5" (3) vs "12:30–2:30" (10).
-                const maxLen = n ? Math.max(...shifts.map((s) => fmtTime(s.start).length + 1 + fmtTime(s.end).length)) : 0;
+                const maxLen = n ? Math.max(...shifts.map((s) => fmtTime(s.start, timeFormat).length + 1 + fmtTime(s.end, timeFormat).length)) : 0;
                 // A single shift reads big; a split day drops so both lines fit the
                 // row. In the full-screen view each range must stay on one line, so
                 // a single shift's size adapts to its length (a long half-hour range
@@ -305,9 +310,9 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                               whiteSpace: (fill || compact) ? 'nowrap' : 'normal',
                             }}
                           >
-                            <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.start)}</span>
+                            <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.start, timeFormat)}</span>
                             <span style={{ padding: compact ? '0 0.04rem' : '0 0.3rem' }}>–</span>
-                            <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.end)}</span>
+                            <span style={{ whiteSpace: 'nowrap' }}>{fmtTime(s.end, timeFormat)}</span>
                           </span>
                         ))}
                       </div>

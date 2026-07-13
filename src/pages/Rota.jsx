@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder } from '../services/apiService';
+import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import { dayShifts } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
@@ -39,9 +39,16 @@ function addDays(d, n) {
   return x;
 }
 
-// Compact 12-hour label for a preset pill (matches the grid): 17:00 → 5.
-const fmtHour = (t) => { const [h, m] = t.split(':'); const hr = parseInt(h, 10) % 12 || 12; return m === '00' ? String(hr) : `${hr}:${m}`; };
-const patternLabel = (s, e) => `${fmtHour(s)}–${fmtHour(e)}`;
+// Compact preset-pill label (matches the grid): 12-hour 17:00 → 5, 24-hour
+// 17:00 → 17; an open-ended finish reads "close".
+const fmtHour = (t, format = '12h') => {
+  if (t === 'close') return 'close';
+  const [h, m] = t.split(':');
+  if (format === '24h') return m === '00' ? h : `${h}:${m}`;
+  const hr = parseInt(h, 10) % 12 || 12;
+  return m === '00' ? String(hr) : `${hr}:${m}`;
+};
+const patternLabel = (s, e, format) => `${fmtHour(s, format)}–${fmtHour(e, format)}`;
 
 // Seed patterns so the pills are useful before any usage has accumulated;
 // learned patterns rank ahead of these once they start being used.
@@ -50,6 +57,7 @@ const DEFAULT_PATTERNS = [
   { start: '11:00', end: '15:00' },
   { start: '17:00', end: '23:00' },
   { start: '18:00', end: '00:00' },
+  { start: '18:00', end: 'close' },
 ];
 const MAX_PRESETS = 6;
 
@@ -69,6 +77,7 @@ function Rota() {
   const [published, setPublished] = useState(false);
   const [patternCounts, setPatternCounts] = useState({}); // 'HH:MM-HH:MM' → uses
   const [staffOrder, setStaffOrder] = useState([]); // custom memberId ordering
+  const [timeFormat, setTimeFormat] = useState('12h'); // venue display: '12h' | '24h'
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
@@ -115,6 +124,13 @@ function Rota() {
     return () => unsub();
   }, [venuePath]);
 
+  // Subscribe to the venue's rota display settings (12h/24h clock).
+  useEffect(() => {
+    if (!venuePath) return undefined;
+    const unsub = subscribeToRotaSettings(venuePath, (s) => setTimeFormat(s?.timeFormat === '24h' ? '24h' : '12h'), () => {});
+    return () => unsub();
+  }, [venuePath]);
+
   // Quick-pick pills: learned patterns ranked by usage, then defaults to fill.
   const presets = useMemo(() => {
     const learned = Object.entries(patternCounts)
@@ -127,11 +143,11 @@ function Rota() {
       const k = `${p.start}-${p.end}`;
       if (seen.has(k) || !p.start || !p.end) continue;
       seen.add(k);
-      out.push({ start: p.start, end: p.end, label: patternLabel(p.start, p.end) });
+      out.push({ start: p.start, end: p.end, label: patternLabel(p.start, p.end, timeFormat) });
       if (out.length >= MAX_PRESETS) break;
     }
     return out;
-  }, [patternCounts]);
+  }, [patternCounts, timeFormat]);
 
   const days = useMemo(() => DAY_KEYS.map((key, i) => {
     const date = addDays(weekStart, i);
@@ -193,6 +209,14 @@ function Rota() {
     if (venuePath) saveStaffOrder(venuePath, orderedIds);
   };
 
+  // Flip the venue's clock display between 12h and 24h (admin only). Optimistic
+  // — the subscription confirms it — and applies everywhere the rota is shown.
+  const toggleTimeFormat = () => {
+    const next = timeFormat === '24h' ? '12h' : '24h';
+    setTimeFormat(next);
+    if (venuePath) saveRotaSettings(venuePath, { timeFormat: next });
+  };
+
   // Publish this week's rota so staff can see it.
   const sendToStaff = async () => {
     if (!venuePath) return;
@@ -234,10 +258,20 @@ function Rota() {
         <div style={{ fontWeight: 700, fontSize: isMobile ? '0.9rem' : '1rem', color: colors.textPrimary, minWidth: isMobile ? '110px' : '190px', flex: isMobile ? 1 : 'none', textAlign: 'center' }}>{rangeLabel}</div>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
-        {showGrid && (!isMobile || canEdit) && (
+        {canEdit && (
           <button
             type="button"
             style={{ ...navBtn, marginLeft: 'auto' }}
+            onClick={toggleTimeFormat}
+            title="Switch the rota between 12-hour and 24-hour clock"
+          >
+            {timeFormat === '24h' ? '24h' : '12h'} clock
+          </button>
+        )}
+        {showGrid && (!isMobile || canEdit) && (
+          <button
+            type="button"
+            style={{ ...navBtn, ...(canEdit ? {} : { marginLeft: 'auto' }) }}
             onClick={() => setFullscreen(true)}
             title="View the rota full screen"
           >
@@ -283,6 +317,7 @@ function Rota() {
               compact={compact}
               focusDayKey={canEdit ? null : todayKey}
               highlightMemberId={myMemberId}
+              timeFormat={timeFormat}
               onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
               onReorder={reorderStaff}
             />
@@ -307,6 +342,7 @@ function Rota() {
           rows={rows}
           readOnly={!canEdit}
           highlightMemberId={myMemberId}
+          timeFormat={timeFormat}
           onCellClick={canEdit ? (row, dayKey) => setEditing({ row, dayKey }) : undefined}
           onClose={() => setFullscreen(false)}
         />

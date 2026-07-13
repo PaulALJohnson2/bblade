@@ -17,7 +17,7 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from './RotaGrid';
 
-function RotaFullscreen({ days, rows, highlightMemberId = null, onClose, readOnly = true, onCellClick }) {
+function RotaFullscreen({ days, rows, highlightMemberId = null, onClose, readOnly = true, onCellClick, timeFormat = '12h' }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   // Size the grid from the *measured* viewport, not vh/vw units — on mobile
@@ -108,6 +108,7 @@ function RotaFullscreen({ days, rows, highlightMemberId = null, onClose, readOnl
           fill
           highlightMemberId={highlightMemberId}
           onCellClick={onCellClick}
+          timeFormat={timeFormat}
         />
       </div>
     </div>
