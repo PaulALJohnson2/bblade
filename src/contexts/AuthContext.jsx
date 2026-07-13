@@ -30,7 +30,7 @@ import {
 } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../firebase/config';
-import { ACCOUNT_ID, VENUE_ID, venuePath, isSuperAdminEmail } from '../config/app';
+import { ACCOUNT_ID, VENUE_ID, venuePath } from '../config/app';
 import {
   subscribeToVenue,
   saveVenue as saveVenueSvc,
@@ -98,9 +98,21 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
+        // The server gate (gateUserSignIn) stamps the token claims we trust:
+        // { accountId, role } for provisioned members, plus platformAdmin for
+        // BBlade staff. Read them from the token — cached, offline-safe, no
+        // Firestore read to race or fail. The super-admin list lives ONLY in
+        // that function now; the client just reads the resulting claim.
+        let token = await user.getIdTokenResult();
+        if (!token.claims.accountId && !token.claims.platformAdmin) {
+          // Session predates provisioning — refresh once to pick up the
+          // claims stamped by the backfill / their first gated sign-in.
+          token = await user.getIdTokenResult(true);
+        }
+
         // Platform super-admins: full access to any account, no member check.
         // They land on their last-opened account (localStorage), else the default.
-        if (isSuperAdminEmail(user.email)) {
+        if (token.claims.platformAdmin) {
           setIsPlatformAdmin(true);
           try {
             const saved = JSON.parse(localStorage.getItem('bb_active_tenant') || 'null');
@@ -113,18 +125,10 @@ export const AuthProvider = ({ children }) => {
           setCurrentUser(user);
           setAuthorized(true);
           setAuthError(null);
+          try {
+            localStorage.setItem('bb_auth_ok', JSON.stringify({ uid: user.uid, platformAdmin: true }));
+          } catch { /* storage unavailable — fallback just won't apply */ }
           return; // finally{} clears loading
-        }
-
-        // Anyone else who completed sign-in was allowed by the server gate
-        // (gateUserSignIn), which stamped { accountId, role } claims when the
-        // account was provisioned from the members list. Read them from the
-        // token — cached, offline-safe, no Firestore read to race or fail.
-        let token = await user.getIdTokenResult();
-        if (!token.claims.accountId) {
-          // Session predates provisioning — refresh once to pick up the
-          // claims stamped by the backfill / their first gated sign-in.
-          token = await user.getIdTokenResult(true);
         }
 
         if (token.claims.accountId) {
@@ -163,7 +167,18 @@ export const AuthProvider = ({ children }) => {
         // reconnect. Only unknown users (never verified here) are held back.
         let cached = null;
         try { cached = JSON.parse(localStorage.getItem('bb_auth_ok') || 'null'); } catch { /* ignore */ }
-        if (cached?.uid === user.uid && cached?.accountId) {
+        if (cached?.uid === user.uid && cached?.platformAdmin) {
+          console.warn('Token refresh failed; restoring cached super-admin (offline?):', err?.message);
+          setIsPlatformAdmin(true);
+          try {
+            const saved = JSON.parse(localStorage.getItem('bb_active_tenant') || 'null');
+            if (saved?.accountId && saved?.venueId) { setActiveAccountId(saved.accountId); setActiveVenueId(saved.venueId); }
+          } catch { /* ignore */ }
+          setRole('owner');
+          setCurrentUser(user);
+          setAuthorized(true);
+          setAuthError(null);
+        } else if (cached?.uid === user.uid && cached?.accountId) {
           console.warn('Token refresh failed; restoring cached authorization (offline?):', err?.message);
           setIsPlatformAdmin(false);
           setActiveAccountId(cached.accountId);

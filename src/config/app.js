@@ -25,19 +25,10 @@
 export const ACCOUNT_ID = 'HBBEnX7bxP9wWASvFKMC';
 export const VENUE_ID = 'XtX2rcDcvvc2z2dpMGFS';
 
-/**
- * Platform super-admins (BBlade staff). These emails get cross-account access:
- * they can see all accounts, create new ones, and switch into any account to
- * operate it — regardless of any account's member allowlist. Client-side gate
- * (matches the current security posture; tighten with custom claims later).
- */
-export const SUPER_ADMINS = [
-  'contact@pauljohnson.me',
-  'barblade3@gmail.com',
-];
-
-export const isSuperAdminEmail = (email) =>
-  !!email && SUPER_ADMINS.includes(String(email).toLowerCase());
+// Platform super-admins (BBlade staff) are identified SERVER-SIDE only: the
+// gateUserSignIn Cloud Function holds the list and stamps a `platformAdmin`
+// token claim, which the client and Firestore rules both trust. The list is no
+// longer shipped to the browser — the client reads the claim (see AuthContext).
 
 /** Firestore path to a venue document. */
 export const venuePath = (accountId = ACCOUNT_ID, venueId = VENUE_ID) =>
