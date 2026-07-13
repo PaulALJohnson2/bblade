@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
@@ -62,7 +62,8 @@ const DEFAULT_PATTERNS = [
 const MAX_PRESETS = 6;
 
 function Rota() {
-  const { members, selectedPub, isAdmin, pubName, currentUser } = useAuth();
+  const { members, selectedPub, isAdmin, pubName, currentUser, currentMember } = useAuth();
+  const navigate = useNavigate();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const admin = !!(isAdmin && isAdmin());
@@ -272,6 +273,18 @@ function Rota() {
         <div style={{ fontWeight: 700, fontSize: isMobile ? '0.9rem' : '1rem', color: colors.textPrimary, minWidth: isMobile ? '110px' : '190px', flex: isMobile ? 1 : 'none', textAlign: 'center' }}>{rangeLabel}</div>
         <button type="button" style={navBtn} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next ›</button>
         <button type="button" style={{ ...navBtn, color: colors.primary }} onClick={() => setWeekStart(mondayOf(new Date()))}>This week</button>
+        {/* Staff request annual leave straight from their rota (admins mark A/L
+            directly on the grid in the edit view, so it's hidden there). */}
+        {currentMember && !canEdit && (
+          <button
+            type="button"
+            style={{ ...navBtn, marginLeft: 'auto', backgroundColor: colors.warning, color: '#fff', border: 'none', fontWeight: 700 }}
+            onClick={() => navigate('/leave')}
+            title="Request annual leave"
+          >
+            Request leave
+          </button>
+        )}
         {canEdit && (
           <button
             type="button"
