@@ -132,19 +132,26 @@ function Rota() {
   }, [venuePath]);
 
   // Quick-pick pills: learned patterns ranked by usage, then defaults to fill.
+  // A "close" pill is always kept one tap away — if the top ones are all
+  // concrete-ended, the last slot is swapped for the most-used close pattern
+  // (falling back to the seeded default, which DEFAULT_PATTERNS always has).
   const presets = useMemo(() => {
     const learned = Object.entries(patternCounts)
       .filter(([, n]) => n > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([key]) => { const [start, end] = key.split('-'); return { start, end }; });
     const seen = new Set();
-    const out = [];
+    const all = [];
     for (const p of [...learned, ...DEFAULT_PATTERNS]) {
       const k = `${p.start}-${p.end}`;
       if (seen.has(k) || !p.start || !p.end) continue;
       seen.add(k);
-      out.push({ start: p.start, end: p.end, label: patternLabel(p.start, p.end, timeFormat) });
-      if (out.length >= MAX_PRESETS) break;
+      all.push({ start: p.start, end: p.end, label: patternLabel(p.start, p.end, timeFormat) });
+    }
+    const out = all.slice(0, MAX_PRESETS);
+    if (!out.some((p) => p.end === 'close')) {
+      const closePill = all.find((p) => p.end === 'close');
+      if (closePill) out[out.length - 1] = closePill;
     }
     return out;
   }, [patternCounts, timeFormat]);
