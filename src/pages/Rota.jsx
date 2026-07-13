@@ -149,9 +149,13 @@ function Rota() {
       all.push({ start: p.start, end: p.end, label: patternLabel(p.start, p.end, timeFormat) });
     }
     const out = all.slice(0, MAX_PRESETS);
+    // Keep a "close" pill visible. Append it as an extra rather than displacing
+    // a slot, so a real learned pattern is never hidden behind it — the ranking
+    // itself stays pure cumulative (fast to learn when a venue is new, stable
+    // once plenty of shifts have accrued).
     if (!out.some((p) => p.end === 'close')) {
       const closePill = all.find((p) => p.end === 'close');
-      if (closePill) out[out.length - 1] = closePill;
+      if (closePill) out.push(closePill);
     }
     return out;
   }, [patternCounts, timeFormat]);
