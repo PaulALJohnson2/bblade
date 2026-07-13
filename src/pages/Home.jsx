@@ -7,10 +7,9 @@
  * there's nothing for them to look at).
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { hasPublishedRota } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import Tile from '../components/Tile';
@@ -19,23 +18,12 @@ import Tile from '../components/Tile';
 // Owner/manager features (sales, reports, settings) belong on /admin.
 function Home() {
   const navigate = useNavigate();
-  const { pubName, isAdmin, selectedPub, currentMember } = useAuth();
+  const { pubName, isAdmin, currentMember } = useAuth();
   const admin = !!(isAdmin && isAdmin());
   // Strict (no loading-grace) so the tile pops in rather than flashing away.
   const stockAccess = admin || !!currentMember?.withStock;
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
-
-  // Staff only get the Rota tile once a rota has actually been published.
-  const [rotaLive, setRotaLive] = useState(false);
-  useEffect(() => {
-    if (admin || !selectedPub?.path) return;
-    let alive = true;
-    hasPublishedRota(selectedPub.path).then((res) => {
-      if (alive && res.success) setRotaLive(res.data);
-    });
-    return () => { alive = false; };
-  }, [admin, selectedPub?.path]);
 
   // Clocking in needs a staff record on the rota (shifts are stored per
   // member). Admins always see the tile — the Clock page explains how to add
@@ -64,8 +52,8 @@ function Home() {
       icon: ['M2 6h11v9H2z', 'M13 9h4l3.5 3.5V15H13', 'M5 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0', 'M14 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0'],
     },
     {
-      key: 'rota', label: 'Rota', desc: 'See your shifts',
-      to: '/rota', accent: colors.primary, staffNeedsPublishedRota: true,
+      key: 'rota', label: 'Rota', desc: 'See your shifts & book leave',
+      to: '/rota', accent: colors.primary,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
     },
   ];
@@ -75,7 +63,6 @@ function Home() {
     if (t.needsStockAccess) return stockAccess;
     if (admin) return true;
     if (t.adminOnly) return false;
-    if (t.staffNeedsPublishedRota) return rotaLive;
     return true;
   });
 
