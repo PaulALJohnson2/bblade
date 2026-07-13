@@ -133,7 +133,20 @@ function ShiftEditor({ staffName, dayLabel, presets, value, onSave, onCancel }) 
                 </select>
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={label}>End</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <div style={label}>End</div>
+                  <button
+                    type="button"
+                    onClick={() => setAt(i, { end: s.end === 'close' ? '23:00' : 'close' })}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      fontSize: '0.72rem', fontWeight: 700, textDecoration: 'underline',
+                      color: s.end === 'close' ? colors.primary : colors.textSecondary,
+                    }}
+                  >
+                    {s.end === 'close' ? '✓ Close' : 'Set to close'}
+                  </button>
+                </div>
                 <select style={select} value={s.end} onChange={(e) => setAt(i, { end: e.target.value })}>
                   <option value="close">Close (open end)</option>
                   {TIME_OPTIONS.map((t) => <option key={t} value={t}>{t === '00:00' ? '00:00 (midnight)' : t}</option>)}
