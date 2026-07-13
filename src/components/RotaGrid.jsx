@@ -71,7 +71,7 @@ function fmtHours(min) {
   return String(Number((min / 60).toFixed(2)));
 }
 
-function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false, scroll = false, focusDayKey = null, timeFormat = '12h' }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false, focusDayKey = null, timeFormat = '12h' }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -90,7 +90,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   // On the scrollable in-page grid, bring the focused day (today, on the current
   // week) as far left as it can go — right after the pinned name column.
   useLayoutEffect(() => {
-    if (!focusDayKey) return;
+    if (fill || !focusDayKey) return;
     const wrap = wrapRef.current;
     const el = dayHeadRefs.current[focusDayKey];
     if (!wrap || !el) return;
@@ -147,13 +147,12 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   // Keep the name/hours columns tight so the day columns get as much width as
   // possible (long names truncate with an ellipsis). Full-screen and compact
   // fit the whole week; only the plain in-page (laptop) grid scrolls sideways.
-  const nameColW = compact ? '64px' : scroll ? '132px' : (fill ? '92px' : NAME_COL);
-  const totalColW = compact ? '46px' : scroll ? '60px' : (fill ? '58px' : '96px');
+  const nameColW = compact ? '64px' : (fill ? '92px' : NAME_COL);
+  const totalColW = compact ? '46px' : (fill ? '58px' : '96px');
   // Full-screen fits the whole week (columns shrink to zero). The in-page grids
   // give each day a comfortable minimum and scroll sideways instead of cramming,
   // so shift times stay readable on one line — compact just uses a smaller min.
-  // Scroll mode (upright full-screen) uses the same comfortable minimum.
-  const dayCols = fill ? 'repeat(7, minmax(0, 1fr))' : compact ? 'repeat(7, minmax(72px, 1fr))' : 'repeat(7, minmax(104px, 1fr))';
+  const dayCols = fill ? 'repeat(7, minmax(0, 1fr))' : compact ? 'repeat(7, minmax(72px, 1fr))' : 'repeat(7, minmax(96px, 1fr))';
 
   const grid = {
     display: 'grid',
@@ -231,7 +230,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   };
 
   return (
-    <div ref={wrapRef} style={scroll ? { width: '100%', height: '100%', overflow: 'auto', WebkitOverflowScrolling: 'touch' } : fill ? { width: '100%', height: '100%', overflow: 'hidden' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div ref={wrapRef} style={fill ? { width: '100%', height: '100%', overflow: 'hidden' } : { overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div style={grid}>
         {/* Header row */}
         <div ref={nameHeadRef} style={{ ...headCell, alignItems: 'flex-start', ...(fill ? {} : { position: 'sticky', left: 0, zIndex: 3, backgroundColor: colors.bgCard }) }}>Staff</div>
@@ -292,7 +291,10 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 // In-page grids don't wrap — with a 72px+ column, a range fits one
                 // line; longer half-hour ranges just size down a touch.
                 if (compact) timeFont = maxLen <= 5 ? '0.95rem' : maxLen <= 7 ? '0.85rem' : maxLen <= 10 ? '0.72rem' : '0.62rem';
-                else if (fill) timeFont = split ? '0.72rem' : (maxLen <= 5 ? '1.5rem' : maxLen <= 7 ? '1.25rem' : '0.95rem');
+                // Full-screen columns shrink to share the width, so a full 24h
+                // HH:MM–HH:MM (maxLen 11) needs a smaller size to fit on one line
+                // rather than being clipped at the column edge.
+                else if (fill) timeFont = split ? '0.72rem' : (maxLen <= 5 ? '1.5rem' : maxLen <= 7 ? '1.25rem' : maxLen <= 10 ? '0.95rem' : '0.8rem');
                 // Laptop in-page: size to length so a full HH:MM–HH:MM (24h) stays
                 // on one line instead of wrapping (which read as ragged/messy).
                 else timeFont = split ? '1rem' : (maxLen <= 5 ? '1.4rem' : maxLen <= 8 ? '1.2rem' : '1rem');
