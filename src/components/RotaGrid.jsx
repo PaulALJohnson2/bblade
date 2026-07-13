@@ -22,7 +22,7 @@
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts } from '../utils/rota';
+import { dayShifts, isLeaveDay } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '190px';
@@ -275,6 +275,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 </span>
               </div>
               {days.map((d) => {
+                const leave = isLeaveDay(row.shifts?.[d.key]);
                 const shifts = dayShifts(row.shifts?.[d.key]);
                 const n = shifts.length;
                 const split = n >= 2;
@@ -293,12 +294,21 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 return (
                   <div
                     key={d.key}
-                    style={{ ...dayCell, backgroundColor: rowBg || (readOnly && n === 0 ? colors.bgLight : undefined), cursor: readOnly ? 'default' : 'pointer' }}
+                    style={{ ...dayCell, backgroundColor: rowBg || (readOnly && n === 0 && !leave ? colors.bgLight : undefined), cursor: readOnly ? 'default' : 'pointer' }}
                     onClick={readOnly ? undefined : () => onCellClick(row, d.key)}
                     role={readOnly ? undefined : 'button'}
                     tabIndex={readOnly ? undefined : 0}
                   >
-                    {n > 0 ? (
+                    {leave ? (
+                      // Annual leave: a distinct "A/L" tag (paid, but no planned
+                      // hours — so it doesn't read as a worked shift).
+                      <span style={{
+                        fontSize: compact ? '0.7rem' : (fill ? '0.95rem' : '1.1rem'), fontWeight: 800,
+                        letterSpacing: '0.03em', color: colors.warning,
+                        border: `1px solid ${colors.warning}`, borderRadius: '9999px',
+                        padding: compact ? '0 0.3rem' : '0.05rem 0.5rem', lineHeight: 1.3, whiteSpace: 'nowrap',
+                      }}>A/L</span>
+                    ) : n > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: split ? '0px' : '2px', width: '100%', lineHeight: 1.05, overflow: 'hidden' }}>
                         {shifts.map((s, i) => (
                           <span

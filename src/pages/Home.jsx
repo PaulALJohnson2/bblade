@@ -68,11 +68,17 @@ function Home() {
       to: '/rota', accent: colors.primary, staffNeedsPublishedRota: true,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'],
     },
+    {
+      key: 'leave', label: 'Annual Leave', desc: 'Request time off',
+      to: '/leave', accent: colors.warning, needsMember: true,
+      icon: ['M12 3v2', 'M12 19v2', 'M4.2 4.2l1.4 1.4', 'M18.4 18.4l1.4 1.4', 'M3 12h2', 'M19 12h2', 'M4.2 19.8l1.4-1.4', 'M18.4 5.6l1.4-1.4', 'M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8z'],
+    },
   ];
 
   const visibleTiles = tiles.filter((t) => {
     if (t.needsRotaMember) return canClock;
     if (t.needsStockAccess) return stockAccess;
+    if (t.needsMember) return !!currentMember;
     if (admin) return true;
     if (t.adminOnly) return false;
     if (t.staffNeedsPublishedRota) return rotaLive;

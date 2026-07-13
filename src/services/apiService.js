@@ -105,4 +105,11 @@ export {
   saveStaffOrder,
   subscribeToRotaSettings,
   saveRotaSettings,
+
+  // Annual leave
+  subscribeToLeaveRequests,
+  requestLeave,
+  approveLeaveRequest,
+  declineLeaveRequest,
+  deleteLeaveRequest,
 } from '../firebase/firestoreService';

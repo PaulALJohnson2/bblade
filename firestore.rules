@@ -68,6 +68,12 @@ service cloud.firestore {
         match /shifts/{shiftId} {
           allow read, write: if member(accountId);
         }
+        // Annual-leave requests — staff create their own (pending); managers
+        // approve/decline (approval writes A/L onto the rota, which is
+        // manager-gated below). Member-level, same model as shifts.
+        match /leaveRequests/{requestId} {
+          allow read, write: if member(accountId);
+        }
         match /rotas/{rotaId} {
           allow read: if member(accountId);
           allow write: if manager(accountId);

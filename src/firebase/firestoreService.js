@@ -1514,6 +1514,128 @@ export async function saveStaffOrder(venuePath, order) {
   }
 }
 
+// ============================================
+// LEAVE REQUESTS  (annual leave, under {venuePath}/leaveRequests)
+// ============================================
+
+const LEAVE_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const pad2 = (n) => String(n).padStart(2, '0');
+const isoDateLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+// Monday (local midnight) of the week containing d — the rota's week id.
+function mondayOf(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+/** Live annual-leave requests for a venue (newest first). */
+export function subscribeToLeaveRequests(venuePath, onData, onError) {
+  const q = query(collection(db, `${venuePath}/leaveRequests`), orderBy('createdAt', 'desc'), limit(200));
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in leave requests listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Staff: request annual leave over an inclusive date range ('YYYY-MM-DD'). */
+export async function requestLeave(venuePath, { memberId, memberName, startDate, endDate, note = '', byUid = null }) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    await addDoc(collection(db, `${venuePath}/leaveRequests`), {
+      memberId,
+      memberName: memberName || '',
+      startDate,
+      endDate: endDate || startDate,
+      note: note || '',
+      status: 'pending',
+      accountId,
+      venueId,
+      createdAt: Timestamp.now(),
+      createdByUid: byUid,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error requesting leave:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Mark each day in an inclusive date range as annual leave on the rota for one
+ * member, grouping the days by week and merging into each week doc (creating
+ * weeks that don't exist yet, preserving other people's rows and other days).
+ */
+export async function applyLeaveToRota(venuePath, { memberId, memberName, startDate, endDate }) {
+  const { accountId, venueId } = idsFromVenuePath(venuePath);
+  // Noon anchors sidestep DST edges so the day loop never skips/doubles a date.
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate || startDate}T12:00:00`);
+  const byWeek = new Map(); // weekId → Set(dayKey)
+  for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const weekId = isoDateLocal(mondayOf(d));
+    const dayKey = LEAVE_DAY_KEYS[(d.getDay() + 6) % 7];
+    if (!byWeek.has(weekId)) byWeek.set(weekId, new Set());
+    byWeek.get(weekId).add(dayKey);
+  }
+  for (const [weekId, dayKeys] of byWeek) {
+    const ref = doc(db, `${venuePath}/rotas/${weekId}`);
+    const snap = await getDoc(ref);
+    const rows = (snap.exists() && Array.isArray(snap.data().rows)) ? snap.data().rows : [];
+    const next = rows.map((r) => ({ ...r, shifts: { ...(r.shifts || {}) } }));
+    let row = next.find((r) => r.memberId === memberId);
+    if (!row) { row = { memberId, name: memberName || '', shifts: {} }; next.push(row); }
+    else if (memberName) row.name = memberName;
+    dayKeys.forEach((dk) => { row.shifts[dk] = [{ type: 'leave' }]; });
+    await setDoc(ref, { rows: next, weekStart: weekId, accountId, venueId, updatedAt: Timestamp.now() }, { merge: true });
+  }
+  return { success: true };
+}
+
+/** Manager: approve a leave request — applies A/L to the rota, then records it. */
+export async function approveLeaveRequest(venuePath, req, deciderName) {
+  try {
+    await applyLeaveToRota(venuePath, {
+      memberId: req.memberId, memberName: req.memberName, startDate: req.startDate, endDate: req.endDate,
+    });
+    await updateDoc(doc(db, `${venuePath}/leaveRequests/${req.id}`), {
+      status: 'approved', decidedBy: deciderName || 'unknown', decidedAt: Timestamp.now(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error approving leave:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: decline a leave request (leaves the rota untouched). */
+export async function declineLeaveRequest(venuePath, id, deciderName) {
+  try {
+    await updateDoc(doc(db, `${venuePath}/leaveRequests/${id}`), {
+      status: 'declined', decidedBy: deciderName || 'unknown', decidedAt: Timestamp.now(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error declining leave:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Remove a leave request outright. */
+export async function deleteLeaveRequest(venuePath, id) {
+  try {
+    await deleteDoc(doc(db, `${venuePath}/leaveRequests/${id}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting leave request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Live rota display settings (e.g. { timeFormat: '12h' | '24h' }). */
 export function subscribeToRotaSettings(venuePath, onData, onError) {
   const ref = doc(db, `${venuePath}/rotaPrefs/settings`);

@@ -17,7 +17,9 @@ import StockManager from '../components/StockManager';
 import StockOverview from '../components/StockOverview';
 import WastageReport from '../components/WastageReport';
 import Timesheets from '../components/Timesheets';
+import LeaveRequests from '../components/LeaveRequests';
 import Tile from '../components/Tile';
+import { subscribeToLeaveRequests } from '../services/apiService';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
@@ -57,6 +59,18 @@ function Admin() {
 
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
+
+  // Count pending leave requests, for the dashboard tile badge.
+  const [pendingLeave, setPendingLeave] = useState(0);
+  useEffect(() => {
+    if (!selectedPub?.path) return undefined;
+    const unsub = subscribeToLeaveRequests(
+      selectedPub.path,
+      (list) => setPendingLeave((list || []).filter((r) => r.status === 'pending').length),
+      () => {},
+    );
+    return () => unsub();
+  }, [selectedPub?.path]);
 
   const handleSaveName = async () => {
     const name = nameInput.trim();
@@ -176,11 +190,14 @@ function Admin() {
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'] },
     { key: 'timesheets', label: 'Timesheets', desc: 'Clock-ins, hours & approvals', accent: colors.primary, show: admin,
       icon: ['M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20', 'M12 6v6l4 2'] },
+    { key: 'leave', label: 'Leave requests', desc: 'Approve staff annual leave', accent: colors.warning, show: admin,
+      badge: pendingLeave ? String(pendingLeave) : undefined,
+      icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z', 'M9 16l2 2 4-4'] },
     { key: 'sales', label: 'Sales', desc: 'Till sales reports', accent: colors.primary, show: admin, to: '/sales',
       icon: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'] },
   ].filter((t) => t.show);
 
-  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets' };
+  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Leave requests' };
 
   // ---- Hub: a 2-column grid of tiles into each settings section ----
   if (!view) {
@@ -189,7 +206,7 @@ function Admin() {
         <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Admin</h1>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           {TILES.map((t) => (
-            <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => (t.to ? navigate(t.to) : setView(t.key))} />
+            <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} badge={t.badge} onClick={() => (t.to ? navigate(t.to) : setView(t.key))} />
           ))}
         </div>
 
@@ -265,6 +282,27 @@ function Admin() {
             venuePath={selectedPub.path}
             members={members}
             approverName={userProfile?.displayName || ''}
+            colors={colors}
+            showToast={(m) => setError(m)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (view === 'leave') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        {error && (
+          <div style={{ padding: '0.75rem 1rem', backgroundColor: colors.errorDark, color: 'white', borderRadius: '8px', marginBottom: '1rem' }}>
+            {error}
+          </div>
+        )}
+        {selectedPub?.path && (
+          <LeaveRequests
+            venuePath={selectedPub.path}
+            deciderName={userProfile?.displayName || ''}
             colors={colors}
             showToast={(m) => setError(m)}
           />

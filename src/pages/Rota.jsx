@@ -13,7 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts } from '../utils/rota';
+import { dayShifts, isLeaveDay } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import RotaFullscreen from '../components/RotaFullscreen';
@@ -198,7 +198,9 @@ function Rota() {
   // Set a day's shifts (an array — one entry, or several for a split shift; an
   // empty array clears the day). Store only members who have at least one shift.
   const setDayShifts = (row, dayKey, shifts) => {
-    const clean = (shifts || []).filter((s) => s && s.start && s.end);
+    // A day is either annual leave ([{type:'leave'}]) or a list of shifts.
+    const isLeave = Array.isArray(shifts) && shifts.some((s) => s && s.type === 'leave');
+    const clean = isLeave ? [{ type: 'leave' }] : (shifts || []).filter((s) => s && s.start && s.end);
     const byId = new Map(savedRows.map((r) => [r.memberId, { ...r, shifts: { ...r.shifts } }]));
     const entry = byId.get(row.memberId) || { memberId: row.memberId, name: row.name, shifts: {} };
     entry.name = row.name;
@@ -209,7 +211,8 @@ function Rota() {
     setSavedRows(next);
     if (venuePath) {
       saveRota(venuePath, weekId, { weekStart: weekId, rows: next });
-      clean.forEach((s) => bumpShiftPattern(venuePath, s.start, s.end)); // learn the patterns
+      // Learn only real shift patterns — an A/L marker isn't a pattern.
+      if (!isLeave) clean.forEach((s) => bumpShiftPattern(venuePath, s.start, s.end));
     }
     setEditing(null);
   };
@@ -342,6 +345,7 @@ function Rota() {
           dayLabel={(() => { const d = days.find((x) => x.key === editing.dayKey); return `${d.label} ${d.dateLabel}`; })()}
           presets={presets}
           value={dayShifts(editing.row.shifts?.[editing.dayKey])}
+          isLeave={isLeaveDay(editing.row.shifts?.[editing.dayKey])}
           onSave={(shifts) => setDayShifts(editing.row, editing.dayKey, shifts)}
           onCancel={() => setEditing(null)}
         />
