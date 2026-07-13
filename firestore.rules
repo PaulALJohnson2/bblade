@@ -96,6 +96,13 @@ service cloud.firestore {
       }
     }
 
+    // Platform config (e.g. platform/config { superAdmins: [...] }). The Cloud
+    // Functions read it via the Admin SDK (bypasses rules); this scopes any
+    // client access to platform super-admins only.
+    match /platform/{docId} {
+      allow read, write: if platformAdmin();
+    }
+
     // Deny anything outside the modelled paths above.
     match /{document=**} {
       allow read, write: if false;

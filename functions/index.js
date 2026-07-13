@@ -41,10 +41,30 @@ initializeApp();
 const db = getFirestore();
 
 const ACCOUNT_ID = 'HBBEnX7bxP9wWASvFKMC';
-const SUPER_ADMINS = ['contact@pauljohnson.me', 'barblade3@gmail.com'];
+
+// Platform super-admins (BBlade staff) live in Firestore at platform/config
+// { superAdmins: [email, ...] } so they can be changed without a redeploy. The
+// bootstrap list is a resilience fallback used ONLY when that doc is missing or
+// unreadable — so a bad edit or a transient error can never lock the platform
+// owners out. The doc is the source of truth for everyone else.
+const BOOTSTRAP_SUPER_ADMINS = ['contact@pauljohnson.me', 'barblade3@gmail.com'];
 
 const normEmail = (email) => String(email || '').trim().toLowerCase();
-const isSuperAdmin = (email) => SUPER_ADMINS.includes(normEmail(email));
+
+async function isSuperAdmin(email) {
+  const e = normEmail(email);
+  if (!e) return false;
+  try {
+    const snap = await db.doc('platform/config').get();
+    if (snap.exists && Array.isArray(snap.data().superAdmins)) {
+      return snap.data().superAdmins.map(normEmail).includes(e);
+    }
+    return BOOTSTRAP_SUPER_ADMINS.includes(e); // doc missing / malformed
+  } catch (err) {
+    logger.warn(`superAdmins config read failed, using bootstrap: ${err.message}`);
+    return BOOTSTRAP_SUPER_ADMINS.includes(e);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Initial passwords: a readable "Adjective-Noun-123" an admin can relay by
@@ -84,7 +104,7 @@ exports.syncMemberAuth = onDocumentWritten('accounts/{accountId}/members/{member
 
   // Email removed or changed → revoke the old address's account (unless it's a
   // super-admin, or the account belongs to a different tenant's provisioning).
-  if (beforeEmail && beforeEmail !== afterEmail && !isSuperAdmin(beforeEmail)) {
+  if (beforeEmail && beforeEmail !== afterEmail && !(await isSuperAdmin(beforeEmail))) {
     try {
       const user = await auth.getUserByEmail(beforeEmail);
       if (user.customClaims?.accountId === accountId) {
@@ -157,7 +177,7 @@ const DENIED = 'This email is not authorised for BBlade. Ask an administrator to
 exports.gateUserSignIn = beforeUserSignedIn(async (event) => {
   const email = normEmail(event.data && event.data.email);
 
-  if (isSuperAdmin(email)) {
+  if (await isSuperAdmin(email)) {
     logger.info(`Sign-in allowed (super-admin): ${email}`);
     return { sessionClaims: { accountId: ACCOUNT_ID, role: 'owner', platformAdmin: true } };
   }
@@ -190,7 +210,7 @@ exports.gateUserSignIn = beforeUserSignedIn(async (event) => {
 // blocking functions entirely). Enforces the same rule if that toggle is off.
 exports.gateUserCreation = beforeUserCreated(async (event) => {
   const email = normEmail(event.data && event.data.email);
-  if (isSuperAdmin(email)) return;
+  if (await isSuperAdmin(email)) return;
   const { allowed } = await resolveMemberAccess(email);
   if (!allowed) throw new HttpsError('permission-denied', DENIED);
 });
@@ -233,7 +253,7 @@ exports.changeInitialPassword = onCall(async (request) => {
 exports.resetMemberPassword = onCall(async (request) => {
   if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
   const role = request.auth.token.role;
-  if (!isSuperAdmin(request.auth.token.email) && role !== 'owner' && role !== 'manager') {
+  if (!(await isSuperAdmin(request.auth.token.email)) && role !== 'owner' && role !== 'manager') {
     throw new CallableError('permission-denied', 'Only managers can reset passwords.');
   }
   const memberId = String((request.data && request.data.memberId) || '');
