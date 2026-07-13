@@ -371,6 +371,7 @@ function Rota() {
           readOnly={!canEdit}
           highlightMemberId={myMemberId}
           timeFormat={timeFormat}
+          focusDayKey={todayKey}
           onCellClick={canEdit ? (row, dayKey) => setEditing({ row, dayKey }) : undefined}
           onClose={() => setFullscreen(false)}
         />
