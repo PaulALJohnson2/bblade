@@ -143,7 +143,7 @@ function ShiftBoard({ venuePath, weekId, rows, requests, myMemberId, myName, tim
           {needsAnswer.map((r) => (
             <div key={r.id} style={rowStyle}>
               <span style={{ flex: '1 1 12rem', minWidth: 0, color: colors.textPrimary }}>
-                <strong>{r.from.name}</strong> wants to swap their {dayDateLabel(r.weekId, r.from.dayKey)} ({timesOf(r.from)}) for your {dayDateLabel(r.weekId, r.target.dayKey)} ({timesOf(r.target)})
+                <strong>{r.from.name}</strong> wants to swap their {dayDateLabel(r.weekId, r.from.dayKey)} ({timesOf(r.from)}) for your {dayDateLabel(r.target.weekId || r.weekId, r.target.dayKey)} ({timesOf(r.target)})
               </span>
               <button disabled={!!busy} onClick={() => answer(r, true)} style={smallBtn(colors.success, '#fff', !!busy)}>
                 <BtnLabel idle="Accept" busyLabel="Accepting…" busy={busy?.id === r.id && busy.action === 'accept'} />

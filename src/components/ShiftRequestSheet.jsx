@@ -26,11 +26,11 @@ function BtnLabel({ idle, busyLabel, busy, align = 'center' }) {
   );
 }
 
-function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, onSubmit, onClose }) {
+function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, swapsLoading = false, onSubmit, onClose }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const [step, setStep] = useState('choose'); // 'choose' | 'swap'
-  const [busy, setBusy] = useState(null); // 'giveaway' | 'swap:{memberId}:{dayKey}'
+  const [busy, setBusy] = useState(null); // 'giveaway' | 'swap:{memberId}:{weekId}:{dayKey}'
   const [error, setError] = useState('');
 
   const anySwaps = colleagues.some((c) => c.days.length > 0);
@@ -87,10 +87,12 @@ function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, onSubmit,
                 Anyone free can take it; your manager approves.
               </span>
             </button>
-            <button type="button" style={bigOption(!anySwaps || !!busy)} disabled={!anySwaps || !!busy} onClick={() => setStep('swap')}>
+            <button type="button" style={bigOption(swapsLoading || !anySwaps || !!busy)} disabled={swapsLoading || !anySwaps || !!busy} onClick={() => setStep('swap')}>
               <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'block' }}>Swap with someone</span>
               <span style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>
-                {anySwaps ? 'Trade it for one of their days this week.' : 'No swappable days this week — everyone clashes or is off.'}
+                {swapsLoading ? 'Checking the coming weeks…'
+                  : anySwaps ? 'Trade it for one of their days in the coming weeks.'
+                    : 'No swappable days in the coming weeks — everything clashes or is off.'}
               </span>
             </button>
           </>
@@ -106,13 +108,13 @@ function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, onSubmit,
                 <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>{c.name}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                   {c.days.map((d) => {
-                    const key = `swap:${c.memberId}:${d.dayKey}`;
+                    const key = `swap:${c.memberId}:${d.weekId || ''}:${d.dayKey}`;
                     return (
                       <button
-                        key={d.dayKey}
+                        key={key}
                         type="button"
                         disabled={!!busy}
-                        onClick={() => submit('swap', { memberId: c.memberId, name: c.name, dayKey: d.dayKey, shifts: d.shifts }, key)}
+                        onClick={() => submit('swap', { memberId: c.memberId, name: c.name, weekId: d.weekId, dayKey: d.dayKey, shifts: d.shifts }, key)}
                         style={{
                           padding: '0.45rem 0.7rem', fontSize: '0.82rem', fontWeight: 600,
                           borderRadius: '9999px', cursor: busy ? 'progress' : 'pointer',

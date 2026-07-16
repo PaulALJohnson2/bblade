@@ -39,7 +39,7 @@ import { db } from './config';
 import { idsFromVenuePath } from '../config/app';
 import {
   isLeaveDay, isSickDay,
-  validateRequestAgainstRows, applyGiveawayToRows, applySwapToRows, applyCoverToRows,
+  validateRequestAgainstRows, applyGiveawayToRows, applySwapToRows, applySwapAcrossWeeks, applyCoverToRows,
 } from '../utils/rota';
 
 /** Reject a promise if it doesn't settle within `ms` — guards offline hot paths. */
@@ -1759,26 +1759,60 @@ export async function cancelShiftRequest(venuePath, id, byName) {
   }
 }
 
+/** One week's rota rows (one-time read; [] if the week has no doc yet). */
+export async function getRotaWeek(venuePath, weekId) {
+  try {
+    const snap = await getDoc(doc(db, `${venuePath}/rotas/${weekId}`));
+    const data = snap.exists() ? snap.data() : null;
+    return { success: true, rows: Array.isArray(data?.rows) ? data.rows : [], published: !!data?.published };
+  } catch (error) {
+    console.error('Error reading rota week:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /**
  * Manager: approve a claimed give-away or an accepted swap. Re-validates the
- * request's snapshot against the live week and applies it in one write (rota
- * first, then the request status — mirroring leave). A validation failure
- * comes back { success: false, stale: true } so the queue can show why.
+ * request's snapshot against the live rota and applies it (rota first, then
+ * the request status — mirroring leave). Same-week trades are one week-doc
+ * write; a cross-week swap writes both weeks back to back — the only
+ * two-write trade, validated at both ends first. A validation failure comes
+ * back { success: false, stale: true } so the queue can show why.
  */
 export async function approveShiftRequest(venuePath, req, deciderName) {
   try {
     const pre = await getRequestForTransition(venuePath, req.id, ['claimed', 'accepted']);
     if (pre.error) return { success: false, error: pre.error };
     const { accountId, venueId } = idsFromVenuePath(venuePath);
-    const weekRef = doc(db, `${venuePath}/rotas/${req.weekId}`);
-    const weekSnap = await getDoc(weekRef);
-    const rows = (weekSnap.exists() && Array.isArray(weekSnap.data().rows)) ? weekSnap.data().rows : [];
-    const verdict = validateRequestAgainstRows(rows, req);
+    const stamp = (weekId, rows) => ({ rows, weekStart: weekId, accountId, venueId, updatedAt: Timestamp.now() });
+
+    const fromRef = doc(db, `${venuePath}/rotas/${req.weekId}`);
+    const fromSnap = await getDoc(fromRef);
+    const rows = (fromSnap.exists() && Array.isArray(fromSnap.data().rows)) ? fromSnap.data().rows : [];
+
+    const targetWeekId = req.kind === 'swap' ? (req.target.weekId || req.weekId) : req.weekId;
+    const crossWeek = targetWeekId !== req.weekId;
+    let targetRows = rows;
+    let targetRef = fromRef;
+    if (crossWeek) {
+      targetRef = doc(db, `${venuePath}/rotas/${targetWeekId}`);
+      const targetSnap = await getDoc(targetRef);
+      targetRows = (targetSnap.exists() && Array.isArray(targetSnap.data().rows)) ? targetSnap.data().rows : [];
+    }
+
+    const verdict = validateRequestAgainstRows(rows, req, targetRows);
     if (!verdict.ok) {
       return { success: false, stale: true, error: `The rota has changed: ${verdict.reason.toLowerCase()}` };
     }
-    const nextRows = req.kind === 'giveaway' ? applyGiveawayToRows(rows, req) : applySwapToRows(rows, req);
-    await setDoc(weekRef, { rows: nextRows, weekStart: req.weekId, accountId, venueId, updatedAt: Timestamp.now() }, { merge: true });
+
+    if (crossWeek) {
+      const next = applySwapAcrossWeeks(rows, targetRows, req);
+      await setDoc(fromRef, stamp(req.weekId, next.fromRows), { merge: true });
+      await setDoc(targetRef, stamp(targetWeekId, next.targetRows), { merge: true });
+    } else {
+      const nextRows = req.kind === 'giveaway' ? applyGiveawayToRows(rows, req) : applySwapToRows(rows, req);
+      await setDoc(fromRef, stamp(req.weekId, nextRows), { merge: true });
+    }
     await updateDoc(doc(db, `${venuePath}/shiftRequests/${req.id}`), {
       status: 'approved', decidedAt: Timestamp.now(), decidedBy: deciderName || 'unknown',
     });

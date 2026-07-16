@@ -11,7 +11,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests, createShiftRequest } from '../services/apiService';
+import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests, createShiftRequest, getRotaWeek } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import { dayShifts, isLeaveDay, isSickDay, shiftsOverlap, dayMinutes, requestDayISO } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
@@ -86,6 +86,7 @@ function Rota() {
   const [editing, setEditing] = useState(null); // { row, dayKey }
   const [cover, setCover] = useState(null); // { row, dayKey, shifts } — "find cover" picker
   const [asking, setAsking] = useState(null); // { dayKey, shifts } — staff "can't work this?" sheet
+  const [swapWeeks, setSwapWeeks] = useState(null); // null = loading; [{weekId, rows}] published weeks for the swap picker
   const [notice, setNotice] = useState(''); // transient staff-view feedback
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   useEffect(() => {
@@ -242,9 +243,14 @@ function Rota() {
 
   const PENDING_STATUSES = ['open', 'claimed', 'pending_peer', 'accepted'];
 
+  // How many weeks ahead the swap picker looks (this week + the next three).
+  const SWAP_WEEKS_AHEAD = 3;
+
   // Tap on one of my own worked days (the grid only wires this up for real
   // shifts on my row). Past days and days I've already asked about get a
-  // gentle explanation instead of the sheet.
+  // gentle explanation instead of the sheet. Opening the sheet also fetches
+  // the upcoming published weeks so swaps can trade across weeks — "take my
+  // Friday, I'll do your Monday next week".
   const askAboutDay = (dayKey, shifts) => {
     if (requestDayISO(weekId, dayKey) < toISODate(new Date())) {
       flashNotice("That shift's already been — you can only offer up days still to come.");
@@ -257,20 +263,31 @@ function Rota() {
       return;
     }
     setAsking({ dayKey, shifts });
+    setSwapWeeks(null);
+    const weekIds = Array.from({ length: SWAP_WEEKS_AHEAD + 1 }, (_, i) => toISODate(addDays(weekStart, i * 7)));
+    Promise.all(weekIds.map((w) => getRotaWeek(venuePath, w))).then((results) => {
+      setSwapWeeks(weekIds
+        .map((w, i) => ({ weekId: w, ...results[i] }))
+        .filter((wk) => wk.success && wk.published)
+        .map((wk) => ({ weekId: wk.weekId, rows: wk.rows })));
+    });
   };
 
-  // Swap partners for the sheet. Eligibility is clash-based, not free-day
-  // based — someone already on the Thursday lunch CAN take your Thursday
-  // evening (it becomes a split), so a partner just needs: not marked off on
-  // your day, no time clash with your shifts there; and their offered days
-  // are ones they work where YOUR existing shifts don't clash either. Days
-  // already tied up in another pending request are out on both sides.
+  // Swap partners for the sheet, across this and upcoming published weeks.
+  // Eligibility is clash-based, not free-day based — someone already on the
+  // Thursday lunch CAN take your Thursday evening (it becomes a split). A
+  // partner needs: not marked off on my day, no time clash with my shifts
+  // there. Their offered days are ones they work (in any fetched week) where
+  // MY rota that week doesn't clash. Days already tied up in another pending
+  // request are out on both sides.
   const colleaguesFor = (dayKey) => {
     const myRow = rows.find((r) => r.memberId === myMemberId);
     const givenShifts = dayShifts(myRow?.shifts?.[dayKey]);
     const today = toISODate(new Date());
     const pendingReqs = (shiftRequests || []).filter((q) => PENDING_STATUSES.includes(q.status));
     const markedOff = (value) => isSickDay(value) || isLeaveDay(value);
+    const dateLabel = (w, k) => new Date(`${requestDayISO(w, k)}T12:00:00`)
+      .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
     return rows
       .filter((r) => r.memberId !== myMemberId
         && !markedOff(r.shifts?.[dayKey])
@@ -278,21 +295,25 @@ function Rota() {
       .map((r) => ({
         memberId: r.memberId,
         name: r.name,
-        days: DAY_KEYS
-          .filter((k) => k !== dayKey
-            && dayShifts(r.shifts?.[k]).length > 0
-            && !markedOff(r.shifts?.[k])
-            && !markedOff(myRow?.shifts?.[k])
-            && !shiftsOverlap(myRow?.shifts?.[k], r.shifts?.[k])
-            && requestDayISO(weekId, k) >= today
-            && !pendingReqs.some((q) => q.weekId === weekId
-              && ((q.from.memberId === r.memberId && q.from.dayKey === k)
-                || (q.target?.memberId === r.memberId && q.target?.dayKey === k))))
-          .map((k) => ({
-            dayKey: k,
-            dayLabel: (() => { const d = days.find((x) => x.key === k); return `${d.label} ${d.dateLabel}`; })(),
-            shifts: dayShifts(r.shifts?.[k]),
-          })),
+        days: (swapWeeks || []).flatMap((wk) => {
+          const theirRow = wk.rows.find((x) => x.memberId === r.memberId);
+          const myWeekRow = wk.rows.find((x) => x.memberId === myMemberId);
+          return DAY_KEYS
+            .filter((k) => !(wk.weekId === weekId && k === dayKey)
+              && dayShifts(theirRow?.shifts?.[k]).length > 0
+              && !markedOff(theirRow?.shifts?.[k])
+              && !markedOff(myWeekRow?.shifts?.[k])
+              && !shiftsOverlap(myWeekRow?.shifts?.[k], theirRow?.shifts?.[k])
+              && requestDayISO(wk.weekId, k) >= today
+              && !pendingReqs.some((q) => ((q.from.memberId === r.memberId && q.weekId === wk.weekId && q.from.dayKey === k)
+                || (q.target?.memberId === r.memberId && (q.target?.weekId || q.weekId) === wk.weekId && q.target?.dayKey === k))))
+            .map((k) => ({
+              dayKey: k,
+              weekId: wk.weekId,
+              dayLabel: dateLabel(wk.weekId, k),
+              shifts: dayShifts(theirRow?.shifts?.[k]),
+            }));
+        }),
       }));
   };
 
@@ -504,6 +525,7 @@ function Rota() {
           shifts={asking.shifts}
           timeFormat={timeFormat}
           colleagues={colleaguesFor(asking.dayKey)}
+          swapsLoading={swapWeeks === null}
           onSubmit={submitAsk}
           onClose={() => setAsking(null)}
         />

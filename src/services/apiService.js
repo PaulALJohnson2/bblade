@@ -114,6 +114,7 @@ export {
   deleteLeaveRequest,
 
   // Shift give-aways & swaps
+  getRotaWeek,
   subscribeToShiftRequests,
   createShiftRequest,
   claimGiveaway,

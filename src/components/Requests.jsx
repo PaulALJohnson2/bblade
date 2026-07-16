@@ -138,7 +138,7 @@ function Requests({ venuePath, deciderName, colors, showToast, members, leave, s
       const toTimes = r.target.shifts.map((s) => shiftRangeLabel(s, '12h')).join(' & ');
       return (
         <>
-          <strong>{r.from.name}</strong> ⇄ <strong>{r.target.name}</strong>: {fmtDate(requestDayISO(r.weekId, r.from.dayKey))} ({fromTimes}) for {fmtDate(requestDayISO(r.weekId, r.target.dayKey))} ({toTimes})
+          <strong>{r.from.name}</strong> ⇄ <strong>{r.target.name}</strong>: {fmtDate(requestDayISO(r.weekId, r.from.dayKey))} ({fromTimes}) for {fmtDate(requestDayISO(r.target.weekId || r.weekId, r.target.dayKey))} ({toTimes})
         </>
       );
     }

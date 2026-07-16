@@ -197,11 +197,15 @@ function mapToRows(map) {
 }
 
 /**
- * Check a request still matches the live week rows. Returns { ok: true } or
- * { ok: false, reason } with a human-readable reason ready for the queue UI.
+ * Check a request still matches the live rota. `rows` is the week the
+ * requester's day lives in; `targetRows` is the week the counter-day lives in
+ * (a swap can trade across weeks — "take my Friday, I'll do your Monday next
+ * week"). For same-week swaps and give-aways the two are the same rows.
+ * Returns { ok: true } or { ok: false, reason } ready for the queue UI.
  */
-export function validateRequestAgainstRows(rows, req) {
+export function validateRequestAgainstRows(rows, req, targetRows = rows) {
   const byId = new Map((rows || []).map((r) => [r.memberId, r]));
+  const targetById = new Map((targetRows || []).map((r) => [r.memberId, r]));
   const giverDay = byId.get(req.from.memberId)?.shifts?.[req.from.dayKey];
 
   if (isLeaveDay(giverDay) || isSickDay(giverDay)) {
@@ -231,19 +235,31 @@ export function validateRequestAgainstRows(rows, req) {
     return canReceive(claimantDay, req.from.shifts, req.claimedBy.name);
   }
 
-  // Swap: the target's day must also still match its snapshot, and each side
-  // must be able to receive the day they're taking. (Same-day trades are
-  // excluded at creation, so the two receiving days are always distinct.)
-  const targetDay = byId.get(req.target.memberId)?.shifts?.[req.target.dayKey];
+  // Swap: the target's day (in ITS week) must still match its snapshot, and
+  // each side must be able to receive the day they're taking — the giver
+  // receives in the target's week, the target receives in the giver's week.
+  const targetDay = targetById.get(req.target.memberId)?.shifts?.[req.target.dayKey];
   if (isLeaveDay(targetDay) || isSickDay(targetDay)) {
     return { ok: false, reason: `${req.target.name}'s ${req.target.dayKey} is now marked off` };
   }
   if (!shiftsEqual(dayShifts(targetDay), req.target.shifts)) {
     return { ok: false, reason: `${req.target.name}'s shifts that day have changed` };
   }
-  const giverReceives = canReceive(byId.get(req.from.memberId)?.shifts?.[req.target.dayKey], req.target.shifts, req.from.name);
+  const giverReceives = canReceive(targetById.get(req.from.memberId)?.shifts?.[req.target.dayKey], req.target.shifts, req.from.name);
   if (!giverReceives.ok) return giverReceives;
   return canReceive(byId.get(req.target.memberId)?.shifts?.[req.from.dayKey], req.from.shifts, req.target.name);
+}
+
+// The one primitive every trade reduces to: within one week's rows, take a
+// day off the giver and land its shifts on the receiver — ON TOP of anything
+// non-clashing the receiver already works that day (a split). Returns NEW rows.
+function moveDay(rows, giver, receiver, dayKey, shifts) {
+  const map = rowsToMap(rows);
+  const from = rowFor(map, giver.memberId, giver.name);
+  delete from.shifts[dayKey];
+  const to = rowFor(map, receiver.memberId, receiver.name);
+  to.shifts[dayKey] = sortedShifts([...dayShifts(to.shifts[dayKey]), ...shifts]);
+  return mapToRows(map);
 }
 
 /**
@@ -252,31 +268,30 @@ export function validateRequestAgainstRows(rows, req) {
  * loses the day. Returns NEW rows; callers must have validated first.
  */
 export function applyGiveawayToRows(rows, req) {
-  const map = rowsToMap(rows);
-  const giver = rowFor(map, req.from.memberId, req.from.name);
-  delete giver.shifts[req.from.dayKey];
-  const claimant = rowFor(map, req.claimedBy.memberId, req.claimedBy.name);
-  claimant.shifts[req.from.dayKey] = sortedShifts([...dayShifts(claimant.shifts[req.from.dayKey]), ...req.from.shifts]);
-  return mapToRows(map);
+  return moveDay(rows, req.from, req.claimedBy, req.from.dayKey, req.from.shifts);
 }
 
 /**
- * Apply an approved swap: each member's traded day moves to the other, landing
- * on top of anything non-clashing already worked on the receiving day (a
- * split). Returns NEW rows; callers must have validated first.
+ * Apply an approved same-week swap: each member's traded day moves to the
+ * other, landing on top of anything non-clashing already worked on the
+ * receiving day (a split). Returns NEW rows; callers must have validated.
  */
 export function applySwapToRows(rows, req) {
-  const map = rowsToMap(rows);
-  const giver = rowFor(map, req.from.memberId, req.from.name);
-  const target = rowFor(map, req.target.memberId, req.target.name);
-  // What each already works on the day they're receiving (beyond the trade).
-  const giverKeeps = dayShifts(giver.shifts[req.target.dayKey]);
-  const targetKeeps = dayShifts(target.shifts[req.from.dayKey]);
-  delete giver.shifts[req.from.dayKey];
-  delete target.shifts[req.target.dayKey];
-  giver.shifts[req.target.dayKey] = sortedShifts([...giverKeeps, ...req.target.shifts]);
-  target.shifts[req.from.dayKey] = sortedShifts([...targetKeeps, ...req.from.shifts]);
-  return mapToRows(map);
+  const once = moveDay(rows, req.from, req.target, req.from.dayKey, req.from.shifts);
+  return moveDay(once, req.target, req.from, req.target.dayKey, req.target.shifts);
+}
+
+/**
+ * Apply an approved CROSS-WEEK swap: the giver's day moves to the target in
+ * the giver's week, the target's day moves to the giver in the target's week.
+ * Returns { fromRows, targetRows }; callers must have validated first (and
+ * must write both week docs — this is the one trade that spans two).
+ */
+export function applySwapAcrossWeeks(fromRows, targetRows, req) {
+  return {
+    fromRows: moveDay(fromRows, req.from, req.target, req.from.dayKey, req.from.shifts),
+    targetRows: moveDay(targetRows, req.target, req.from, req.target.dayKey, req.target.shifts),
+  };
 }
 
 /**
