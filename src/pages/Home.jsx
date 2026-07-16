@@ -2,28 +2,53 @@
  * Home — the post-login dashboard. A 2-column grid of square tiles that route to
  * each area of the app.
  *
- * Owners/managers see every tile. Normal staff only see day-to-day features:
- * Wastage, and Rota once at least one week has been published (before that
- * there's nothing for them to look at).
+ * Owners/managers see every tile. Staff see the day-to-day set: Wastage and
+ * Rota always, Clock In when they're on the rota, Stock Count when flagged
+ * with stock access. The Rota tile carries a badge when a shift request needs
+ * their answer (there's no push/email in this app — this badge and the rota
+ * board are how staff find out).
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getThemeColors } from '../utils/theme';
+import { isActionableForMember } from '../utils/rota';
+import { subscribeToShiftRequests } from '../services/apiService';
 import useTheme from '../hooks/useTheme';
 import Tile from '../components/Tile';
+
+const todayISO = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 // Home is the staff-facing hub: only day-to-day staff features live here.
 // Owner/manager features (sales, reports, settings) belong on /admin.
 function Home() {
   const navigate = useNavigate();
-  const { pubName, isAdmin, currentMember } = useAuth();
+  const { pubName, isAdmin, currentMember, selectedPub } = useAuth();
   const admin = !!(isAdmin && isAdmin());
   // Strict (no loading-grace) so the tile pops in rather than flashing away.
   const stockAccess = admin || !!currentMember?.withStock;
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+
+  // Staff only: how many shift requests need MY action right now (a swap
+  // waiting for my answer, or a colleague's shift up for grabs). Uses the
+  // same test as the rota board, so this number always matches what they'll
+  // find when they tap through. Admins act from Admin → Requests instead.
+  const [actionable, setActionable] = useState(0);
+  useEffect(() => {
+    if (admin || !currentMember?.id || !selectedPub?.path) return undefined;
+    const unsub = subscribeToShiftRequests(
+      selectedPub.path,
+      (list) => setActionable((list || []).filter((r) => isActionableForMember(r, currentMember.id, todayISO())).length),
+      () => {},
+    );
+    return () => unsub();
+  }, [admin, currentMember?.id, selectedPub?.path]);
 
   // Clocking in needs a staff record on the rota (shifts are stored per
   // member). Admins always see the tile — the Clock page explains how to add
@@ -82,7 +107,7 @@ function Home() {
             desc={t.desc}
             icon={t.icon}
             accent={t.accent}
-            badge={t.soon ? 'SOON' : undefined}
+            badge={t.soon ? 'SOON' : (t.key === 'rota' && actionable ? String(actionable) : undefined)}
             disabled={!!t.soon}
             onClick={() => navigate(t.to)}
           />

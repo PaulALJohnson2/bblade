@@ -10,7 +10,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToLeaveRequests, requestLeave } from '../services/apiService';
+import { subscribeToLeaveRequests, requestLeave, deleteLeaveRequest } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
@@ -71,6 +71,17 @@ function Leave() {
     if (!res.success) { showToast('Could not send: ' + res.error); return; }
     setNote('');
     showToast('Request sent to your manager.');
+  };
+
+  // Staff can withdraw a request while it's still waiting — after a decision
+  // it's history, not theirs to remove.
+  const cancel = async (r) => {
+    if (busy) return;
+    if (!window.confirm('Cancel this leave request?')) return;
+    setBusy(true);
+    const res = await deleteLeaveRequest(selectedPub.path, r.id);
+    setBusy(false);
+    showToast(res.success ? 'Request cancelled.' : 'Could not cancel: ' + res.error);
   };
 
   const card = { backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`, borderRadius: '12px', padding: '1.25rem' };
@@ -150,6 +161,15 @@ function Leave() {
                   <span style={{ flexShrink: 0, fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', color: colors[st.key], border: `1px solid ${colors[st.key]}`, borderRadius: '9999px', padding: '0.1rem 0.5rem' }}>
                     {st.label}
                   </span>
+                  {r.status === 'pending' && (
+                    <button
+                      type="button"
+                      onClick={() => cancel(r)}
+                      style={{ background: 'none', border: 'none', color: colors.textSecondary, cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'underline', padding: 0, flexShrink: 0 }}
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
               );
             })}

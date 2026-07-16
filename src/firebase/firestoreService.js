@@ -37,6 +37,10 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { idsFromVenuePath } from '../config/app';
+import {
+  isLeaveDay, isSickDay,
+  validateRequestAgainstRows, applyGiveawayToRows, applySwapToRows, applyCoverToRows,
+} from '../utils/rota';
 
 /** Reject a promise if it doesn't settle within `ms` — guards offline hot paths. */
 function withTimeout(promise, ms) {
@@ -1632,6 +1636,204 @@ export async function deleteLeaveRequest(venuePath, id) {
     return { success: true };
   } catch (error) {
     console.error('Error deleting leave request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// SHIFT REQUESTS  (give-aways & swaps, under {venuePath}/shiftRequests)
+//
+// A request snapshots the day(s) as they were when it was made:
+//   { kind: 'giveaway'|'swap', weekId,
+//     from:   { memberId, name, dayKey, shifts },
+//     target: { memberId, name, dayKey, shifts } | null,   // swap only
+//     claimedBy: { memberId, name } | null,                // giveaway only
+//     status: open|claimed|pending_peer|accepted
+//           | approved|declined|peer_declined|cancelled }
+//
+// Staff create/claim/accept/cancel; managers approve/decline. Approval is the
+// only step that touches the rota, and it re-validates the snapshot against
+// the live week first (validateRequestAgainstRows) — that's the backstop for
+// every race here (double claims, concurrent edits), since there are no
+// transactions in this codebase. Same-week-only trades keep each approval a
+// single week-doc write, so a swap can never half-apply.
+// ============================================
+
+/** Live shift requests for a venue (newest first). */
+export function subscribeToShiftRequests(venuePath, onData, onError) {
+  const q = query(collection(db, `${venuePath}/shiftRequests`), orderBy('createdAt', 'desc'), limit(200));
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in shift requests listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Staff: offer a day up (giveaway) or propose a same-week trade (swap). */
+export async function createShiftRequest(venuePath, { kind, weekId, from, target = null, byUid = null }) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    await addDoc(collection(db, `${venuePath}/shiftRequests`), {
+      kind,
+      weekId,
+      from,
+      target,
+      claimedBy: null,
+      status: kind === 'swap' ? 'pending_peer' : 'open',
+      createdAt: Timestamp.now(),
+      createdByUid: byUid,
+      claimedAt: null,
+      acceptedAt: null,
+      decidedAt: null,
+      decidedBy: null,
+      accountId,
+      venueId,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error creating shift request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Best-effort status guard: re-read before writing so an already-moved-on
+// request gets a friendly error instead of a silent overwrite. A sub-second
+// race can still slip through — approval's rota validation catches it.
+async function getRequestForTransition(venuePath, id, allowedStatuses) {
+  const snap = await getDoc(doc(db, `${venuePath}/shiftRequests/${id}`));
+  if (!snap.exists()) return { error: 'This request no longer exists' };
+  const data = snap.data();
+  if (!allowedStatuses.includes(data.status)) {
+    return { error: 'This request has already moved on' };
+  }
+  return { data };
+}
+
+/** Staff: take an open give-away. */
+export async function claimGiveaway(venuePath, id, { memberId, name }) {
+  try {
+    const pre = await getRequestForTransition(venuePath, id, ['open']);
+    if (pre.error) return { success: false, error: pre.error === 'This request has already moved on' ? 'Someone already took this shift' : pre.error };
+    await updateDoc(doc(db, `${venuePath}/shiftRequests/${id}`), {
+      claimedBy: { memberId, name: name || '' },
+      status: 'claimed',
+      claimedAt: Timestamp.now(),
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error claiming shift:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Staff: answer a swap directed at you — accept sends it to the manager. */
+export async function respondToSwap(venuePath, id, accept, responderName) {
+  try {
+    const pre = await getRequestForTransition(venuePath, id, ['pending_peer']);
+    if (pre.error) return { success: false, error: pre.error };
+    await updateDoc(doc(db, `${venuePath}/shiftRequests/${id}`), accept
+      ? { status: 'accepted', acceptedAt: Timestamp.now() }
+      : { status: 'peer_declined', decidedAt: Timestamp.now(), decidedBy: responderName || 'unknown' });
+    return { success: true };
+  } catch (error) {
+    console.error('Error responding to swap:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Requester or manager: withdraw a request that hasn't been decided yet. */
+export async function cancelShiftRequest(venuePath, id, byName) {
+  try {
+    const pre = await getRequestForTransition(venuePath, id, ['open', 'claimed', 'pending_peer', 'accepted']);
+    if (pre.error) return { success: false, error: pre.error };
+    await updateDoc(doc(db, `${venuePath}/shiftRequests/${id}`), {
+      status: 'cancelled', decidedAt: Timestamp.now(), decidedBy: byName || 'unknown',
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error cancelling shift request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Manager: approve a claimed give-away or an accepted swap. Re-validates the
+ * request's snapshot against the live week and applies it in one write (rota
+ * first, then the request status — mirroring leave). A validation failure
+ * comes back { success: false, stale: true } so the queue can show why.
+ */
+export async function approveShiftRequest(venuePath, req, deciderName) {
+  try {
+    const pre = await getRequestForTransition(venuePath, req.id, ['claimed', 'accepted']);
+    if (pre.error) return { success: false, error: pre.error };
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const weekRef = doc(db, `${venuePath}/rotas/${req.weekId}`);
+    const weekSnap = await getDoc(weekRef);
+    const rows = (weekSnap.exists() && Array.isArray(weekSnap.data().rows)) ? weekSnap.data().rows : [];
+    const verdict = validateRequestAgainstRows(rows, req);
+    if (!verdict.ok) {
+      return { success: false, stale: true, error: `The rota has changed: ${verdict.reason.toLowerCase()}` };
+    }
+    const nextRows = req.kind === 'giveaway' ? applyGiveawayToRows(rows, req) : applySwapToRows(rows, req);
+    await setDoc(weekRef, { rows: nextRows, weekStart: req.weekId, accountId, venueId, updatedAt: Timestamp.now() }, { merge: true });
+    await updateDoc(doc(db, `${venuePath}/shiftRequests/${req.id}`), {
+      status: 'approved', decidedAt: Timestamp.now(), decidedBy: deciderName || 'unknown',
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error approving shift request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Manager: decline a shift request (leaves the rota untouched). */
+export async function declineShiftRequest(venuePath, id, deciderName) {
+  try {
+    await updateDoc(doc(db, `${venuePath}/shiftRequests/${id}`), {
+      status: 'declined', decidedAt: Timestamp.now(), decidedBy: deciderName || 'unknown',
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error declining shift request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Remove a shift request outright (history "Clear"). */
+export async function deleteShiftRequest(venuePath, id) {
+  try {
+    await deleteDoc(doc(db, `${venuePath}/shiftRequests/${id}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting shift request:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Manager: assign a sick person's retained shift(s) to another member — the
+ * "Find cover" direct assign. Appends to whatever the cover member already
+ * works that day (covering while already on = a split shift). Re-checks the
+ * day hasn't been marked leave/sick since the picker rendered.
+ */
+export async function applyCoverToRota(venuePath, { weekId, memberId, name, dayKey, shifts }) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const weekRef = doc(db, `${venuePath}/rotas/${weekId}`);
+    const weekSnap = await getDoc(weekRef);
+    const rows = (weekSnap.exists() && Array.isArray(weekSnap.data().rows)) ? weekSnap.data().rows : [];
+    const coverDay = rows.find((r) => r.memberId === memberId)?.shifts?.[dayKey];
+    if (isLeaveDay(coverDay) || isSickDay(coverDay)) {
+      return { success: false, error: `${name || 'They'} can't cover — they're marked off that day` };
+    }
+    const nextRows = applyCoverToRows(rows, { memberId, name, dayKey, shifts });
+    await setDoc(weekRef, { rows: nextRows, weekStart: weekId, accountId, venueId, updatedAt: Timestamp.now() }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error applying cover to rota:', error);
     return { success: false, error: error.message };
   }
 }

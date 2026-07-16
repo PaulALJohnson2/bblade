@@ -112,4 +112,15 @@ export {
   approveLeaveRequest,
   declineLeaveRequest,
   deleteLeaveRequest,
+
+  // Shift give-aways & swaps
+  subscribeToShiftRequests,
+  createShiftRequest,
+  claimGiveaway,
+  respondToSwap,
+  cancelShiftRequest,
+  approveShiftRequest,
+  declineShiftRequest,
+  deleteShiftRequest,
+  applyCoverToRota,
 } from '../firebase/firestoreService';

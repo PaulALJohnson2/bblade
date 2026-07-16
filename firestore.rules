@@ -74,6 +74,14 @@ service cloud.firestore {
         match /leaveRequests/{requestId} {
           allow read, write: if member(accountId);
         }
+        // Shift give-aways & swaps — staff create/claim/accept/cancel their
+        // own; managers approve/decline. Applying the result to the rota is
+        // the manager-gated rotas write below, so staff can never move shifts
+        // themselves. Member-level, same caveat as leaveRequests: per-field
+        // guarding stays client-side for now.
+        match /shiftRequests/{requestId} {
+          allow read, write: if member(accountId);
+        }
         match /rotas/{rotaId} {
           allow read: if member(accountId);
           allow write: if manager(accountId);

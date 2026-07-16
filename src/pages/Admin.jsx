@@ -17,9 +17,9 @@ import StockManager from '../components/StockManager';
 import StockOverview from '../components/StockOverview';
 import WastageReport from '../components/WastageReport';
 import Timesheets from '../components/Timesheets';
-import LeaveRequests from '../components/LeaveRequests';
+import Requests from '../components/Requests';
 import Tile from '../components/Tile';
-import { subscribeToLeaveRequests } from '../services/apiService';
+import { subscribeToLeaveRequests, subscribeToShiftRequests } from '../services/apiService';
 
 const ROLES = ['owner', 'manager', 'staff'];
 
@@ -70,17 +70,19 @@ function Admin() {
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
 
-  // Count pending leave requests, for the dashboard tile badge.
-  const [pendingLeave, setPendingLeave] = useState(0);
+  // Live request lists — shared by the tile badge and the Requests section,
+  // so the number on the tile can never disagree with the queue behind it.
+  const [leaveRequests, setLeaveRequests] = useState(null);
+  const [shiftRequests, setShiftRequests] = useState(null);
   useEffect(() => {
     if (!selectedPub?.path) return undefined;
-    const unsub = subscribeToLeaveRequests(
-      selectedPub.path,
-      (list) => setPendingLeave((list || []).filter((r) => r.status === 'pending').length),
-      () => {},
-    );
-    return () => unsub();
+    const unsubLeave = subscribeToLeaveRequests(selectedPub.path, setLeaveRequests, () => {});
+    const unsubShift = subscribeToShiftRequests(selectedPub.path, setShiftRequests, () => {});
+    return () => { unsubLeave(); unsubShift(); };
   }, [selectedPub?.path]);
+  // Needing a decision now: pending leave, claimed give-aways, accepted swaps.
+  const pendingRequests = (leaveRequests || []).filter((r) => r.status === 'pending').length
+    + (shiftRequests || []).filter((r) => r.status === 'claimed' || r.status === 'accepted').length;
 
   const handleSaveName = async () => {
     const name = nameInput.trim();
@@ -200,14 +202,14 @@ function Admin() {
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z'] },
     { key: 'timesheets', label: 'Timesheets', desc: 'Clock-ins, hours & approvals', accent: colors.primary, show: admin,
       icon: ['M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20', 'M12 6v6l4 2'] },
-    { key: 'leave', label: 'Leave requests', desc: 'Approve staff annual leave', accent: colors.warning, show: admin,
-      badge: pendingLeave ? String(pendingLeave) : undefined,
+    { key: 'leave', label: 'Requests', desc: 'Leave, swaps & shift offers', accent: colors.warning, show: admin,
+      badge: pendingRequests ? String(pendingRequests) : undefined,
       icon: ['M8 2v4', 'M16 2v4', 'M3 10h18', 'M5 6h14v14H5z', 'M9 16l2 2 4-4'] },
     { key: 'sales', label: 'Sales', desc: 'Till sales reports', accent: colors.primary, show: admin, to: '/sales',
       icon: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'] },
   ].filter((t) => t.show);
 
-  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Leave requests' };
+  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Requests' };
 
   // ---- Hub: a 2-column grid of tiles into each settings section ----
   if (!view) {
@@ -310,11 +312,14 @@ function Admin() {
           </div>
         )}
         {selectedPub?.path && (
-          <LeaveRequests
+          <Requests
             venuePath={selectedPub.path}
             deciderName={userProfile?.displayName || ''}
             colors={colors}
             showToast={(m) => setError(m)}
+            members={members}
+            leave={leaveRequests}
+            shift={shiftRequests}
           />
         )}
       </div>

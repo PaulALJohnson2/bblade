@@ -22,7 +22,7 @@
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay, isSickDay } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay, fmtTime, dayMinutes, fmtHours } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '190px';
@@ -31,48 +31,6 @@ const NAME_COL = '190px';
 const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
 // Own-row highlight tint.
 const HILITE = { light: '#EAF1F8', dark: '#1B2735' };
-
-// Compact shift-time label. 12-hour (default): 17:00 → 5, 09:30 → 9:30, and
-// 12/0 map to 12 (noon/midnight). 24-hour is always the full HH:MM on both
-// ends (e.g. 07:00, 09:30, 23:45) so every value is the same width — the grid
-// reads as a tidy aligned table instead of a ragged mix of 07–15 and 16–23:45.
-// 12-hour stays compact (drops a whole hour's ":00": 17:00 → 5).
-function fmtTime(t, format = '12h') {
-  if (t === 'close') return 'close';
-  const [h, m] = t.split(':');
-  if (format === '24h') return `${h}:${m}`;
-  const hour = parseInt(h, 10) % 12 || 12;
-  return m === '00' ? String(hour) : `${hour}:${m}`;
-}
-
-// Length of a shift in minutes; midnight end counts as end-of-day and an end
-// at/before the start is treated as running overnight. A "close" (open-ended)
-// shift has no planned length — its real hours come from the clock-out — so it
-// contributes nothing to the planned total.
-function shiftMinutes(shift) {
-  if (!shift || shift.end === 'close') return 0;
-  const [sh, sm] = shift.start.split(':').map(Number);
-  const [eh, em] = shift.end.split(':').map(Number);
-  const s = sh * 60 + sm;
-  let e = shift.end === '00:00' ? 1440 : eh * 60 + em;
-  if (e <= s) e += 1440;
-  return e - s;
-}
-
-// Total minutes worked in a day across all of its shifts (handles split days).
-// A sick day keeps its shifts so the grid can show what needs covering, but
-// nobody is working them — so they contribute nothing to the planned total.
-function dayMinutes(value) {
-  if (isSickDay(value)) return 0;
-  return dayShifts(value).reduce((sum, s) => sum + shiftMinutes(s), 0);
-}
-
-// Minutes → decimal hours, e.g. 330→"5.5", 435→"7.25", 765→"12.75", 480→"12"
-// (shifts are 15-min steps, so hours land on exact .25 increments). Blank for zero.
-function fmtHours(min) {
-  if (!min) return '';
-  return String(Number((min / 60).toFixed(2)));
-}
 
 function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, fill = false, focusDayKey = null, timeFormat = '12h' }) {
   const { isDark } = useTheme();

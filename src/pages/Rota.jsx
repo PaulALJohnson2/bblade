@@ -11,13 +11,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
+import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay, isSickDay } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay, dayMinutes } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import RotaFullscreen from '../components/RotaFullscreen';
 import ShiftEditor from '../components/ShiftEditor';
+import CoverPicker from '../components/CoverPicker';
+import ShiftBoard from '../components/ShiftBoard';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -82,6 +84,7 @@ function Rota() {
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
+  const [cover, setCover] = useState(null); // { row, dayKey, shifts } — "find cover" picker
   const [fullscreen, setFullscreen] = useState(false); // whole-screen read-only view
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   useEffect(() => {
@@ -131,6 +134,16 @@ function Rota() {
     const unsub = subscribeToRotaSettings(venuePath, (s) => setTimeFormat(s?.timeFormat === '24h' ? '24h' : '12h'), () => {});
     return () => unsub();
   }, [venuePath]);
+
+  // Staff view only: live shift give-aways & swaps for the whole venue (the
+  // board under the grid). The admin edit view doesn't need it — managers act
+  // on requests from the Admin → Requests queue instead.
+  const [shiftRequests, setShiftRequests] = useState(null);
+  useEffect(() => {
+    if (!venuePath || canEdit) return undefined;
+    const unsub = subscribeToShiftRequests(venuePath, setShiftRequests, () => {});
+    return () => unsub();
+  }, [venuePath, canEdit]);
 
   // Quick-pick pills: learned patterns ranked by usage, then defaults to fill.
   // A "close" pill is always kept one tap away — if the top ones are all
@@ -196,6 +209,29 @@ function Rota() {
     return (members || []).find((m) => (m.email || '').toLowerCase() === email)?.id || null;
   }, [members, currentUser]);
 
+  // Cover-picker candidates: everyone on the rota except the sick person, with
+  // their status on that day and their planned hours this week. The picker
+  // sorts free-and-fewest-hours first.
+  const coverCandidates = useMemo(() => {
+    if (!cover) return [];
+    return rows
+      .filter((r) => r.memberId !== cover.row.memberId)
+      .map((r) => {
+        const value = r.shifts?.[cover.dayKey];
+        const working = dayShifts(value);
+        const status = isSickDay(value) ? 'sick'
+          : isLeaveDay(value) ? 'leave'
+            : working.length ? 'working' : 'free';
+        return {
+          memberId: r.memberId,
+          name: r.name,
+          status,
+          dayShifts: working,
+          weekMinutes: DAY_KEYS.reduce((sum, k) => sum + dayMinutes(r.shifts?.[k]), 0),
+        };
+      });
+  }, [cover, rows]);
+
   // Set a day's shifts (an array — one entry, or several for a split shift; an
   // empty array clears the day). Store only members who have at least one shift.
   const setDayShifts = (row, dayKey, shifts) => {
@@ -206,6 +242,10 @@ function Rota() {
     const isLeave = arr.some((s) => s && s.type === 'leave');
     const isSick = arr.some((s) => s && s.type === 'sick');
     const real = arr.filter((s) => s && s.start && s.end);
+    // Whether this save is the moment the day BECAME sick — the one time the
+    // cover picker auto-opens (marking sick and finding cover are one motion
+    // in real life: "Sarah's ill, who can do her 6–close?").
+    const wasSick = isSickDay(savedRows.find((r) => r.memberId === row.memberId)?.shifts?.[dayKey]);
     let clean;
     if (isLeave) clean = [{ type: 'leave' }];
     else if (isSick) clean = [...real, { type: 'sick' }];
@@ -227,6 +267,9 @@ function Rota() {
       if (!isLeave && !isSick) real.forEach((s) => bumpShiftPattern(venuePath, s.start, s.end));
     }
     setEditing(null);
+    // A day that just went sick with a shift still attached → straight into
+    // the cover picker. A sick day with no shift has nothing to cover.
+    if (isSick && !wasSick && real.length) setCover({ row, dayKey, shifts: real });
   };
 
   // Persist a new staff ordering (array of memberIds, in display order).
@@ -363,6 +406,26 @@ function Rota() {
         )}
       </div>
 
+      {/* Staff shift board: swaps needing an answer, open shifts, and "can't
+          work this?" cards. Mounted below the grid even when the visible week
+          is unpublished — a swap for NEXT week must stay answerable from any
+          week. The fullscreen overlay (z 6000) simply covers it. */}
+      {!canEdit && myMemberId && !loading && shiftRequests && (
+        <ShiftBoard
+          venuePath={venuePath}
+          weekId={weekId}
+          days={days}
+          rows={rows}
+          requests={shiftRequests}
+          myMemberId={myMemberId}
+          myName={currentMember?.displayName || ''}
+          currentUser={currentUser}
+          published={published}
+          timeFormat={timeFormat}
+          colors={colors}
+        />
+      )}
+
       {canEdit && editing && (
         <ShiftEditor
           staffName={editing.row.name}
@@ -373,6 +436,22 @@ function Rota() {
           isSick={isSickDay(editing.row.shifts?.[editing.dayKey])}
           onSave={(shifts) => setDayShifts(editing.row, editing.dayKey, shifts)}
           onCancel={() => setEditing(null)}
+          onFindCover={(shifts) => { const e = editing; setEditing(null); setCover({ row: e.row, dayKey: e.dayKey, shifts }); }}
+        />
+      )}
+
+      {canEdit && cover && (
+        <CoverPicker
+          staffName={cover.row.name}
+          dayLabel={(() => { const d = days.find((x) => x.key === cover.dayKey); return `${d.label} ${d.dateLabel}`; })()}
+          weekId={weekId}
+          dayKey={cover.dayKey}
+          shifts={cover.shifts}
+          candidates={coverCandidates}
+          timeFormat={timeFormat}
+          venuePath={venuePath}
+          onDone={() => setCover(null)}
+          onClose={() => setCover(null)}
         />
       )}
 

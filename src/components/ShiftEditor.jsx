@@ -39,7 +39,7 @@ const isInvalid = (s) => s.end !== 'close' && s.end === s.start;
 // A concrete end earlier than the start (but not midnight) spills into the next day.
 const endsNextDay = (s) => s.end !== 'close' && s.end !== '00:00' && s.end < s.start;
 
-function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isSick = false, onSave, onCancel }) {
+function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isSick = false, onSave, onCancel, onFindCover }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -218,6 +218,18 @@ function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isS
             style={{ marginTop: '0.5rem', background: 'none', border: `1px solid ${isSick ? colors.error : colors.border}`, borderRadius: '8px', color: colors.error, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, padding: '0.5rem 0.75rem', width: '100%' }}
           >
             {isSick ? 'Remove sick day' : 'Mark as sick'}
+          </button>
+        )}
+
+        {/* On a sick day with a shift still attached, the fastest useful thing
+            a manager can do is fill the hole — jump straight to the picker. */}
+        {isSick && onFindCover && validShifts().length > 0 && (
+          <button
+            type="button"
+            onClick={() => onFindCover(validShifts())}
+            style={{ marginTop: '0.5rem', background: 'none', border: `1px solid ${colors.primary}`, borderRadius: '8px', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, padding: '0.5rem 0.75rem', width: '100%' }}
+          >
+            Find cover for this shift
           </button>
         )}
 
