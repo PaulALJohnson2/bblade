@@ -9,7 +9,7 @@
 
 import React, { useState } from 'react';
 import { getThemeColors } from '../utils/theme';
-import { LEAVE_MARKER } from '../utils/rota';
+import { LEAVE_MARKER, SICK_MARKER } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 
 // 15-minute time options across the full day, 'HH:MM'.
@@ -39,7 +39,7 @@ const isInvalid = (s) => s.end !== 'close' && s.end === s.start;
 // A concrete end earlier than the start (but not midnight) spills into the next day.
 const endsNextDay = (s) => s.end !== 'close' && s.end !== '00:00' && s.end < s.start;
 
-function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, onSave, onCancel }) {
+function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isSick = false, onSave, onCancel }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -58,7 +58,8 @@ function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, onS
   };
 
   const anyInvalid = list.some(isInvalid);
-  const save = () => onSave(list.filter((s) => s.start && s.end && !isInvalid(s)));
+  const validShifts = () => list.filter((s) => s.start && s.end && !isInvalid(s));
+  const save = () => onSave(isSick ? [...validShifts(), SICK_MARKER] : validShifts());
 
   const overlay = {
     // Above the full-screen rota overlay (6000) so admins can edit from there.
@@ -102,6 +103,12 @@ function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, onS
         {isLeave && (
           <div style={{ marginBottom: '1rem', padding: '0.5rem 0.75rem', borderRadius: '8px', backgroundColor: colors.bgLight, color: colors.warning, fontSize: '0.85rem', fontWeight: 600 }}>
             Currently annual leave (A/L). Pick times and Save to make it a shift, or remove the leave below.
+          </div>
+        )}
+
+        {isSick && (
+          <div style={{ marginBottom: '1rem', padding: '0.5rem 0.75rem', borderRadius: '8px', backgroundColor: colors.bgLight, color: colors.error, fontSize: '0.85rem', fontWeight: 600 }}>
+            Off sick. The shift below stays on the rota so it&apos;s clear it needs covering, but counts as no hours.
           </div>
         )}
 
@@ -183,14 +190,36 @@ function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, onS
         )}
 
         {/* Annual leave: replaces the day's shifts with an A/L marker (or clears
-            it if the day is already leave). Paid, but counts as zero hours. */}
-        <button
-          type="button"
-          onClick={() => onSave(isLeave ? [] : LEAVE_MARKER)}
-          style={{ marginTop: '0.5rem', background: 'none', border: `1px solid ${isLeave ? colors.warning : colors.border}`, borderRadius: '8px', color: colors.warning, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, padding: '0.5rem 0.75rem', width: '100%' }}
-        >
-          {isLeave ? 'Remove annual leave' : 'Mark as annual leave (A/L)'}
-        </button>
+            it if the day is already leave). Paid, but counts as zero hours.
+            Hidden on a sick day — a day is one or the other, never both. */}
+        {!isSick && (
+          <button
+            type="button"
+            onClick={() => onSave(isLeave ? [] : LEAVE_MARKER)}
+            style={{ marginTop: '0.5rem', background: 'none', border: `1px solid ${isLeave ? colors.warning : colors.border}`, borderRadius: '8px', color: colors.warning, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, padding: '0.5rem 0.75rem', width: '100%' }}
+          >
+            {isLeave ? 'Remove annual leave' : 'Mark as annual leave (A/L)'}
+          </button>
+        )}
+
+        {/* Sickness: keeps the day's shifts and tags them, so the rota still
+            shows what needs covering. Un-marking just drops the tag and the
+            shifts reappear as normal. Hidden on an A/L day (nothing to be off
+            sick from) — remove the leave first if it turned into sickness. */}
+        {!isLeave && (
+          <button
+            type="button"
+            onClick={() => {
+              if (isSick) { onSave(validShifts()); return; }
+              // A fresh day starts on a default 09:00–17:00 that the manager
+              // never chose — don't invent a shift just to hang a tag on.
+              onSave(hadValue ? [...validShifts(), SICK_MARKER] : [SICK_MARKER]);
+            }}
+            style={{ marginTop: '0.5rem', background: 'none', border: `1px solid ${isSick ? colors.error : colors.border}`, borderRadius: '8px', color: colors.error, cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700, padding: '0.5rem 0.75rem', width: '100%' }}
+          >
+            {isSick ? 'Remove sick day' : 'Mark as sick'}
+          </button>
+        )}
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
           <button type="button" style={btn('save')} disabled={anyInvalid} onClick={save}>

@@ -13,7 +13,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import RotaFullscreen from '../components/RotaFullscreen';
@@ -199,9 +199,17 @@ function Rota() {
   // Set a day's shifts (an array — one entry, or several for a split shift; an
   // empty array clears the day). Store only members who have at least one shift.
   const setDayShifts = (row, dayKey, shifts) => {
-    // A day is either annual leave ([{type:'leave'}]) or a list of shifts.
-    const isLeave = Array.isArray(shifts) && shifts.some((s) => s && s.type === 'leave');
-    const clean = isLeave ? [{ type: 'leave' }] : (shifts || []).filter((s) => s && s.start && s.end);
+    // Annual leave replaces the day — it's booked in advance, so there's no
+    // shift to keep. Sickness keeps the shifts it landed on (they still need
+    // covering), so the marker is appended rather than swapped in.
+    const arr = Array.isArray(shifts) ? shifts : [];
+    const isLeave = arr.some((s) => s && s.type === 'leave');
+    const isSick = arr.some((s) => s && s.type === 'sick');
+    const real = arr.filter((s) => s && s.start && s.end);
+    let clean;
+    if (isLeave) clean = [{ type: 'leave' }];
+    else if (isSick) clean = [...real, { type: 'sick' }];
+    else clean = real;
     const byId = new Map(savedRows.map((r) => [r.memberId, { ...r, shifts: { ...r.shifts } }]));
     const entry = byId.get(row.memberId) || { memberId: row.memberId, name: row.name, shifts: {} };
     entry.name = row.name;
@@ -212,8 +220,11 @@ function Rota() {
     setSavedRows(next);
     if (venuePath) {
       saveRota(venuePath, weekId, { weekStart: weekId, rows: next });
-      // Learn only real shift patterns — an A/L marker isn't a pattern.
-      if (!isLeave) clean.forEach((s) => bumpShiftPattern(venuePath, s.start, s.end));
+      // Learn only real shift patterns — a marker isn't a pattern. Marking a
+      // day sick doesn't re-learn its shift either: it was already learned when
+      // the shift was first rota'd, and counting it again would rank a pattern
+      // by how often people call in sick on it.
+      if (!isLeave && !isSick) real.forEach((s) => bumpShiftPattern(venuePath, s.start, s.end));
     }
     setEditing(null);
   };
@@ -359,6 +370,7 @@ function Rota() {
           presets={presets}
           value={dayShifts(editing.row.shifts?.[editing.dayKey])}
           isLeave={isLeaveDay(editing.row.shifts?.[editing.dayKey])}
+          isSick={isSickDay(editing.row.shifts?.[editing.dayKey])}
           onSave={(shifts) => setDayShifts(editing.row, editing.dayKey, shifts)}
           onCancel={() => setEditing(null)}
         />

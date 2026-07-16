@@ -22,7 +22,7 @@
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 
 const NAME_COL = '190px';
@@ -60,7 +60,10 @@ function shiftMinutes(shift) {
 }
 
 // Total minutes worked in a day across all of its shifts (handles split days).
+// A sick day keeps its shifts so the grid can show what needs covering, but
+// nobody is working them — so they contribute nothing to the planned total.
 function dayMinutes(value) {
+  if (isSickDay(value)) return 0;
   return dayShifts(value).reduce((sum, s) => sum + shiftMinutes(s), 0);
 }
 
@@ -278,6 +281,7 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
               </div>
               {days.map((d) => {
                 const leave = isLeaveDay(row.shifts?.[d.key]);
+                const sick = isSickDay(row.shifts?.[d.key]);
                 const shifts = dayShifts(row.shifts?.[d.key]);
                 const n = shifts.length;
                 const split = n >= 2;
@@ -315,6 +319,38 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                         border: `1px solid ${colors.warning}`, borderRadius: '9999px',
                         padding: compact ? '0 0.3rem' : '0.05rem 0.5rem', lineHeight: 1.3, whiteSpace: 'nowrap',
                       }}>A/L</span>
+                    ) : sick ? (
+                      // Sickness: the shift they were due to work stays on the
+                      // grid, struck through and muted, so it's obvious at a
+                      // glance that there's a hole to cover. It counts as zero
+                      // planned hours (see dayMinutes), so the struck time never
+                      // reaches the Hours column.
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px', width: '100%', lineHeight: 1.05, overflow: 'hidden' }}>
+                        {shifts.map((s, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              fontSize: compact ? '0.6rem' : (fill ? '0.8rem' : '0.85rem'),
+                              fontWeight: 600, color: colors.textMuted,
+                              textDecoration: 'line-through', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {fmtTime(s.start, timeFormat)}
+                            <span style={{ padding: compact ? '0 0.04rem' : '0 0.15rem' }}>–</span>
+                            {fmtTime(s.end, timeFormat)}
+                          </span>
+                        ))}
+                        <span style={{
+                          // Sized down when it sits under a shift so both fit the
+                          // row; a sick day with no shift reads at full size.
+                          fontSize: n > 0
+                            ? (compact ? '0.55rem' : (fill ? '0.75rem' : '0.8rem'))
+                            : (compact ? '0.7rem' : (fill ? '0.95rem' : '1.1rem')),
+                          fontWeight: 800, letterSpacing: '0.03em', color: colors.error,
+                          border: `1px solid ${colors.error}`, borderRadius: '9999px',
+                          padding: compact ? '0 0.3rem' : '0.05rem 0.5rem', lineHeight: 1.3, whiteSpace: 'nowrap',
+                        }}>SICK</span>
+                      </div>
                     ) : n > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: split ? '0px' : '2px', width: '100%', lineHeight: 1.05, overflow: 'hidden' }}>
                         {shifts.map((s, i) => (
