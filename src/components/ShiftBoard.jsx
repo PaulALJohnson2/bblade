@@ -5,23 +5,18 @@
  *
  *   Needs your answer — swaps a colleague has directed at you.
  *   Open shifts       — colleagues' days up for grabs ("Take this shift").
- *   Your shifts       — your days in the week on screen, each with a
- *                       "Can't work this?" entry into the request sheet.
  *   Your requests     — everything you've asked for or claimed, with status,
  *                       cancellable until the manager decides.
  *
- * The two actionable sections span ALL weeks (a swap for next Saturday must
- * surface no matter which week is on screen); "Your shifts" belongs to the
- * visible week because that's what the cards above it show.
+ * All sections span ALL weeks (a swap for next Saturday must surface no
+ * matter which week is on screen). STARTING a request happens on the grid
+ * itself — staff tap one of their own shifts (see Rota.jsx / RotaGrid's
+ * onMyDayClick), so the board only carries things to react to or watch.
  */
 
 import React, { useMemo, useState } from 'react';
-import {
-  dayShifts, isFreeDay, isSickDay, isLeaveDay, shiftRangeLabel, requestDayISO,
-  isActionableForMember, DAY_KEYS,
-} from '../utils/rota';
-import { createShiftRequest, claimGiveaway, respondToSwap, cancelShiftRequest } from '../services/apiService';
-import ShiftRequestSheet from './ShiftRequestSheet';
+import { isFreeDay, shiftRangeLabel, requestDayISO, isActionableForMember } from '../utils/rota';
+import { claimGiveaway, respondToSwap, cancelShiftRequest } from '../services/apiService';
 
 const PENDING_SET = ['open', 'claimed', 'pending_peer', 'accepted'];
 
@@ -56,8 +51,7 @@ const STATUS_LABELS = {
   cancelled: { label: 'Cancelled', key: 'muted' },
 };
 
-function ShiftBoard({ venuePath, weekId, days, rows, requests, myMemberId, myName, currentUser, published, timeFormat, colors }) {
-  const [asking, setAsking] = useState(null); // { dayKey, shifts } — sheet open
+function ShiftBoard({ venuePath, weekId, rows, requests, myMemberId, myName, timeFormat, colors }) {
   const [busy, setBusy] = useState(null); // { id, action }
   const [notice, setNotice] = useState(''); // transient inline feedback
 
@@ -88,58 +82,6 @@ function ShiftBoard({ venuePath, weekId, days, rows, requests, myMemberId, myNam
     .filter((r) => r.from.memberId === myMemberId || r.claimedBy?.memberId === myMemberId), [requests, myMemberId]);
   const minePending = mine.filter((r) => PENDING_SET.includes(r.status));
   const mineDecided = mine.filter((r) => !PENDING_SET.includes(r.status)).slice(0, 5);
-
-  // My day cards for the visible week: future days I actually work (markers
-  // excluded — you can't trade a day you're off), minus days I've already got
-  // a request in for.
-  const myDays = useMemo(() => {
-    if (!published || !myRow) return [];
-    return days
-      .map((d) => ({ day: d, shifts: dayShifts(myRow.shifts?.[d.key]), value: myRow.shifts?.[d.key] }))
-      .filter(({ day, shifts, value }) => shifts.length > 0
-        && !isSickDay(value) && !isLeaveDay(value)
-        && requestDayISO(weekId, day.key) >= today
-        && !minePending.some((r) => r.from.memberId === myMemberId && r.weekId === weekId && r.from.dayKey === day.key));
-  }, [published, myRow, days, weekId, today, minePending, myMemberId]);
-
-  // Swap partners for the sheet: colleagues free on my day, offering their
-  // future worked days where I'm free — with days already tied up in another
-  // pending request filtered out on both sides.
-  const colleaguesFor = (dayKey) => rows
-    .filter((r) => r.memberId !== myMemberId && isFreeDay(r.shifts?.[dayKey]))
-    .map((r) => ({
-      memberId: r.memberId,
-      name: r.name,
-      days: DAY_KEYS
-        .filter((k) => k !== dayKey
-          && dayShifts(r.shifts?.[k]).length > 0
-          && !isSickDay(r.shifts?.[k]) && !isLeaveDay(r.shifts?.[k])
-          && isFreeDay(myRow?.shifts?.[k])
-          && requestDayISO(weekId, k) >= today
-          && !pendingReqs.some((q) => q.weekId === weekId
-            && ((q.from.memberId === r.memberId && q.from.dayKey === k)
-              || (q.target?.memberId === r.memberId && q.target?.dayKey === k))))
-        .map((k) => ({
-          dayKey: k,
-          dayLabel: (() => { const d = days.find((x) => x.key === k); return `${d.label} ${d.dateLabel}`; })(),
-          shifts: dayShifts(r.shifts?.[k]),
-        })),
-    }));
-
-  const submitRequest = async (kind, target) => {
-    const res = await createShiftRequest(venuePath, {
-      kind,
-      weekId,
-      from: { memberId: myMemberId, name: myName, dayKey: asking.dayKey, shifts: asking.shifts },
-      target,
-      byUid: currentUser?.uid || null,
-    });
-    if (res.success) {
-      setAsking(null);
-      flash(kind === 'swap' ? 'Swap sent — waiting for their answer.' : 'Shift offered up — anyone free can take it.');
-    }
-    return res;
-  };
 
   const take = async (r) => {
     setBusy({ id: r.id, action: 'take' });
@@ -227,25 +169,6 @@ function ShiftBoard({ venuePath, weekId, days, rows, requests, myMemberId, myNam
         </div>
       )}
 
-      {myDays.length > 0 && (
-        <div style={card}>
-          <h2 style={heading(colors.textPrimary)}>Your shifts this week</h2>
-          {myDays.map(({ day, shifts }) => (
-            <div key={day.key} style={rowStyle}>
-              <span style={{ flex: '1 1 10rem', minWidth: 0, color: colors.textPrimary }}>
-                <strong>{day.label} {day.dateLabel}</strong> · {shifts.map((s) => shiftRangeLabel(s, timeFormat)).join(' & ')}
-              </span>
-              <button
-                onClick={() => setAsking({ dayKey: day.key, shifts })}
-                style={{ ...smallBtn('transparent', colors.warning), border: `1px solid ${colors.warning}` }}
-              >
-                Can't work this?
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {(minePending.length > 0 || mineDecided.length > 0) && (
         <div style={card}>
           <h2 style={heading(colors.textPrimary)}>Your requests</h2>
@@ -273,16 +196,6 @@ function ShiftBoard({ venuePath, weekId, days, rows, requests, myMemberId, myNam
         </div>
       )}
 
-      {asking && (
-        <ShiftRequestSheet
-          dayLabel={(() => { const d = days.find((x) => x.key === asking.dayKey); return `${d.label} ${d.dateLabel}`; })()}
-          shifts={asking.shifts}
-          timeFormat={timeFormat}
-          colleagues={colleaguesFor(asking.dayKey)}
-          onSubmit={submitRequest}
-          onClose={() => setAsking(null)}
-        />
-      )}
     </div>
   );
 }

@@ -11,14 +11,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests } from '../services/apiService';
+import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests, createShiftRequest } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay, isSickDay, dayMinutes } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay, isFreeDay, dayMinutes, requestDayISO } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import ShiftEditor from '../components/ShiftEditor';
 import CoverPicker from '../components/CoverPicker';
 import ShiftBoard from '../components/ShiftBoard';
+import ShiftRequestSheet from '../components/ShiftRequestSheet';
 
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const DAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
@@ -84,6 +85,8 @@ function Rota() {
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
   const [cover, setCover] = useState(null); // { row, dayKey, shifts } — "find cover" picker
+  const [asking, setAsking] = useState(null); // { dayKey, shifts } — staff "can't work this?" sheet
+  const [notice, setNotice] = useState(''); // transient staff-view feedback
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -229,6 +232,76 @@ function Rota() {
         };
       });
   }, [cover, rows]);
+
+  // ---- Staff "can't work this?" flow: tap your own shift on the grid. ----
+
+  const flashNotice = (msg) => {
+    setNotice(msg);
+    setTimeout(() => setNotice(''), 3500);
+  };
+
+  const PENDING_STATUSES = ['open', 'claimed', 'pending_peer', 'accepted'];
+
+  // Tap on one of my own worked days (the grid only wires this up for real
+  // shifts on my row). Past days and days I've already asked about get a
+  // gentle explanation instead of the sheet.
+  const askAboutDay = (dayKey, shifts) => {
+    if (requestDayISO(weekId, dayKey) < toISODate(new Date())) {
+      flashNotice("That shift's already been — you can only offer up days still to come.");
+      return;
+    }
+    const already = (shiftRequests || []).some((q) => PENDING_STATUSES.includes(q.status)
+      && q.from.memberId === myMemberId && q.weekId === weekId && q.from.dayKey === dayKey);
+    if (already) {
+      flashNotice('You already have a request in for this day — see "Your requests" below.');
+      return;
+    }
+    setAsking({ dayKey, shifts });
+  };
+
+  // Swap partners for the sheet: colleagues free on my day, offering their
+  // future worked days where I'm free — with days already tied up in another
+  // pending request filtered out on both sides.
+  const colleaguesFor = (dayKey) => {
+    const myRow = rows.find((r) => r.memberId === myMemberId);
+    const today = toISODate(new Date());
+    const pendingReqs = (shiftRequests || []).filter((q) => PENDING_STATUSES.includes(q.status));
+    return rows
+      .filter((r) => r.memberId !== myMemberId && isFreeDay(r.shifts?.[dayKey]))
+      .map((r) => ({
+        memberId: r.memberId,
+        name: r.name,
+        days: DAY_KEYS
+          .filter((k) => k !== dayKey
+            && dayShifts(r.shifts?.[k]).length > 0
+            && !isSickDay(r.shifts?.[k]) && !isLeaveDay(r.shifts?.[k])
+            && isFreeDay(myRow?.shifts?.[k])
+            && requestDayISO(weekId, k) >= today
+            && !pendingReqs.some((q) => q.weekId === weekId
+              && ((q.from.memberId === r.memberId && q.from.dayKey === k)
+                || (q.target?.memberId === r.memberId && q.target?.dayKey === k))))
+          .map((k) => ({
+            dayKey: k,
+            dayLabel: (() => { const d = days.find((x) => x.key === k); return `${d.label} ${d.dateLabel}`; })(),
+            shifts: dayShifts(r.shifts?.[k]),
+          })),
+      }));
+  };
+
+  const submitAsk = async (kind, target) => {
+    const res = await createShiftRequest(venuePath, {
+      kind,
+      weekId,
+      from: { memberId: myMemberId, name: currentMember?.displayName || '', dayKey: asking.dayKey, shifts: asking.shifts },
+      target,
+      byUid: currentUser?.uid || null,
+    });
+    if (res.success) {
+      setAsking(null);
+      flashNotice(kind === 'swap' ? 'Swap sent — waiting for their answer.' : 'Shift offered up — anyone free can take it.');
+    }
+    return res;
+  };
 
   // Set a day's shifts (an array — one entry, or several for a split shift; an
   // empty array clears the day). Store only members who have at least one shift.
@@ -381,10 +454,24 @@ function Rota() {
             highlightMemberId={myMemberId}
             timeFormat={timeFormat}
             onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
+            onMyDayClick={!canEdit && myMemberId ? askAboutDay : undefined}
             onReorder={reorderStaff}
           />
         )}
       </div>
+
+      {/* Staff: how to start a request (tapping your own shift is the entry
+          point, so it needs saying once), plus transient feedback for it. */}
+      {!canEdit && myMemberId && showGrid && (
+        <div style={{ margin: '0.5rem 0 0', fontSize: '0.82rem', color: colors.textSecondary }}>
+          Can't make one of your shifts? Tap it to offer it up or swap it.
+        </div>
+      )}
+      {!canEdit && notice && (
+        <div style={{ margin: '0.6rem 0 0', padding: '0.5rem 0.75rem', borderRadius: '8px', backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`, color: colors.textPrimary, fontSize: '0.85rem', fontWeight: 600 }}>
+          {notice}
+        </div>
+      )}
 
       {/* Staff shift board: swaps needing an answer, open shifts, and "can't
           work this?" cards. Mounted below the grid even when the visible week
@@ -394,15 +481,23 @@ function Rota() {
         <ShiftBoard
           venuePath={venuePath}
           weekId={weekId}
-          days={days}
           rows={rows}
           requests={shiftRequests}
           myMemberId={myMemberId}
           myName={currentMember?.displayName || ''}
-          currentUser={currentUser}
-          published={published}
           timeFormat={timeFormat}
           colors={colors}
+        />
+      )}
+
+      {!canEdit && asking && (
+        <ShiftRequestSheet
+          dayLabel={(() => { const d = days.find((x) => x.key === asking.dayKey); return `${d.label} ${d.dateLabel}`; })()}
+          shifts={asking.shifts}
+          timeFormat={timeFormat}
+          colleagues={colleaguesFor(asking.dayKey)}
+          onSubmit={submitAsk}
+          onClose={() => setAsking(null)}
         />
       )}
 

@@ -13,6 +13,8 @@
  *   onReorder(orderedMemberIds) - persist a new staff order (drag to reorder)
  *   readOnly          - staff view: no editing, no dragging, no "+" affordances
  *   highlightMemberId - tint this member's row (the signed-in user's own row)
+ *   onMyDayClick(dayKey, shifts) - staff view: tapping one of YOUR OWN worked
+ *                       days calls this (the "can't work this?" entry point)
  *   compact           - shrink cells/fonts so the whole week fits on screen with
  *                       no horizontal scroll (the "fit to screen" view)
  */
@@ -29,7 +31,7 @@ const ACCENT = { light: '#2F4A6B', dark: '#8FB4DE' };
 // Own-row highlight tint.
 const HILITE = { light: '#EAF1F8', dark: '#1B2735' };
 
-function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highlightMemberId = null, compact = false, focusDayKey = null, timeFormat = '12h' }) {
+function RotaGrid({ days, rows, onCellClick, onReorder, onMyDayClick = null, readOnly = false, highlightMemberId = null, compact = false, focusDayKey = null, timeFormat = '12h' }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const accent = isDark ? ACCENT.dark : ACCENT.light;
@@ -235,6 +237,10 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 const shifts = dayShifts(row.shifts?.[d.key]);
                 const n = shifts.length;
                 const split = n >= 2;
+                // Staff view: your own worked days are tappable — "can't work
+                // this?" starts a give-away/swap request. Only real shifts
+                // (not A/L or sick days) and only your own row.
+                const canAsk = readOnly && !!onMyDayClick && hi && n > 0 && !leave && !sick;
                 // Longest range label in the cell, e.g. "9–5" (3) vs "12:30–2:30" (10).
                 const maxLen = n ? Math.max(...shifts.map((s) => fmtTime(s.start, timeFormat).length + 1 + fmtTime(s.end, timeFormat).length)) : 0;
                 // A single shift reads big; a split day drops so both lines fit
@@ -250,10 +256,10 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
                 return (
                   <div
                     key={d.key}
-                    style={{ ...dayCell, backgroundColor: rowBg, cursor: readOnly ? 'default' : 'pointer' }}
-                    onClick={readOnly ? undefined : () => onCellClick(row, d.key)}
-                    role={readOnly ? undefined : 'button'}
-                    tabIndex={readOnly ? undefined : 0}
+                    style={{ ...dayCell, backgroundColor: rowBg, cursor: (!readOnly || canAsk) ? 'pointer' : 'default' }}
+                    onClick={!readOnly ? () => onCellClick(row, d.key) : canAsk ? () => onMyDayClick(d.key, shifts) : undefined}
+                    role={(!readOnly || canAsk) ? 'button' : undefined}
+                    tabIndex={(!readOnly || canAsk) ? 0 : undefined}
                   >
                     {leave ? (
                       // Annual leave: a distinct "A/L" tag (paid, but no planned
