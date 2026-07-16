@@ -212,8 +212,8 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
         {/* Admins can remove a count from variance (flag only — the stock
             take keeps all its data and can be restored below). */}
         {canDelete && closing && (confirmingDelete ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ flex: 1, fontSize: '0.78rem', color: colors.textSecondary }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ flex: '1 1 14rem', minWidth: 0, fontSize: '0.78rem', color: colors.textSecondary }}>
               Removes the {fmtWhen(closing.completedAt)} count from variance reports; its period merges into the next one. The stock take itself is kept.
             </span>
             <button onClick={() => setHidden(closing, true)} style={{ padding: '0.5rem 0.85rem', backgroundColor: colors.error, color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>Remove</button>
@@ -286,13 +286,15 @@ function VarianceReport({ venuePath, items, mappingsByKey, colors, accent, onAcc
           </div>
 
           {/* Totals */}
-          <div style={{ display: 'flex', gap: '0.6rem' }}>
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
             {[
               ['Short', result.totals.shortValue, colors.error],
               ['Over', result.totals.overValue, colors.success],
               ['Net', result.totals.netValue, result.totals.netValue < 0 ? colors.error : colors.success],
             ].map(([label, v, colour]) => (
-              <div key={label} style={{ ...card, flex: 1, textAlign: 'center' }}>
+              // Tighter side padding than `card`: three of these across a phone,
+              // and 1rem each side leaves no room for a four-figure total.
+              <div key={label} style={{ ...card, padding: '0.7rem 0.4rem', flex: '1 1 5rem', minWidth: 0, textAlign: 'center' }}>
                 <div style={{ fontSize: '0.7rem', color: colors.textSecondary, textTransform: 'uppercase' }}>{label}</div>
                 <div style={{ fontSize: '1.05rem', fontWeight: 800, color: colour }}>{v < 0 ? '−' : ''}{gbp(v)}</div>
               </div>

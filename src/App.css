@@ -234,6 +234,13 @@
   margin: 0 auto;
 }
 
+/* Two related fields side by side, stacked once there isn't room for both.
+   Pages are inline-styled and inline styles can't carry a media query, so
+   anything that needs to reflow by width comes through a class like this. */
+.field-pair {
+  grid-template-columns: 1fr 1fr;
+}
+
 .app-footer {
   background-color: var(--color-primary-darker);
   color: white;
@@ -455,6 +462,9 @@ tr:hover {
   .header-left--admin .header-title { display: none; }
 
   .account-switcher { max-width: 46vw; }
+
+  /* Side-by-side fields get too narrow to read their own placeholder here. */
+  .field-pair { grid-template-columns: 1fr; }
 
   .pub-selector {
     font-size: 0.75rem;

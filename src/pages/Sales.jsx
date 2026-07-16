@@ -176,7 +176,9 @@ function Sales() {
   const card = { border: `1px solid ${colors.borderLight}`, borderRadius: '12px', backgroundColor: colors.bgCard, padding: '1rem' };
   const input = { padding: '0.6rem', fontSize: '0.95rem', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box' };
   const statBox = (label, value, sub) => (
-    <div key={label} style={{ flex: '1 1 100px', minWidth: 0 }}>
+    // No minWidth:0 on purpose — the value is nowrap, so letting the box shrink
+    // below it would paint the figure over the next stat. The row wraps instead.
+    <div key={label} style={{ flex: '1 1 100px' }}>
       <div style={{ fontSize: '0.7rem', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</div>
       <div style={{ fontSize: '1.05rem', fontWeight: 700, color: colors.textPrimary, whiteSpace: 'nowrap' }}>{value}</div>
       {sub && <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>{sub}</div>}

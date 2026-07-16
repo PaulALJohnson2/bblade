@@ -68,12 +68,12 @@ function MealSplitReview({ meals, colors, onComplete, onCancel }) {
         maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         {/* Header */}
-        <div style={{ padding: '1rem 1.25rem', borderBottom: `1px solid ${colors.borderLight}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
+        <div style={{ padding: '1rem 1.25rem', borderBottom: `1px solid ${colors.borderLight}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 700, color: colors.textPrimary }}>Review meal breakdown</div>
             <div style={{ fontSize: '0.8rem', color: colors.textSecondary }}>Meal {idx + 1} of {meals.length}</div>
           </div>
-          <button onClick={onCancel} style={{ background: 'none', border: 'none', fontSize: '1.5rem', color: colors.textSecondary, cursor: 'pointer', lineHeight: 1 }}>×</button>
+          <button onClick={onCancel} style={{ background: 'none', border: 'none', fontSize: '1.5rem', color: colors.textSecondary, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>×</button>
         </div>
 
         {/* Progress bar */}

@@ -79,7 +79,7 @@ function SuperAdmin() {
             <input style={input} value={form.accountName} onChange={(e) => setForm({ ...form, accountName: e.target.value })} placeholder="e.g. The Duke and Rye" /></div>
           <div><span style={label}>First venue name</span>
             <input style={input} value={form.venueName} onChange={(e) => setForm({ ...form, venueName: e.target.value })} placeholder="e.g. Main bar" /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+          <div className="field-pair" style={{ display: 'grid', gap: '0.6rem' }}>
             <div><span style={label}>Owner name</span>
               <input style={input} value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} placeholder="Owner's name" /></div>
             <div><span style={label}>Owner email</span>
@@ -106,9 +106,9 @@ function SuperAdmin() {
                 <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.7rem 0.85rem', border: `1px solid ${active ? colors.primary : colors.borderLight}`, borderRadius: '8px', backgroundColor: active ? colors.primarySoft : colors.bgCard }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.name || '(unnamed account)'}</div>
-                    <div style={{ fontSize: '0.72rem', color: colors.textMuted }}>{a.id}</div>
+                    <div style={{ fontSize: '0.72rem', color: colors.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.id}</div>
                   </div>
-                  {active && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: colors.primary }}>ACTIVE</span>}
+                  {active && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: colors.primary, flexShrink: 0 }}>ACTIVE</span>}
                   <button onClick={() => open(a)} disabled={opening === a.id} style={{ flexShrink: 0, padding: '0.5rem 0.9rem', backgroundColor: active ? colors.bgCard : colors.primary, color: active ? colors.primary : colors.onPrimary, border: active ? `1px solid ${colors.primary}` : 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                     {opening === a.id ? 'Opening…' : active ? 'Re-open' : 'Open'}
                   </button>

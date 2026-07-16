@@ -82,9 +82,11 @@ function WastageReport({ venuePath, canEdit = true }) {
         What's been wasted — tap an item to see each entry, when and by whom.
       </p>
 
-      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem' }}>
+      {/* Scrolls sideways rather than overflowing the page — same as the pill
+          strips in Wastage.jsx and Deliveries.jsx. */}
+      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: '0.25rem', scrollbarWidth: 'none' }}>
         {RANGES.map((r) => (
-          <button key={r.key} onClick={() => setRange(r.key)} style={chip(range === r.key)}>{r.label}</button>
+          <button key={r.key} onClick={() => setRange(r.key)} style={{ ...chip(range === r.key), flexShrink: 0 }}>{r.label}</button>
         ))}
       </div>
 

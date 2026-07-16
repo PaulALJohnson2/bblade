@@ -482,8 +482,8 @@ function Admin() {
                   </div>
                 ) : (
                   <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: colors.textPrimary }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ color: colors.textPrimary, minWidth: 0, flex: '1 1 12rem' }}>
                       {member.displayName}
                       {member.role && (
                         <span style={{
@@ -516,12 +516,12 @@ function Admin() {
                         </span>
                       )}
                       {member.email && (
-                        <span style={{ display: 'block', fontSize: '0.78rem', color: colors.textSecondary }}>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: colors.textSecondary, overflowWrap: 'anywhere' }}>
                           {member.email}
                         </span>
                       )}
                     </span>
-                    <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'center', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
                       <button
                         onClick={() => startEdit(member)}
                         style={{ background: 'none', border: 'none', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}

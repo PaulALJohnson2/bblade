@@ -247,7 +247,7 @@ function StockOverview({ venuePath, canEdit = true }) {
                       )}
                     </div>
                     {/* Actions */}
-                    <div style={{ display: 'flex', gap: '0.5rem', padding: '0.6rem 0.75rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', padding: '0.6rem 0.75rem', flexWrap: 'wrap' }}>
                       <button style={exportBtn} onClick={() => printSessionReport(s, itemsById, pubName)}>Export PDF</button>
                       <button style={exportBtn} onClick={() => downloadSessionCSV(s, itemsById, pubName)}>Export CSV</button>
                       {prevCompleted(s) && (
@@ -310,9 +310,9 @@ function StockOverview({ venuePath, canEdit = true }) {
                                         const delta = i > 0 ? formatDelta(hist[i - 1].quantity, e.quantity, unitInfo) : null;
                                         return (
                                           <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', padding: '0.1rem 0' }}>
-                                            <span style={{ flex: 1, minWidth: 0 }}>{fmtDate(e.countedAt)}{e.countedBy ? ` · ${e.countedBy}` : ''}</span>
-                                            <span style={{ color: colors.textPrimary }}>{fmtQty(e.quantity, unitInfo)}</span>
-                                            {delta && <span style={{ fontWeight: 700, color: delta.positive ? colors.success : colors.error, minWidth: '60px', textAlign: 'right' }}>{delta.text}</span>}
+                                            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmtDate(e.countedAt)}{e.countedBy ? ` · ${e.countedBy}` : ''}</span>
+                                            <span style={{ color: colors.textPrimary, flexShrink: 0 }}>{fmtQty(e.quantity, unitInfo)}</span>
+                                            {delta && <span style={{ fontWeight: 700, color: delta.positive ? colors.success : colors.error, minWidth: '60px', textAlign: 'right', flexShrink: 0 }}>{delta.text}</span>}
                                           </div>
                                         );
                                       })}

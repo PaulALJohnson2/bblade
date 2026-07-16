@@ -259,12 +259,12 @@ function Clock() {
               const start = effectiveClockIn(s);
               const out = toMs(s.clockOut);
               return (
-                <div key={s.id} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '10px', padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.85rem' }}>
-                  <span style={{ flex: 1, color: colors.textPrimary }}>
+                <div key={s.id} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '10px', padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                  <span style={{ flex: '1 1 11rem', minWidth: 0, color: colors.textPrimary }}>
                     {formatDayShort(start)} · {formatClock(start)}–{formatClock(out)} · {stationLabel(s.station)}
                   </span>
-                  <span style={{ color: colors.textSecondary, fontWeight: 700 }}>{formatDuration(start, out)}</span>
-                  {s.approvalStatus === 'pending' && <span style={{ color: colors.warning, fontSize: '0.75rem', fontWeight: 700 }}>PENDING</span>}
+                  <span style={{ color: colors.textSecondary, fontWeight: 700, flexShrink: 0 }}>{formatDuration(start, out)}</span>
+                  {s.approvalStatus === 'pending' && <span style={{ color: colors.warning, fontSize: '0.75rem', fontWeight: 700, flexShrink: 0 }}>PENDING</span>}
                 </div>
               );
             })}

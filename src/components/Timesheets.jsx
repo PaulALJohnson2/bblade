@@ -135,8 +135,8 @@ function Timesheets({ venuePath, members, approverName, colors, showToast }) {
         <div style={{ ...card, borderColor: colors.warning }}>
           <h2 style={{ margin: '0 0 0.5rem', fontSize: '1rem', color: colors.warning }}>Needs approval</h2>
           {pending.map((s) => (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0', borderTop: `1px solid ${colors.borderLight}`, fontSize: '0.85rem' }}>
-              <span style={{ flex: 1, color: colors.textPrimary }}>
+            <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0', borderTop: `1px solid ${colors.borderLight}`, fontSize: '0.85rem', flexWrap: 'wrap' }}>
+              <span style={{ flex: '1 1 14rem', minWidth: 0, color: colors.textPrimary }}>
                 <strong>{s.memberName}</strong> says they started {formatDayShort(toMs(s.clockIn))} {formatClock(toMs(s.clockIn))}
                 {' '}(punched at {formatClock(toMs(s.clockInActual))})
                 {s.clockInReason && <span style={{ color: colors.textSecondary }}> — “{s.clockInReason}”</span>}
@@ -154,8 +154,8 @@ function Timesheets({ venuePath, members, approverName, colors, showToast }) {
         {onClock.length === 0 ? (
           <div style={{ color: colors.textSecondary, fontSize: '0.85rem' }}>Nobody clocked in.</div>
         ) : onClock.map((s) => (
-          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0', fontSize: '0.9rem' }}>
-            <span style={{ flex: 1, color: colors.textPrimary }}>
+          <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0', fontSize: '0.9rem', flexWrap: 'wrap' }}>
+            <span style={{ flex: '1 1 12rem', minWidth: 0, color: colors.textPrimary }}>
               <strong>{s.memberName}</strong> · {stationLabel(s.station)} · since {formatClock(effectiveClockIn(s))} ({formatDuration(effectiveClockIn(s))})
             </span>
             <button onClick={async () => { const r = await clockOutShift(venuePath, s); showToast(r.success ? `${s.memberName} clocked out` : 'Failed: ' + r.error); }} style={smallBtn(colors.error)}>Clock out</button>
@@ -169,9 +169,9 @@ function Timesheets({ venuePath, members, approverName, colors, showToast }) {
         {weekTotals.length === 0 ? (
           <div style={{ color: colors.textSecondary, fontSize: '0.85rem' }}>No shifts yet this week.</div>
         ) : weekTotals.map((t) => (
-          <div key={t.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.9rem' }}>
-            <span style={{ color: colors.textPrimary }}>{t.name}</span>
-            <span style={{ color: colors.textPrimary, fontWeight: 700 }}>{formatDuration(0, t.ms)}</span>
+          <div key={t.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.6rem', padding: '0.3rem 0', fontSize: '0.9rem' }}>
+            <span style={{ color: colors.textPrimary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
+            <span style={{ color: colors.textPrimary, fontWeight: 700, flexShrink: 0 }}>{formatDuration(0, t.ms)}</span>
           </div>
         ))}
       </div>
@@ -231,8 +231,8 @@ function Timesheets({ venuePath, members, approverName, colors, showToast }) {
                     )}
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.85rem' }}>
-                    <span style={{ flex: 1, minWidth: 0, color: colors.textPrimary }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                    <span style={{ flex: '1 1 12rem', minWidth: 0, color: colors.textPrimary }}>
                       <strong>{s.memberName}</strong> · {formatClock(start)}–{out ? formatClock(out) : 'now'} · {stationLabel(s.station)}
                       {s.approvalStatus === 'pending' && <span style={{ color: colors.warning, fontWeight: 700 }}> · PENDING</span>}
                       {s.manual && <span style={{ color: colors.textMuted }}> · manual</span>}

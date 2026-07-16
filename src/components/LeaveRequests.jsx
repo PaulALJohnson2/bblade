@@ -80,7 +80,7 @@ function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
           <div style={{ color: colors.textSecondary, fontSize: '0.85rem' }}>No requests waiting.</div>
         ) : pending.map((r) => (
           <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderTop: `1px solid ${colors.borderLight}`, fontSize: '0.88rem', flexWrap: 'wrap' }}>
-            <span style={{ flex: 1, minWidth: '160px', color: colors.textPrimary }}>
+            <span style={{ flex: '1 1 10rem', minWidth: 0, color: colors.textPrimary }}>
               <strong>{r.memberName}</strong> · {rangeLabel(r.startDate, r.endDate)}
               <span style={{ color: colors.textSecondary }}> ({dayCount(r.startDate, r.endDate)}d)</span>
               {r.note && <span style={{ display: 'block', color: colors.textSecondary, fontSize: '0.8rem' }}>“{r.note}”</span>}
@@ -99,8 +99,8 @@ function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
         <div style={card}>
           <h2 style={{ margin: '0 0 0.5rem', fontSize: '1rem', color: colors.textPrimary }}>Recent decisions</h2>
           {decided.map((r) => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0', borderTop: `1px solid ${colors.borderLight}`, fontSize: '0.85rem' }}>
-              <span style={{ flex: 1, minWidth: 0, color: colors.textPrimary }}>
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0', borderTop: `1px solid ${colors.borderLight}`, fontSize: '0.85rem', flexWrap: 'wrap' }}>
+              <span style={{ flex: '1 1 12rem', minWidth: 0, color: colors.textPrimary }}>
                 <strong>{r.memberName}</strong> · {rangeLabel(r.startDate, r.endDate)}
                 <span style={{ color: r.status === 'approved' ? colors.success : colors.error, fontWeight: 700 }}> · {r.status}</span>
                 {r.decidedBy && <span style={{ color: colors.textMuted }}> · by {r.decidedBy}</span>}
