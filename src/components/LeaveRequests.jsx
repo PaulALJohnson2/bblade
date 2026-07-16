@@ -21,6 +21,18 @@ const dayCount = (a, b) => {
   return Math.max(1, Math.round((end - start) / 86400000) + 1);
 };
 
+// A button label that never resizes when it flips to its busy text.
+function BtnLabel({ idle, busyLabel, busy }) {
+  // Both labels sit in the cell whichever is showing — visibility:hidden still
+  // takes up space — so the cell is the width of the wider one, always.
+  return (
+    <span style={{ display: 'grid', placeItems: 'center' }}>
+      <span style={{ gridArea: '1 / 1', visibility: busy ? 'hidden' : 'visible' }}>{idle}</span>
+      <span style={{ gridArea: '1 / 1', visibility: busy ? 'visible' : 'hidden' }}>{busyLabel}</span>
+    </span>
+  );
+}
+
 function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
   const [requests, setRequests] = useState(null);
   // { id, action } while a decision is in flight — approving writes A/L across
@@ -74,10 +86,10 @@ function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
               {r.note && <span style={{ display: 'block', color: colors.textSecondary, fontSize: '0.8rem' }}>“{r.note}”</span>}
             </span>
             <button disabled={!!busy} onClick={() => approve(r)} style={smallBtn(colors.success, '#fff', !!busy)}>
-              {busy?.id === r.id && busy.action === 'approve' ? 'Approving…' : 'Approve'}
+              <BtnLabel idle="Approve" busyLabel="Approving…" busy={busy?.id === r.id && busy.action === 'approve'} />
             </button>
             <button disabled={!!busy} onClick={() => decline(r)} style={smallBtn(colors.error, '#fff', !!busy)}>
-              {busy?.id === r.id && busy.action === 'decline' ? 'Declining…' : 'Decline'}
+              <BtnLabel idle="Decline" busyLabel="Declining…" busy={busy?.id === r.id && busy.action === 'decline'} />
             </button>
           </div>
         ))}
