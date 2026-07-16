@@ -423,7 +423,9 @@ function Sales() {
                             </span>
                             <span style={{ flexShrink: 0, fontSize: '0.82rem', color: colors.textSecondary, width: '48px', textAlign: 'right' }}>×{l.qty}</span>
                             <span style={{ flexShrink: 0, fontSize: '0.85rem', fontWeight: 600, color: colors.textPrimary, width: '76px', textAlign: 'right' }}>{gbp(l.valueIncVAT)}</span>
-                            <span style={{ flexShrink: 0, fontSize: '0.72rem', color: colors.textMuted, width: '52px', textAlign: 'right' }}>{lineGp == null ? '—' : pct(lineGp)}</span>
+                            {/* GP% steps aside on a phone — the fixed columns
+                                left the product name about 12 characters. */}
+                            <span className="sales-gp" style={{ flexShrink: 0, fontSize: '0.72rem', color: colors.textMuted, width: '52px', textAlign: 'right' }}>{lineGp == null ? '—' : pct(lineGp)}</span>
                           </div>
                         );
                       })}

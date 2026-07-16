@@ -466,6 +466,10 @@ tr:hover {
   /* Side-by-side fields get too narrow to read their own placeholder here. */
   .field-pair { grid-template-columns: 1fr; }
 
+  /* Sales line explorer: the qty and value columns earn their space on a
+     phone, GP% doesn't — it was costing the product name half its width. */
+  .sales-gp { display: none; }
+
   .pub-selector {
     font-size: 0.75rem;
     padding: 0.2rem 0.4rem;
