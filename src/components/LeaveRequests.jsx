@@ -23,7 +23,9 @@ const dayCount = (a, b) => {
 
 function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
   const [requests, setRequests] = useState(null);
-  const [busyId, setBusyId] = useState(null);
+  // { id, action } while a decision is in flight — approving writes A/L across
+  // every week the leave touches, so it can take a moment on a long range.
+  const [busy, setBusy] = useState(null);
 
   useEffect(() => {
     const unsub = subscribeToLeaveRequests(venuePath, setRequests, (e) => showToast('Could not load leave: ' + e));
@@ -35,15 +37,15 @@ function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
   const decided = useMemo(() => (requests || []).filter((r) => r.status !== 'pending').slice(0, 20), [requests]);
 
   const approve = async (r) => {
-    setBusyId(r.id);
+    setBusy({ id: r.id, action: 'approve' });
     const res = await approveLeaveRequest(venuePath, r, deciderName);
-    setBusyId(null);
+    setBusy(null);
     showToast(res.success ? `Approved — A/L added to the rota for ${r.memberName}` : 'Failed: ' + res.error);
   };
   const decline = async (r) => {
-    setBusyId(r.id);
+    setBusy({ id: r.id, action: 'decline' });
     const res = await declineLeaveRequest(venuePath, r.id, deciderName);
-    setBusyId(null);
+    setBusy(null);
     showToast(res.success ? 'Declined' : 'Failed: ' + res.error);
   };
   const remove = async (r) => {
@@ -52,7 +54,7 @@ function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
   };
 
   const card = { backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`, borderRadius: '12px', padding: '1rem', marginBottom: '1rem' };
-  const smallBtn = (bg, fg = '#fff') => ({ padding: '0.45rem 0.7rem', backgroundColor: bg, color: fg, border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0, opacity: 1 });
+  const smallBtn = (bg, fg = '#fff', dim = false) => ({ padding: '0.45rem 0.7rem', backgroundColor: bg, color: fg, border: 'none', borderRadius: '6px', cursor: dim ? 'progress' : 'pointer', fontSize: '0.8rem', fontWeight: 700, flexShrink: 0, opacity: dim ? 0.55 : 1, transition: 'opacity 0.15s' });
 
   if (!requests) return <div style={{ color: colors.textSecondary, fontSize: '0.9rem' }}>Loading requests…</div>;
 
@@ -71,8 +73,12 @@ function LeaveRequests({ venuePath, deciderName, colors, showToast }) {
               <span style={{ color: colors.textSecondary }}> ({dayCount(r.startDate, r.endDate)}d)</span>
               {r.note && <span style={{ display: 'block', color: colors.textSecondary, fontSize: '0.8rem' }}>“{r.note}”</span>}
             </span>
-            <button disabled={busyId === r.id} onClick={() => approve(r)} style={smallBtn(colors.success)}>Approve</button>
-            <button disabled={busyId === r.id} onClick={() => decline(r)} style={smallBtn(colors.error)}>Decline</button>
+            <button disabled={!!busy} onClick={() => approve(r)} style={smallBtn(colors.success, '#fff', !!busy)}>
+              {busy?.id === r.id && busy.action === 'approve' ? 'Approving…' : 'Approve'}
+            </button>
+            <button disabled={!!busy} onClick={() => decline(r)} style={smallBtn(colors.error, '#fff', !!busy)}>
+              {busy?.id === r.id && busy.action === 'decline' ? 'Declining…' : 'Decline'}
+            </button>
           </div>
         ))}
       </div>
