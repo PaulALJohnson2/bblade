@@ -355,9 +355,12 @@ export const AuthProvider = ({ children }) => {
   };
   // Manager action: (re)generate a member's initial password. The new password
   // arrives back on the member doc (live) and is also returned here.
+  // accountId names the tenant being operated on, which matters for a
+  // super-admin who has switched into someone else's account. The function
+  // ignores it for everyone else and uses their own token's account.
   const resetMemberPassword = async (memberId) => {
     try {
-      const res = await httpsCallable(functions, 'resetMemberPassword')({ memberId });
+      const res = await httpsCallable(functions, 'resetMemberPassword')({ memberId, accountId: activeAccountId });
       return { success: true, initialPassword: res?.data?.initialPassword };
     } catch (error) {
       return { success: false, error: error.message };

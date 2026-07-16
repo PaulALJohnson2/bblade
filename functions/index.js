@@ -25,8 +25,12 @@
  * Deploy with:  firebase deploy --only functions
  *
  * NOTE: ACCOUNT_ID and SUPER_ADMINS are duplicated from src/config/app.js —
- * keep them in sync. (Single-tenant today; when multi-tenant, resolve the
- * account from the email's membership instead of a constant.)
+ * keep them in sync. ACCOUNT_ID is now only the original tenant's id, used as
+ * the fallback for users signed in before claims were stamped: the callables
+ * resolve the account from the caller's token (see resolveTargetAccount) and
+ * syncMemberAuth takes it from the document path, so both work for any account.
+ * resolveMemberAccess is the one place still tied to it — it's the legacy
+ * pre-claims sign-in path only.
  */
 
 const { beforeUserCreated, beforeUserSignedIn, HttpsError } = require('firebase-functions/v2/identity');
@@ -219,9 +223,27 @@ exports.gateUserCreation = beforeUserCreated(async (event) => {
 // Password self-service (callables)
 // ---------------------------------------------------------------------------
 
+/**
+ * The account a callable acts on. A platform admin operates inside whichever
+ * tenant they've opened, so they may name one; everyone else is pinned to the
+ * account in their own token, whatever the client asked for. ACCOUNT_ID is the
+ * fallback only for legacy users signed in before claims were stamped.
+ */
+async function resolveTargetAccount(request, requested) {
+  const claimAccount = request.auth.token.accountId || ACCOUNT_ID;
+  const platform = request.auth.token.platformAdmin === true
+    || (await isSuperAdmin(request.auth.token.email));
+  const asked = String(requested || '').trim();
+  if (platform) return asked || claimAccount;
+  if (asked && asked !== claimAccount) {
+    throw new CallableError('permission-denied', 'That member is not in your account.');
+  }
+  return claimAccount;
+}
+
 /** Clear the initial-password flag + stored value on the member(s) for an email. */
-async function clearInitialPassword(email) {
-  const snap = await db.collection(`accounts/${ACCOUNT_ID}/members`).where('email', '==', email).get();
+async function clearInitialPassword(email, accountId) {
+  const snap = await db.collection(`accounts/${accountId}/members`).where('email', '==', email).get();
   await Promise.all(snap.docs.map((d) => d.ref.update({
     mustChangePassword: false,
     initialPassword: FieldValue.delete(),
@@ -240,7 +262,8 @@ exports.changeInitialPassword = onCall(async (request) => {
     throw new CallableError('invalid-argument', 'Password must be at least 8 characters.');
   }
   await getAuth().updateUser(request.auth.uid, { password: newPassword, emailVerified: true });
-  await clearInitialPassword(normEmail(request.auth.token.email));
+  // Their own account, from their own token — never the client's word for it.
+  await clearInitialPassword(normEmail(request.auth.token.email), request.auth.token.accountId || ACCOUNT_ID);
   logger.info(`Password changed by ${request.auth.token.email}`);
   return { success: true };
 });
@@ -259,7 +282,8 @@ exports.resetMemberPassword = onCall(async (request) => {
   const memberId = String((request.data && request.data.memberId) || '');
   if (!memberId) throw new CallableError('invalid-argument', 'memberId is required.');
 
-  const ref = db.doc(`accounts/${ACCOUNT_ID}/members/${memberId}`);
+  const accountId = await resolveTargetAccount(request, request.data && request.data.accountId);
+  const ref = db.doc(`accounts/${accountId}/members/${memberId}`);
   const doc = await ref.get();
   if (!doc.exists) throw new CallableError('not-found', 'Member not found.');
   const email = normEmail(doc.data().email);
