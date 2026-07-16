@@ -198,9 +198,14 @@ function Shell() {
               title="Home"
             >
               <h1>BBlade</h1>
-              <span className="header-venue" style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {pubName || 'Stock'}
-              </span>
+              {/* The venue name, once it arrives. No placeholder: the old
+                  'Stock' fallback read as a real label, so a venue that failed
+                  to load looked like a working header. */}
+              {pubName && (
+                <span className="header-venue" style={{ fontSize: '0.95rem', fontWeight: 500, opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {pubName}
+                </span>
+              )}
             </div>
           </div>
           <div className="header-controls">

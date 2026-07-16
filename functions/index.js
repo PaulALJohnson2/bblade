@@ -302,3 +302,56 @@ exports.resetMemberPassword = onCall(async (request) => {
   logger.info(`Initial password reset for ${email} by ${request.auth.token.email}`);
   return { success: true, initialPassword };
 });
+
+// ---------------------------------------------------------------------------
+// Account deletion (super-admin only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete a customer account outright: every venue and all its data, the member
+ * list, and the sign-in of every member provisioned for it. Irreversible —
+ * there is no soft-delete or restore, so the client confirms before calling.
+ *
+ * Sign-ins go first: a member whose auth user outlives the account keeps a
+ * token carrying its accountId. Super-admins are skipped — they're only ever
+ * visiting, and their own sign-in must survive. Rules can't express recursion,
+ * so this has to be Admin SDK work rather than a client delete.
+ */
+exports.deleteAccount = onCall(async (request) => {
+  if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
+  const caller = normEmail(request.auth.token.email);
+  const platform = request.auth.token.platformAdmin === true || (await isSuperAdmin(caller));
+  if (!platform) throw new CallableError('permission-denied', 'Only platform admins can delete accounts.');
+
+  const accountId = String((request.data && request.data.accountId) || '').trim();
+  if (!accountId) throw new CallableError('invalid-argument', 'accountId is required.');
+  // The platform's home account: every super-admin's token points at it and
+  // their member docs live there, so deleting it would lock them out of BBlade.
+  if (accountId === ACCOUNT_ID) {
+    throw new CallableError('failed-precondition', 'The platform’s own account cannot be deleted.');
+  }
+
+  const ref = db.doc(`accounts/${accountId}`);
+  const snap = await ref.get();
+  if (!snap.exists) throw new CallableError('not-found', 'That account no longer exists.');
+  const name = (snap.data() || {}).name || accountId;
+
+  const members = await db.collection(`accounts/${accountId}/members`).get();
+  let revoked = 0;
+  for (const d of members.docs) {
+    const email = normEmail((d.data() || {}).email);
+    if (!email || (await isSuperAdmin(email))) continue;
+    try {
+      const u = await getAuth().getUserByEmail(email);
+      // Only if this account is the one that provisioned them — never take out
+      // an auth user that belongs to a different tenant.
+      if (u.customClaims?.accountId === accountId) { await getAuth().deleteUser(u.uid); revoked += 1; }
+    } catch (err) {
+      if (err.code !== 'auth/user-not-found') throw err;
+    }
+  }
+
+  await db.recursiveDelete(ref);
+  logger.info(`Account ${accountId} ("${name}") deleted by ${caller}; ${revoked} sign-in(s) revoked`);
+  return { success: true, revoked };
+});

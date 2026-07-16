@@ -2,20 +2,21 @@
  * SuperAdmin — platform console (BBlade staff only).
  *
  * List every customer account, create a new one (account + first venue + one
- * owner), and switch into any account to operate it. Gated to platform admins
- * (hardcoded allowlist resolved in AuthContext).
+ * owner), switch into any account to operate it, and delete one outright.
+ * Gated to platform admins (the platformAdmin token claim, set server-side).
  */
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToAccounts, getVenues, createAccountWithOwner } from '../services/apiService';
+import { ACCOUNT_ID } from '../config/app';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
 function SuperAdmin() {
   const navigate = useNavigate();
-  const { isPlatformAdmin, switchTenant, activeAccountId } = useAuth();
+  const { isPlatformAdmin, switchTenant, activeAccountId, deleteAccount } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -25,6 +26,10 @@ function SuperAdmin() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [opening, setOpening] = useState(null);
+  // The account queued for deletion, plus what's been typed to confirm it.
+  const [deleting, setDeleting] = useState(null);
+  const [confirmText, setConfirmText] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     if (!isPlatformAdmin) return;
@@ -38,6 +43,17 @@ function SuperAdmin() {
   const input = { width: '100%', padding: '0.7rem', fontSize: '1rem', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box', marginTop: '0.4rem' };
   const label = { fontSize: '0.78rem', fontWeight: 600, color: colors.textSecondary };
   const primaryBtn = (disabled) => ({ padding: '0.8rem 1.25rem', backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', borderRadius: '8px', cursor: disabled ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: disabled ? 0.6 : 1 });
+
+  const confirmDelete = async () => {
+    if (!deleting || deleteBusy) return;
+    setDeleteBusy(true);
+    const res = await deleteAccount(deleting.id);
+    setDeleteBusy(false);
+    if (!res.success) { setMsg('Could not delete: ' + res.error); return; }
+    setMsg(`Deleted "${deleting.name || deleting.id}"${res.revoked ? ` — ${res.revoked} sign-in(s) revoked` : ''}.`);
+    setDeleting(null);
+    setConfirmText('');
+  };
 
   const open = async (account) => {
     setOpening(account.id);
@@ -112,12 +128,69 @@ function SuperAdmin() {
                   <button onClick={() => open(a)} disabled={opening === a.id} style={{ flexShrink: 0, padding: '0.5rem 0.9rem', backgroundColor: active ? colors.bgCard : colors.primary, color: active ? colors.primary : colors.onPrimary, border: active ? `1px solid ${colors.primary}` : 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
                     {opening === a.id ? 'Opening…' : active ? 'Re-open' : 'Open'}
                   </button>
+                  {/* No delete on the platform's own account — the server
+                      refuses it, so don't offer it. */}
+                  {a.id !== ACCOUNT_ID && (
+                    <button
+                      onClick={() => { setDeleting(a); setConfirmText(''); }}
+                      title="Delete this account and all its data"
+                      style={{ flexShrink: 0, padding: '0.5rem 0.7rem', backgroundColor: 'transparent', color: colors.errorDark, border: `1px solid ${colors.border}`, borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation. Typing the name rather than clicking once: this
+          wipes a real customer's whole history and there's no restore. */}
+      {deleting && (
+        <div
+          onClick={() => { if (!deleteBusy) { setDeleting(null); setConfirmText(''); } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 5000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: colors.bgCard, borderRadius: '14px', boxShadow: `0 12px 40px ${colors.shadow}`, padding: '1.5rem', maxWidth: '380px', width: '100%' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.1rem', color: colors.error, marginBottom: '0.5rem' }}>
+              Delete “{deleting.name || deleting.id}”?
+            </div>
+            <div style={{ fontSize: '0.88rem', color: colors.textSecondary, marginBottom: '0.85rem', lineHeight: 1.45 }}>
+              This permanently removes the account, every venue under it, and all
+              their stock, rotas, timesheets and staff records. Everyone in it
+              loses their sign-in. It cannot be undone.
+            </div>
+            <label style={{ fontSize: '0.78rem', fontWeight: 600, color: colors.textSecondary }}>
+              Type <strong style={{ color: colors.textPrimary }}>{deleting.name || deleting.id}</strong> to confirm
+            </label>
+            <input
+              autoFocus
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              style={{ width: '100%', padding: '0.7rem', fontSize: '1rem', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box', marginTop: '0.4rem', marginBottom: '1rem' }}
+            />
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <button
+                onClick={() => { setDeleting(null); setConfirmText(''); }}
+                disabled={deleteBusy}
+                style={{ flex: 1, padding: '0.8rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '10px', fontWeight: 600, fontSize: '1rem', cursor: 'pointer' }}
+              >Cancel</button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleteBusy || confirmText.trim() !== (deleting.name || deleting.id)}
+                style={{
+                  flex: 1, padding: '0.8rem', backgroundColor: colors.error, color: '#fff', border: 'none',
+                  borderRadius: '10px', fontWeight: 700, fontSize: '1rem',
+                  cursor: confirmText.trim() === (deleting.name || deleting.id) && !deleteBusy ? 'pointer' : 'not-allowed',
+                  opacity: confirmText.trim() === (deleting.name || deleting.id) && !deleteBusy ? 1 : 0.5,
+                }}
+              >{deleteBusy ? 'Deleting…' : 'Delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

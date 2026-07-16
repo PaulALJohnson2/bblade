@@ -6,10 +6,15 @@
  * project-wide), and the gateUserSignIn blocking function rejects any sign-in
  * that isn't a provisioned member or super-admin. So by the time a user reaches
  * this context they ARE authorized — we just read { accountId, role } from the
- * ID token claims. No Firestore read in the critical path: nothing to race,
- * and it works offline from the cached token.
+ * ID token claims.
  *
- * Tenant is still the hardcoded ACCOUNT_ID/VENUE_ID (single pub, no switcher).
+ * The account comes from those claims; the venue is looked up from it (each
+ * account's venue ids are its own auto-ids, so there is no id that is right for
+ * everyone). That lookup is the one Firestore read in the critical path — it
+ * resolves before authorizing so nothing subscribes to the wrong venue, and it
+ * falls back to the venue cached from the last launch when offline.
+ * Super-admins switch account+venue together via switchTenant; a member stays
+ * on their account's first venue (no per-member venue switcher yet).
  * Counts are attributed to the signed-in user. StockTaking consumes useAuth()
  * unchanged.
  */
@@ -32,6 +37,7 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../firebase/config';
 import { ACCOUNT_ID, VENUE_ID, venuePath } from '../config/app';
 import {
+  getVenues,
   subscribeToVenue,
   saveVenue as saveVenueSvc,
   subscribeToAccount,
@@ -55,9 +61,25 @@ const isMobileDevice = () =>
   typeof navigator !== 'undefined' &&
   /Android|iPhone|iPad|iPod|Mobile|Silk/i.test(navigator.userAgent);
 
+/**
+ * The venue a member works in: their account's own first venue. Venue ids are
+ * per-account Firestore auto-ids, so VENUE_ID belongs to the original account
+ * alone and is only a last-resort fallback — pinning anyone else to it points
+ * them at a venue that doesn't exist in their account. `cached` (the venue we
+ * resolved on a previous launch) covers the offline case, where the lookup
+ * can't reach the server and Firestore has no cache to answer from.
+ */
+async function resolveVenueId(accountId, cached) {
+  try {
+    const res = await getVenues(accountId);
+    if (res.success && res.data?.length) return res.data[0].id;
+  } catch { /* fall through to the cache */ }
+  return cached || VENUE_ID;
+}
+
 export const AuthProvider = ({ children }) => {
-  // ---- active tenant (super-admins can switch; everyone else stays on the
-  // default account/venue). Derived path drives every tenant subscription. ----
+  // ---- active tenant (super-admins switch accounts; everyone else lands on
+  // their own). Derived path drives every tenant subscription. ----
   const [activeAccountId, setActiveAccountId] = useState(ACCOUNT_ID);
   const [activeVenueId, setActiveVenueId] = useState(VENUE_ID);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -133,8 +155,16 @@ export const AuthProvider = ({ children }) => {
 
         if (token.claims.accountId) {
           setIsPlatformAdmin(false);
+          let cachedVenue = null;
+          try {
+            const c = JSON.parse(localStorage.getItem('bb_auth_ok') || 'null');
+            if (c?.accountId === token.claims.accountId) cachedVenue = c.venueId || null;
+          } catch { /* ignore bad localStorage */ }
+          // Resolved before authorizing, so no subscription ever fires against
+          // the wrong venue path.
+          const venueId = await resolveVenueId(token.claims.accountId, cachedVenue);
           setActiveAccountId(token.claims.accountId);
-          setActiveVenueId(VENUE_ID);
+          setActiveVenueId(venueId);
           setRole(token.claims.role || 'staff');
           setCurrentUser(user);
           setAuthorized(true);
@@ -144,7 +174,7 @@ export const AuthProvider = ({ children }) => {
           // dead-signal cellars) — see the catch below.
           try {
             localStorage.setItem('bb_auth_ok', JSON.stringify({
-              uid: user.uid, accountId: token.claims.accountId, role: token.claims.role || 'staff',
+              uid: user.uid, accountId: token.claims.accountId, role: token.claims.role || 'staff', venueId,
             }));
           } catch { /* storage unavailable — fallback just won't apply */ }
         } else {
@@ -182,7 +212,9 @@ export const AuthProvider = ({ children }) => {
           console.warn('Token refresh failed; restoring cached authorization (offline?):', err?.message);
           setIsPlatformAdmin(false);
           setActiveAccountId(cached.accountId);
-          setActiveVenueId(VENUE_ID);
+          // The venue resolved on the last successful launch; VENUE_ID only for
+          // sessions cached before this was stored.
+          setActiveVenueId(cached.venueId || VENUE_ID);
           setRole(cached.role || 'staff');
           setCurrentUser(user);
           setAuthorized(true);
@@ -375,6 +407,26 @@ export const AuthProvider = ({ children }) => {
     try { localStorage.setItem('bb_active_tenant', JSON.stringify({ accountId, venueId })); } catch { /* ignore */ }
   };
 
+  /**
+   * Super-admin: delete a customer account and everything under it. The server
+   * does the work and re-checks the caller; this only handles the aftermath —
+   * if we were switched into that account, its path is now dangling, so drop
+   * back to the platform's own account.
+   */
+  const deleteAccount = async (accountId) => {
+    try {
+      const res = await httpsCallable(functions, 'deleteAccount')({ accountId });
+      if (activeAccountId === accountId) {
+        try { localStorage.removeItem('bb_active_tenant'); } catch { /* ignore */ }
+        setActiveAccountId(ACCOUNT_ID);
+        setActiveVenueId(VENUE_ID);
+      }
+      return { success: true, revoked: res?.data?.revoked ?? 0 };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
   // The signed-in user's own member record (matched by email from the live
   // members subscription). Drives display name and per-member feature flags.
   const currentMember = members.find(
@@ -425,6 +477,7 @@ export const AuthProvider = ({ children }) => {
     // Platform (super-admin)
     isPlatformAdmin,
     switchTenant,
+    deleteAccount,
     activeAccountId,
     activeVenueId,
 
