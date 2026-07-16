@@ -16,7 +16,6 @@ import { getThemeColors } from '../utils/theme';
 import { dayShifts, isLeaveDay, isSickDay, dayMinutes } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
-import RotaFullscreen from '../components/RotaFullscreen';
 import ShiftEditor from '../components/ShiftEditor';
 import CoverPicker from '../components/CoverPicker';
 import ShiftBoard from '../components/ShiftBoard';
@@ -85,7 +84,6 @@ function Rota() {
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
   const [cover, setCover] = useState(null); // { row, dayKey, shifts } — "find cover" picker
-  const [fullscreen, setFullscreen] = useState(false); // whole-screen read-only view
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -349,20 +347,10 @@ function Rota() {
             {timeFormat === '24h' ? '24h' : '12h'} clock
           </button>
         )}
-        {showGrid && (!isMobile || canEdit) && (
-          <button
-            type="button"
-            style={{ ...navBtn, ...(canEdit ? {} : { marginLeft: 'auto' }) }}
-            onClick={() => setFullscreen(true)}
-            title="View the rota full screen"
-          >
-            ⤢ Full screen
-          </button>
-        )}
         {canEdit && (
           <button
             type="button"
-            style={{ ...navBtn, ...(showGrid ? {} : { marginLeft: 'auto' }), backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
+            style={{ ...navBtn, marginLeft: showGrid ? undefined : 'auto', backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', fontWeight: 700 }}
             onClick={sendToStaff}
           >
             {sent ? 'Sent ✓' : published ? 'Re-send to staff' : 'Send to staff'}
@@ -384,32 +372,24 @@ function Rota() {
             This week's rota hasn't been published yet.
           </div>
         ) : (
-          // Only the admin edit view can edit — everywhere else, tapping the
-          // rota opens the whole-screen view instead.
-          <div
-            onClick={!canEdit ? () => setFullscreen(true) : undefined}
-            style={{ cursor: !canEdit ? 'zoom-in' : 'default' }}
-            title={!canEdit ? 'Tap to view full screen' : undefined}
-          >
-            <RotaGrid
-              days={days}
-              rows={rows}
-              readOnly={!canEdit}
-              compact={compact}
-              focusDayKey={canEdit ? null : todayKey}
-              highlightMemberId={myMemberId}
-              timeFormat={timeFormat}
-              onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
-              onReorder={reorderStaff}
-            />
-          </div>
+          <RotaGrid
+            days={days}
+            rows={rows}
+            readOnly={!canEdit}
+            compact={compact}
+            focusDayKey={canEdit ? null : todayKey}
+            highlightMemberId={myMemberId}
+            timeFormat={timeFormat}
+            onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
+            onReorder={reorderStaff}
+          />
         )}
       </div>
 
       {/* Staff shift board: swaps needing an answer, open shifts, and "can't
           work this?" cards. Mounted below the grid even when the visible week
           is unpublished — a swap for NEXT week must stay answerable from any
-          week. The fullscreen overlay (z 6000) simply covers it. */}
+          week. */}
       {!canEdit && myMemberId && !loading && shiftRequests && (
         <ShiftBoard
           venuePath={venuePath}
@@ -452,18 +432,6 @@ function Rota() {
           venuePath={venuePath}
           onDone={() => setCover(null)}
           onClose={() => setCover(null)}
-        />
-      )}
-
-      {fullscreen && showGrid && (
-        <RotaFullscreen
-          days={days}
-          rows={rows}
-          readOnly={!canEdit}
-          highlightMemberId={myMemberId}
-          timeFormat={timeFormat}
-          onCellClick={canEdit ? (row, dayKey) => setEditing({ row, dayKey }) : undefined}
-          onClose={() => setFullscreen(false)}
         />
       )}
     </div>
