@@ -15,7 +15,7 @@
  */
 
 import React, { useMemo, useState } from 'react';
-import { isFreeDay, shiftRangeLabel, requestDayISO, isActionableForMember } from '../utils/rota';
+import { isLeaveDay, isSickDay, shiftsOverlap, shiftRangeLabel, requestDayISO, isActionableForMember } from '../utils/rota';
 import { claimGiveaway, respondToSwap, cancelShiftRequest } from '../services/apiService';
 
 const PENDING_SET = ['open', 'claimed', 'pending_peer', 'accepted'];
@@ -118,7 +118,14 @@ function ShiftBoard({ venuePath, weekId, rows, requests, myMemberId, myName, tim
   // Free-ness for "Take this shift" is only knowable for the week on screen
   // (other weeks' rotas aren't loaded here) — elsewhere the claim goes through
   // and the manager's approval re-validates, which is the real gate anyway.
-  const cantTake = (r) => r.weekId === weekId && myRow && !isFreeDay(myRow.shifts?.[r.from.dayKey]);
+  // Clash-based, not free-day based: already working that day is fine (the
+  // approved claim becomes a split) — only marked-off days and overlapping
+  // times block. Only checkable for the week on screen; approval re-validates.
+  const cantTake = (r) => {
+    if (r.weekId !== weekId || !myRow) return false;
+    const myDay = myRow.shifts?.[r.from.dayKey];
+    return isLeaveDay(myDay) || isSickDay(myDay) || shiftsOverlap(myDay, r.from.shifts);
+  };
 
   if (!myMemberId) return null;
 
@@ -158,7 +165,7 @@ function ShiftBoard({ venuePath, weekId, rows, requests, myMemberId, myName, tim
               <div key={r.id} style={rowStyle}>
                 <span style={{ flex: '1 1 12rem', minWidth: 0, color: colors.textPrimary }}>
                   <strong>{r.from.name}</strong> can't work {dayDateLabel(r.weekId, r.from.dayKey)} · {timesOf(r.from)}
-                  {blocked && <span style={{ display: 'block', color: colors.textSecondary, fontSize: '0.8rem' }}>You're already on that day.</span>}
+                  {blocked && <span style={{ display: 'block', color: colors.textSecondary, fontSize: '0.8rem' }}>Clashes with your rota that day.</span>}
                 </span>
                 <button disabled={!!busy || blocked} onClick={() => take(r)} style={smallBtn(colors.success, '#fff', !!busy || blocked)}>
                   <BtnLabel idle="Take this shift" busyLabel="Claiming…" busy={busy?.id === r.id && busy.action === 'take'} />

@@ -13,7 +13,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests, createShiftRequest } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay, isSickDay, isFreeDay, dayMinutes, requestDayISO } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay, shiftsOverlap, dayMinutes, requestDayISO } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import ShiftEditor from '../components/ShiftEditor';
@@ -259,23 +259,31 @@ function Rota() {
     setAsking({ dayKey, shifts });
   };
 
-  // Swap partners for the sheet: colleagues free on my day, offering their
-  // future worked days where I'm free — with days already tied up in another
-  // pending request filtered out on both sides.
+  // Swap partners for the sheet. Eligibility is clash-based, not free-day
+  // based — someone already on the Thursday lunch CAN take your Thursday
+  // evening (it becomes a split), so a partner just needs: not marked off on
+  // your day, no time clash with your shifts there; and their offered days
+  // are ones they work where YOUR existing shifts don't clash either. Days
+  // already tied up in another pending request are out on both sides.
   const colleaguesFor = (dayKey) => {
     const myRow = rows.find((r) => r.memberId === myMemberId);
+    const givenShifts = dayShifts(myRow?.shifts?.[dayKey]);
     const today = toISODate(new Date());
     const pendingReqs = (shiftRequests || []).filter((q) => PENDING_STATUSES.includes(q.status));
+    const markedOff = (value) => isSickDay(value) || isLeaveDay(value);
     return rows
-      .filter((r) => r.memberId !== myMemberId && isFreeDay(r.shifts?.[dayKey]))
+      .filter((r) => r.memberId !== myMemberId
+        && !markedOff(r.shifts?.[dayKey])
+        && !shiftsOverlap(r.shifts?.[dayKey], givenShifts))
       .map((r) => ({
         memberId: r.memberId,
         name: r.name,
         days: DAY_KEYS
           .filter((k) => k !== dayKey
             && dayShifts(r.shifts?.[k]).length > 0
-            && !isSickDay(r.shifts?.[k]) && !isLeaveDay(r.shifts?.[k])
-            && isFreeDay(myRow?.shifts?.[k])
+            && !markedOff(r.shifts?.[k])
+            && !markedOff(myRow?.shifts?.[k])
+            && !shiftsOverlap(myRow?.shifts?.[k], r.shifts?.[k])
             && requestDayISO(weekId, k) >= today
             && !pendingReqs.some((q) => q.weekId === weekId
               && ((q.from.memberId === r.memberId && q.from.dayKey === k)

@@ -132,6 +132,36 @@ export function requestDayISO(weekId, dayKey) {
 // every race (double claims, concurrent edits, duplicate requests).
 // ---------------------------------------------------------------------------
 
+// A shift's [start, end) in minutes for clash tests: 'close' runs to end of
+// day, an end at/before the start runs overnight (same convention as
+// shiftMinutes). Overnight spill into the NEXT day is ignored — same-day
+// clashes are what matter, and the manager approves everything anyway.
+function shiftRange(s) {
+  const [sh, sm] = s.start.split(':').map(Number);
+  const start = sh * 60 + sm;
+  if (s.end === 'close') return [start, 1440];
+  const [eh, em] = s.end.split(':').map(Number);
+  let end = s.end === '00:00' ? 1440 : eh * 60 + em;
+  if (end <= start) end += 1440;
+  return [start, end];
+}
+
+/**
+ * True if any shift in `a` overlaps in time with any shift in `b` (same day).
+ * The swap/give-away rule is clash-based, not free-day-based: someone already
+ * on the Thursday lunch CAN take your Thursday evening — it's just a split.
+ */
+export function shiftsOverlap(a, b) {
+  const ra = dayShifts(a).map(shiftRange);
+  const rb = dayShifts(b).map(shiftRange);
+  return ra.some(([s1, e1]) => rb.some(([s2, e2]) => s1 < e2 && s2 < e1));
+}
+
+/** Real shifts sorted by start time — keeps merged split days reading in order. */
+function sortedShifts(list) {
+  return [...list].sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : 0));
+}
+
 /** Order-insensitive equality of two real-shift arrays (start+end pairs). */
 export function shiftsEqual(a, b) {
   const norm = (list) => (list || [])
@@ -181,19 +211,29 @@ export function validateRequestAgainstRows(rows, req) {
     return { ok: false, reason: `${req.from.name}'s shifts that day have changed` };
   }
 
+  // Receiving a day doesn't need it empty — a split shift is fine. It only
+  // needs the receiver not marked off (A/L/sick) and no time clash with what
+  // they already work. The manager approving is the judgement call on whether
+  // the resulting split is sensible.
+  const canReceive = (value, incoming, name) => {
+    if (isLeaveDay(value) || isSickDay(value)) {
+      return { ok: false, reason: `${name} is now marked off that day` };
+    }
+    if (shiftsOverlap(value, incoming)) {
+      return { ok: false, reason: `${name} now has a clashing shift that day` };
+    }
+    return { ok: true };
+  };
+
   if (req.kind === 'giveaway') {
     if (!req.claimedBy) return { ok: false, reason: 'No one has taken this shift yet' };
     const claimantDay = byId.get(req.claimedBy.memberId)?.shifts?.[req.from.dayKey];
-    if (!isFreeDay(claimantDay)) {
-      return { ok: false, reason: `${req.claimedBy.name} is no longer free that day` };
-    }
-    return { ok: true };
+    return canReceive(claimantDay, req.from.shifts, req.claimedBy.name);
   }
 
-  // Swap: the target's day must also still match, and each side must be free
-  // on the day they're receiving. (Receiving-day freeness rules out same-day
-  // swaps by construction — the target can't be both working their own day
-  // and free on it.)
+  // Swap: the target's day must also still match its snapshot, and each side
+  // must be able to receive the day they're taking. (Same-day trades are
+  // excluded at creation, so the two receiving days are always distinct.)
   const targetDay = byId.get(req.target.memberId)?.shifts?.[req.target.dayKey];
   if (isLeaveDay(targetDay) || isSickDay(targetDay)) {
     return { ok: false, reason: `${req.target.name}'s ${req.target.dayKey} is now marked off` };
@@ -201,42 +241,41 @@ export function validateRequestAgainstRows(rows, req) {
   if (!shiftsEqual(dayShifts(targetDay), req.target.shifts)) {
     return { ok: false, reason: `${req.target.name}'s shifts that day have changed` };
   }
-  const giverOnTargetDay = byId.get(req.from.memberId)?.shifts?.[req.target.dayKey];
-  if (!isFreeDay(giverOnTargetDay)) {
-    return { ok: false, reason: `${req.from.name} is no longer free on the day they'd take` };
-  }
-  const targetOnGiverDay = byId.get(req.target.memberId)?.shifts?.[req.from.dayKey];
-  if (!isFreeDay(targetOnGiverDay)) {
-    return { ok: false, reason: `${req.target.name} is no longer free on the day they'd take` };
-  }
-  return { ok: true };
+  const giverReceives = canReceive(byId.get(req.from.memberId)?.shifts?.[req.target.dayKey], req.target.shifts, req.from.name);
+  if (!giverReceives.ok) return giverReceives;
+  return canReceive(byId.get(req.target.memberId)?.shifts?.[req.from.dayKey], req.from.shifts, req.target.name);
 }
 
 /**
- * Apply an approved giveaway: the claimant gains the day, the giver loses it.
- * Returns NEW rows; callers must have validated first.
+ * Apply an approved giveaway: the claimant gains the day's shifts ON TOP of
+ * anything non-clashing they already work that day (a split), and the giver
+ * loses the day. Returns NEW rows; callers must have validated first.
  */
 export function applyGiveawayToRows(rows, req) {
   const map = rowsToMap(rows);
   const giver = rowFor(map, req.from.memberId, req.from.name);
   delete giver.shifts[req.from.dayKey];
   const claimant = rowFor(map, req.claimedBy.memberId, req.claimedBy.name);
-  claimant.shifts[req.from.dayKey] = req.from.shifts;
+  claimant.shifts[req.from.dayKey] = sortedShifts([...dayShifts(claimant.shifts[req.from.dayKey]), ...req.from.shifts]);
   return mapToRows(map);
 }
 
 /**
- * Apply an approved swap: the two members' two days exchange owners.
- * Returns NEW rows; callers must have validated first.
+ * Apply an approved swap: each member's traded day moves to the other, landing
+ * on top of anything non-clashing already worked on the receiving day (a
+ * split). Returns NEW rows; callers must have validated first.
  */
 export function applySwapToRows(rows, req) {
   const map = rowsToMap(rows);
   const giver = rowFor(map, req.from.memberId, req.from.name);
   const target = rowFor(map, req.target.memberId, req.target.name);
+  // What each already works on the day they're receiving (beyond the trade).
+  const giverKeeps = dayShifts(giver.shifts[req.target.dayKey]);
+  const targetKeeps = dayShifts(target.shifts[req.from.dayKey]);
   delete giver.shifts[req.from.dayKey];
   delete target.shifts[req.target.dayKey];
-  giver.shifts[req.target.dayKey] = req.target.shifts;
-  target.shifts[req.from.dayKey] = req.from.shifts;
+  giver.shifts[req.target.dayKey] = sortedShifts([...giverKeeps, ...req.target.shifts]);
+  target.shifts[req.from.dayKey] = sortedShifts([...targetKeeps, ...req.from.shifts]);
   return mapToRows(map);
 }
 

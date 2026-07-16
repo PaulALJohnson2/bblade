@@ -90,7 +90,7 @@ function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, onSubmit,
             <button type="button" style={bigOption(!anySwaps || !!busy)} disabled={!anySwaps || !!busy} onClick={() => setStep('swap')}>
               <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'block' }}>Swap with someone</span>
               <span style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>
-                {anySwaps ? 'Trade it for one of their days this week.' : "No one's free to swap with this week."}
+                {anySwaps ? 'Trade it for one of their days this week.' : 'No swappable days this week — everyone clashes or is off.'}
               </span>
             </button>
           </>
