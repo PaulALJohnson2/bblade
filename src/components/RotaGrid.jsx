@@ -114,7 +114,11 @@ function RotaGrid({ days, rows, onCellClick, onReorder, readOnly = false, highli
   const grid = {
     display: 'grid',
     gridTemplateColumns: `${nameColW} ${dayCols} ${totalColW}`,
-    minWidth: compact ? 0 : '860px',
+    // The border box must always enclose the tracks: with a fixed minWidth the
+    // day columns' minimums can overflow past it on narrow screens, painting
+    // the border and rounded corners in the middle of the grid ("boxing"
+    // through a day column). max-content = never narrower than the columns.
+    minWidth: 'max-content',
     border: `1px solid ${colors.borderLight}`,
     borderRadius: '8px',
     // Stays overflow-visible so the pinned (sticky) name column works while
