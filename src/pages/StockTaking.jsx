@@ -985,7 +985,7 @@ function StockTaking() {
             margin-bottom: 25px;
           }
           .section-header {
-            background: #101828;
+            background: #1F3D73;
             color: white;
             padding: 10px 15px;
             font-size: 14px;
@@ -1056,7 +1056,7 @@ function StockTaking() {
           .total {
             margin-top: 30px;
             padding: 15px 20px;
-            background: linear-gradient(135deg, #101828 0%, #1B2A4A 100%);
+            background: linear-gradient(135deg, #1F3D73 0%, #2C56A4 100%);
             color: white;
             border-radius: 6px;
             display: flex;

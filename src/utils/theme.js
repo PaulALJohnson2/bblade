@@ -53,8 +53,8 @@ const lightTokens = {
   bgCard: '#FFFFFF',   // legacy → surface
   bgLight: '#EAEEF3',  // legacy → surfaceSunken
 
-  // Header — dark slate with white lettering
-  headerBg: '#101828', headerText: '#FFFFFF', headerSub: '#B9C1CE', headerBtn: '#1E2A40',
+  // Header — rich navy with white lettering
+  headerBg: '#1F3D73', headerText: '#FFFFFF', headerSub: '#C5CFE2', headerBtn: '#30508F',
 
   // Elevation
   shadow: 'rgba(16,24,40,.12)',            // legacy shadow color
