@@ -40,7 +40,7 @@ function ChangePassword() {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
-      background: 'linear-gradient(135deg, #14110A 0%, #3A2E14 100%)',
+      background: 'linear-gradient(135deg, #101828 0%, #1B2A4A 100%)',
       fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     }}>
       <div style={{ backgroundColor: colors.bgCard, borderRadius: '16px', padding: '2.25rem 2rem', maxWidth: '380px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>

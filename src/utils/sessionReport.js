@@ -78,10 +78,10 @@ export function printSessionReport(session, itemsById, pubName) {
     <style>
       * { margin:0; padding:0; box-sizing:border-box; }
       body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; padding:40px; color:#1a202c; max-width:800px; margin:0 auto; }
-      .header { text-align:center; margin-bottom:24px; padding-bottom:16px; border-bottom:3px solid #8E6E16; }
-      .header h1 { font-size:26px; color:#8E6E16; margin-bottom:6px; }
+      .header { text-align:center; margin-bottom:24px; padding-bottom:16px; border-bottom:3px solid #1E46A3; }
+      .header h1 { font-size:26px; color:#1E46A3; margin-bottom:6px; }
       .header .meta { font-size:14px; color:#4a5568; }
-      .badge { display:inline-block; font-size:12px; font-weight:700; padding:2px 8px; border-radius:9999px; background:#F6EDCF; color:#8E6E16; }
+      .badge { display:inline-block; font-size:12px; font-weight:700; padding:2px 8px; border-radius:9999px; background:#E4EBFA; color:#1E46A3; }
       .item { display:flex; justify-content:space-between; gap:16px; padding:8px 4px; border-bottom:1px solid #e2e8f0; }
       .item-name { font-weight:600; }
       .item-cat { display:block; font-size:12px; color:#718096; }

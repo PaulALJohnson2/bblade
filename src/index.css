@@ -8,38 +8,38 @@
  * everything updates from one place. JS inline styles mirror these in utils/theme.js.
  */
 :root {
-  /* ===== Canonical tokens — Light ("Champagne" black & gold) ===== */
-  --bg: #FAF7EF;
+  /* ===== Canonical tokens — Light ("Steel" cobalt blue on cool grey) ===== */
+  --bg: #F5F7FA;
   --surface: #FFFFFF;
-  --surface-sunken: #F1EADB;
+  --surface-sunken: #EAEEF3;
 
-  --text-primary: #1B1813;
-  --text-secondary: #6A6151;
-  --text-muted: #9C927F;
+  --text-primary: #161B26;
+  --text-secondary: #5B6472;
+  --text-muted: #8B94A5;
 
-  --border: #E8DFCB;
-  --border-strong: #D9CDB0;
+  --border: #DFE4EC;
+  --border-strong: #C7CFDB;
 
-  --primary: #A98521;
-  --primary-hover: #8E6E16;
-  --primary-soft: #F6EDCF;
-  --on-primary: #1A1505;
+  --primary: #2757C4;
+  --primary-hover: #1E46A3;
+  --primary-soft: #E4EBFA;
+  --on-primary: #FFFFFF;
 
   --success: #197A4B;  --success-soft: #E6F4EC;
   --warning: #C77A18;  --warning-soft: #FBF0DE;
   --danger:  #C0392F;  --danger-soft:  #F7E7E4;
 
-  --header-bg: #14110A; --header-text: #E5C45C; --header-sub: #C2AC75; --header-btn: #2A2417;
+  --header-bg: #101828; --header-text: #C9D9F4; --header-sub: #8CA0C2; --header-btn: #1E2A40;
 
-  --shadow-sm: 0 1px 2px rgba(20,15,5,.08);
-  --shadow-md: 0 6px 16px rgba(20,15,5,.12);
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.08);
+  --shadow-md: 0 6px 16px rgba(16,24,40,.12);
 
   /* ===== Back-compat aliases (consumed by existing app code) ===== */
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-light: var(--primary-soft);
-  --color-primary-dark: #7E6310;
-  --color-primary-darker: #5C480B;
+  --color-primary-dark: #1B3E90;
+  --color-primary-darker: #142E6C;
 
   --color-success: var(--success);
   --color-success-dark: #14613B;
@@ -59,39 +59,39 @@
   --color-bg-card: var(--surface);
   --color-bg-header: var(--header-bg);
 
-  --color-shadow: rgba(20,15,5,.12);
+  --color-shadow: rgba(16,24,40,.12);
 }
 
-/* ===== Dark mode ("Onyx & gold") ===== */
+/* ===== Dark mode ("Gunmetal" steel blue on near-black slate) ===== */
 [data-theme="dark"] {
-  --bg: #0A0A0B;
-  --surface: #18150F;
-  --surface-sunken: #100E09;
+  --bg: #0B0D12;
+  --surface: #12161F;
+  --surface-sunken: #0E1117;
 
-  --text-primary: #F2EBD9;
-  --text-secondary: #A89E86;
-  --text-muted: #79715A;
+  --text-primary: #E7EBF3;
+  --text-secondary: #99A3B6;
+  --text-muted: #667082;
 
-  --border: #2B2618;
-  --border-strong: #3B331F;
+  --border: #232B39;
+  --border-strong: #313B4E;
 
-  --primary: #E3B341;
-  --primary-hover: #EFC766;
-  --primary-soft: #2A2110;
-  --on-primary: #191300;
+  --primary: #6C9EF8;
+  --primary-hover: #8FB4FA;
+  --primary-soft: #18233A;
+  --on-primary: #071125;
 
   --success: #34B27B;  --success-soft: #143025;
   --warning: #E0A038;  --warning-soft: #2E2614;
   --danger:  #F0716E;  --danger-soft:  #2A1719;
 
-  --header-bg: #0A0A0B; --header-text: #E3B341; --header-sub: #BCA771; --header-btn: #241F12;
+  --header-bg: #0B0D12; --header-text: #8FB4FA; --header-sub: #6F80A0; --header-btn: #182236;
 
   --shadow-sm: 0 1px 2px rgba(0,0,0,.40);
   --shadow-md: 0 8px 20px rgba(0,0,0,.55);
 
   /* Back-compat literals that don't alias a canonical token */
-  --color-primary-dark: #B98F22;
-  --color-primary-darker: #8C6C18;
+  --color-primary-dark: #4A80E0;
+  --color-primary-darker: #3564BE;
   --color-success-dark: #2A8B5F;
   --color-error-dark: #D85C59;
   --color-shadow: rgba(0,0,0,.5);
