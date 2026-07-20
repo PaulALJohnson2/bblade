@@ -204,7 +204,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
         <input
           ref={nameRef} value={name} autoFocus
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Beavertown Neck Oil"
+          placeholder="e.g. Smirnoff Vodka"
           style={{ ...input, margin: '0.3rem 0 0.3rem', borderColor: isDuplicate ? colors.error : colors.border }}
         />
         <div style={{ minHeight: '1.1rem', margin: '0 0 0.75rem', fontSize: '0.78rem', color: colors.error }}>
