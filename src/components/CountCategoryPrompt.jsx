@@ -16,6 +16,7 @@
  */
 
 import React, { useState } from 'react';
+import { formatCategoryName } from '../utils/categoryName';
 
 function CountCategoryPrompt({ item, colors, saving = false, existingCategories = [], onConfirm }) {
   const suggestion = (item.categorySuggested || '').trim();
@@ -66,7 +67,7 @@ function CountCategoryPrompt({ item, colors, saving = false, existingCategories 
       <button
         type="button"
         disabled={saving || !value.trim()}
-        onClick={() => onConfirm(value.trim())}
+        onClick={() => onConfirm(formatCategoryName(value))}
         style={{
           padding: '0.8rem', backgroundColor: colors.primary, color: colors.onPrimary,
           border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '1rem',

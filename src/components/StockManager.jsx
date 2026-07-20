@@ -13,6 +13,7 @@ import { getAllStockItems, saveOrUpdateStockItem, deleteStockItem, bulkPatchStoc
 import UnitPicker from './UnitPicker';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
+import { formatCategoryName } from '../utils/categoryName';
 
 const sectionOf = (it) => (it.archived ? 'ignore' : (it.section || 'bar'));
 
@@ -63,7 +64,7 @@ function StockManager({ venuePath, canEdit = true }) {
     setBusy(true);
     const patch = {
       name: draft.name.trim() || it.name,
-      category: draft.category.trim(),
+      category: formatCategoryName(draft.category),
       section: draft.section === 'ignore' ? (it.section || 'bar') : draft.section,
       archived: draft.section === 'ignore',
       wholeUnit: draft.wholeUnit || '',
@@ -87,7 +88,7 @@ function StockManager({ venuePath, canEdit = true }) {
 
   // ---- category tools ----
   const renameCategory = async (oldName) => {
-    const next = (catDrafts[oldName] ?? oldName).trim();
+    const next = formatCategoryName(catDrafts[oldName] ?? oldName);
     if (!next || next === oldName) return;
     setBusy(true);
     await bulkPatchStockItems(venuePath, itemsInCat(oldName).map(i => i.id), { category: next });

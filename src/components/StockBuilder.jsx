@@ -21,6 +21,7 @@ import React, { useRef, useState } from 'react';
 import { saveOrUpdateStockItem, saveStockCount } from '../services/apiService';
 import UnitPicker from './UnitPicker';
 import { dupKey } from '../utils/stockDedup';
+import { formatCategoryName } from '../utils/categoryName';
 import { parseUnitInfo } from '../utils/stockUnitUtils';
 import { computeCount } from '../utils/countMath';
 import { getThemeColors } from '../utils/theme';
@@ -70,6 +71,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
 
   const save = async () => {
     const nm = name.trim();
+    const cat = formatCategoryName(category);
     if (!nm || saving) return;
     if (isDuplicate) { setError(`"${nm}" with that volume is already in your stock list.`); return; }
     setSaving(true);
@@ -78,7 +80,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
     const res = await saveOrUpdateStockItem(venuePath, null, {
       name: nm,
       section,
-      category: category.trim(),
+      category: cat,
       wholeUnit: unit.wholeUnit || '',
       partUnit: unit.partUnit || '',
       unit: unit.unit || '',
@@ -125,8 +127,8 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
 
     setSaving(false);
     setAdded((a) => [{ name: nm, wholeUnit: unit.wholeUnit || '', partUnit: unit.partUnit || '', counted }, ...a].slice(0, 50));
-    if (category.trim() && !cats.includes(category.trim())) {
-      setAddedCats((prev) => ({ ...prev, [section]: [...(prev[section] || []), category.trim()] }));
+    if (cat && !cats.includes(cat)) {
+      setAddedCats((prev) => ({ ...prev, [section]: [...(prev[section] || []), cat] }));
     }
     resetEntry();
   };
