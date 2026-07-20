@@ -212,13 +212,28 @@ function Admin() {
   const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Requests' };
 
   // ---- Hub: a 2-column grid of tiles into each settings section ----
+  // The admin area deliberately looks different from the staff Home hub:
+  // a black-and-gold banner (echoing the brand header) plus gold-tinted
+  // tiles, so an owner always knows which of the two grids they're on.
   if (!view) {
     return (
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-        <h1 style={{ margin: '0.25rem 0 1.25rem', fontSize: '1.5rem', color: colors.textPrimary }}>Admin</h1>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.85rem',
+          backgroundColor: colors.headerBg, border: `1px solid ${colors.primary}`,
+          borderRadius: '14px', padding: '0.9rem 1.1rem', marginBottom: '1.25rem',
+        }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={colors.headerText} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.35rem', color: colors.headerText }}>Admin</h1>
+            <div style={{ fontSize: '0.8rem', color: colors.headerSub }}>Owner &amp; manager tools — staff can't see this area</div>
+          </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           {TILES.map((t) => (
-            <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} badge={t.badge} onClick={() => (t.to ? navigate(t.to) : setView(t.key))} />
+            <Tile key={t.key} variant="admin" label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} badge={t.badge} onClick={() => (t.to ? navigate(t.to) : setView(t.key))} />
           ))}
         </div>
 
@@ -243,15 +258,24 @@ function Admin() {
   }
 
   // ---- A single section, with a back-to-hub header ----
+  // The back button and ADMIN chip reuse the banner's black-and-gold look so
+  // subsections stay visually part of the admin area, not the staff pages.
   const sectionHeader = (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
       <button
         onClick={() => setView(null)}
-        style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}
+        style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.headerBg, color: colors.headerText, border: `1px solid ${colors.primary}`, borderRadius: '8px', cursor: 'pointer', fontSize: '0.9rem' }}
       >
         ← Admin
       </button>
       <h1 style={{ margin: 0, fontSize: '1.5rem', color: colors.textPrimary }}>{SECTION_TITLES[view]}</h1>
+      <span style={{
+        marginLeft: 'auto', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.08em',
+        padding: '0.3rem 0.55rem', borderRadius: '9999px',
+        backgroundColor: colors.headerBg, color: colors.headerText, border: `1px solid ${colors.primary}`,
+      }}>
+        ADMIN
+      </span>
     </div>
   );
 

@@ -6,6 +6,8 @@
  *   label, desc   - foreground text
  *   icon          - array of SVG path `d` strings (the watermark)
  *   accent        - colour for the watermark (and a top accent bar)
+ *   variant       - 'admin' renders gold-tinted, gold-bordered tiles so the
+ *                   admin hub can't be mistaken for the staff home grid
  *   onClick, disabled, badge
  */
 
@@ -13,9 +15,10 @@ import React from 'react';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
-function Tile({ label, desc, icon = [], accent, onClick, disabled = false, badge }) {
+function Tile({ label, desc, icon = [], accent, onClick, disabled = false, badge, variant }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
+  const admin = variant === 'admin';
 
   return (
     <button
@@ -28,8 +31,8 @@ function Tile({ label, desc, icon = [], accent, onClick, disabled = false, badge
         aspectRatio: '1 / 1',
         width: '100%',
         borderRadius: '18px',
-        border: `1px solid ${colors.borderLight}`,
-        backgroundColor: colors.bgCard,
+        border: admin ? `1px solid ${colors.primary}` : `1px solid ${colors.borderLight}`,
+        backgroundColor: admin ? colors.primarySoft : colors.bgCard,
         boxShadow: `0 2px 12px ${colors.shadow}`,
         cursor: disabled ? 'default' : 'pointer',
         opacity: disabled ? 0.6 : 1,
