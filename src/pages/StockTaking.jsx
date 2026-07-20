@@ -34,6 +34,7 @@ import CountUnitPrompt from '../components/CountUnitPrompt';
 import CountCategoryPrompt from '../components/CountCategoryPrompt';
 import { itemHasUnit } from '../utils/unitTemplates';
 import { isDuplicateItem } from '../utils/stockDedup';
+import { formatCategoryName, compareCategories } from '../utils/categoryName';
 
 // First count of an imported-without-a-category item: confirm the AI suggestion.
 const itemNeedsCategory = (it) =>
@@ -283,14 +284,14 @@ function StockTaking() {
 
   // Categories available within the current section, for the category tabs
   const sectionItems = allItems.filter(item => !item.archived && (activeSection === 'all' || item.section === activeSection));
-  const categories = [...new Set(sectionItems.map(item => item.category).filter(Boolean))].sort();
+  const categories = [...new Set(sectionItems.map(item => item.category).filter(Boolean))].sort(compareCategories);
   // Append an "Other" tab when the section has any uncategorised items.
   if (sectionItems.some(item => !item.category)) categories.push(OTHER_CATEGORY);
   // Confirmed categories within one section, for section-scoped quick-pick pills —
   // bar categories must not surface in the kitchen and vice versa.
   const categoriesForSection = (section) => {
     const sec = section || 'bar';
-    return [...new Set(allItems.filter(i => !i.archived && (i.section || 'bar') === sec).map(i => i.category).filter(Boolean))].sort();
+    return [...new Set(allItems.filter(i => !i.archived && (i.section || 'bar') === sec).map(i => i.category).filter(Boolean))].sort(compareCategories);
   };
   // Per-section category lists for the builder (which switches section internally).
   const categoriesBySection = { bar: categoriesForSection('bar'), kitchen: categoriesForSection('kitchen') };
@@ -659,7 +660,7 @@ function StockTaking() {
       {
         name: formData.name.trim(),
         section: formData.section,
-        category: formData.category.trim(),
+        category: formatCategoryName(formData.category),
         quantity: parseFloat(formData.quantity) || 0,
         unit: formData.unit.trim(),
         wholeUnit: formData.wholeUnit.trim(),

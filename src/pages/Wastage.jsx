@@ -17,6 +17,7 @@ import { WASTAGE_REASONS } from '../utils/wastageReasons';
 import WastageEntry from '../components/WastageEntry';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
+import { compareCategories } from '../utils/categoryName';
 
 const sectionOf = (it) => (it.section === 'kitchen' ? 'kitchen' : 'bar');
 
@@ -88,7 +89,7 @@ function Wastage() {
     [items, section]
   );
   const categories = useMemo(
-    () => [...new Set(sectionItems.map((i) => i.category).filter(Boolean))].sort(),
+    () => [...new Set(sectionItems.map((i) => i.category).filter(Boolean))].sort(compareCategories),
     [sectionItems]
   );
   const visible = useMemo(() => sectionItems

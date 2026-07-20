@@ -18,6 +18,7 @@ import { formatItemDescription } from '../utils/stockUnitUtils';
 import DeliveryEntry from '../components/DeliveryEntry';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
+import { compareCategories } from '../utils/categoryName';
 
 const sectionOf = (it) => (it.section === 'kitchen' ? 'kitchen' : 'bar');
 
@@ -87,7 +88,7 @@ function Deliveries() {
     [items, section]
   );
   const categories = useMemo(
-    () => [...new Set(sectionItems.map((i) => i.category).filter(Boolean))].sort(),
+    () => [...new Set(sectionItems.map((i) => i.category).filter(Boolean))].sort(compareCategories),
     [sectionItems]
   );
   const visible = useMemo(() => sectionItems

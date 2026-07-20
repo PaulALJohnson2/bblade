@@ -16,6 +16,7 @@ import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 import { printSessionReport, downloadSessionCSV, formatDuration } from '../utils/sessionReport';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
+import { compareCategories } from '../utils/categoryName';
 
 const sectionColor = (section, colors) => (section === 'kitchen' ? '#d69e2e' : colors.primary);
 const ts = (t) => (t?.toDate ? t.toDate().getTime() : 0);
@@ -98,7 +99,7 @@ function StockOverview({ venuePath, canEdit = true }) {
   // Categories present in the items of the selected section.
   const categories = useMemo(() => {
     const inSection = items.filter((i) => !i.archived && (sectionFilter === 'all' || (i.section === 'kitchen' ? 'kitchen' : 'bar') === sectionFilter));
-    return [...new Set(inSection.map((i) => i.category).filter(Boolean))].sort();
+    return [...new Set(inSection.map((i) => i.category).filter(Boolean))].sort(compareCategories);
   }, [items, sectionFilter]);
 
   // Does this counted item match the active stock-item search / category filter?
