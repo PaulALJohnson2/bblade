@@ -49,6 +49,11 @@ function UnitPicker({ value = {}, onChange, colors, section, suggested = null })
   const selection = findSelection(value.wholeUnit, value.partUnit);
   const suggestion = suggested?.wholeUnit ? findSelection(suggested.wholeUnit, suggested.partUnit) : { templateKey: null, sizeLabel: null };
 
+  // Kegs and casks are the container — "comes in a case of" only makes sense
+  // for singles (bottles, cans, packs). Prefix test so custom sizes count too.
+  const isBulkContainer = (wholeUnit) => /^(keg|cask)\b/i.test(wholeUnit || '');
+  const keepCasePack = (wholeUnit) => (isBulkContainer(wholeUnit) ? 0 : value.casePack || 0);
+
   const pickTemplate = (t) => {
     setCustom(false);
     setCustomSizeOpen(false);
@@ -56,17 +61,17 @@ function UnitPicker({ value = {}, onChange, colors, section, suggested = null })
     setTemplateKey(t.key);
     // Auto-select the first size so a tap on the template already counts.
     const s = t.sizes[0];
-    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: `${t.label.replace(/^\S+\s/, '')} ${s.label}`.trim(), casePack: value.casePack || 0 });
+    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: `${t.label.replace(/^\S+\s/, '')} ${s.label}`.trim(), casePack: keepCasePack(s.wholeUnit) });
   };
 
   const pickSize = (s) => {
     setCustomSizeOpen(false);
-    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label, casePack: value.casePack || 0 });
+    onChange({ wholeUnit: s.wholeUnit, partUnit: s.partUnit, unit: s.label, casePack: keepCasePack(s.wholeUnit) });
   };
 
   const applyCustomSize = () => {
     const u = template ? customSizeFor(template.key, customSize, customUnit) : null;
-    if (u) onChange({ ...u, casePack: value.casePack || 0 });
+    if (u) onChange({ ...u, casePack: keepCasePack(u.wholeUnit) });
   };
 
   // Open the typed-size row, defaulting the unit toggle to the first unit.
@@ -190,8 +195,9 @@ function UnitPicker({ value = {}, onChange, colors, section, suggested = null })
         </div>
       )}
 
-      {/* Optional "comes in a case of N" — adds a Cases dimension when counting */}
-      {value.wholeUnit && (
+      {/* Optional "comes in a case of N" — adds a Cases dimension when counting.
+          Hidden for kegs/casks: the container IS the unit, cases don't apply. */}
+      {value.wholeUnit && !isBulkContainer(value.wholeUnit) && (
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.6rem' }}>
           <span style={{ fontSize: '0.82rem', color: colors.textSecondary, whiteSpace: 'nowrap' }}>Comes in a case of</span>
           <input

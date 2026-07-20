@@ -25,13 +25,16 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
   // Selected unit for multi-unit custom sizes (e.g. weight: kg vs g).
   const [customUnit, setCustomUnit] = useState('');
   const [casePack, setCasePack] = useState('');
-  const cp = () => { const n = parseInt(casePack, 10); return n > 0 ? n : 0; };
 
   // Only show measures that fit the item's section (no kegs for food, etc.).
   const TEMPLATES = templatesForSection(item.section);
   const template = TEMPLATES.find(t => t.key === templateKey) || null;
   const isCustom = templateKey === '__custom';
   const sizeMeta = template ? customSizeMeta(template.key) : null;
+  // Kegs and casks are the container — "comes in a case of" only makes sense
+  // for singles, so hide the row and drop any value typed before switching.
+  const isBulkContainer = template && (template.key === 'keg' || template.key === 'cask');
+  const cp = () => { if (isBulkContainer) return 0; const n = parseInt(casePack, 10); return n > 0 ? n : 0; };
 
   const select = {
     width: '100%',
@@ -76,7 +79,7 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
       </select>
 
       {/* Optional "comes in a case of N" — set before picking a size */}
-      {(template || isCustom) && (
+      {((template && !isBulkContainer) || isCustom) && (
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <span style={{ fontSize: '0.85rem', color: colors.textSecondary, whiteSpace: 'nowrap' }}>Comes in a case of</span>
           <input
