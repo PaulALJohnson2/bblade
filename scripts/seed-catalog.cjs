@@ -25,6 +25,27 @@ async function api(path, opts = {}) {
 
 const g = (f, k) => f?.[k]?.stringValue ?? f?.[k]?.integerValue ?? f?.[k]?.doubleValue ?? '';
 
+// Venue item names cleaned out of the catalog on 2026-07-20 (duplicates and
+// typos of entries we keep — "Barcardi", "Guinness - 0%" vs "Guinness 0.0",
+// etc.). Their nameKeys are skipped on re-seed so the dupes don't come back
+// while the underlying stock items still carry the old names.
+const SUPPRESS_NAMES = [
+  'Guinness - 0%', 'Guinness Zero', 'Barcardi', 'Appletizer', 'Gray Goose',
+  'Jamesons', 'Jonnie Walker Black', 'Jack Danials Honey', 'Jack Danials Fire',
+  'Jack Danials Blackcurrant', 'Kracken Rum', 'Kracken Coffee', 'Veuve Cliquet',
+  'Tanquary No Ten', 'Hendricks him', 'Heinken Zero', 'Old Moat',
+  "Peach Schnapps's", 'Courvosier VS', 'Capt Morgans Spiced',
+  'Captain Morgans Dark Rum', 'Coke Bottle', 'Coke Zero Bottle',
+  'Diet Coke Bottle', 'Redbull', 'Fevertree Tonic', 'Fevertree light',
+  'Fevertree mediterranean', 'Fevertree Elderflower', 'J20 - Apple & Raspberry',
+  'J20 - Orange & Passionfruit', 'Jägermeister', 'Kahlúa', 'Glenfiddich 12yr',
+  'Glenmorangie', 'Famous Grouse', 'Fireball whiskey', 'Havana Club Rum',
+  'Madri', 'Malfy Gin', 'Mount Gay', 'Laphroaig', 'Peroni - 0%',
+  'Remy Martin V.S.O.P', 'Smirnoff', 'Tanqueray Gin', 'Tanqueray Sevilla Orange',
+  'Thatchers', 'Whitley Neill Gin', 'St. Germain', 'Corona', '0% prosecco',
+  'Prosecco rosé Mini', 'Test beer',
+];
+
 // Normalise a product name for matching: lowercase, straighten curly quotes,
 // drop punctuation, collapse whitespace. "Jack Daniel’s" == "jack daniels".
 const nameKey = (name) => String(name || '')
@@ -86,9 +107,11 @@ const mode = (arr) => {
     });
   }
 
+  const suppress = new Set(SUPPRESS_NAMES.map(nameKey));
   const now = new Date().toISOString();
   const writes = [];
   for (const [key, arr] of [...groups.entries()].sort()) {
+    if (suppress.has(key)) continue;
     const unitVote = mode(arr.map(r => r.wholeUnit && `${r.wholeUnit}|${r.partUnit}|${r.unit}|${r.casePack}`));
     const [wholeUnit = '', partUnit = '', unit = '', casePack = '0'] = unitVote ? unitVote.split('|') : [];
     const entry = {

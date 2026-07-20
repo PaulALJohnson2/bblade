@@ -36,7 +36,7 @@ const BRANDS = [
   ['Staropramen', 'Draught Lager', keg50], ['Camden Hells', 'Draught Lager', keg30],
   // Draught IPA / pale
   ['Beavertown Neck Oil', 'Draught IPA', keg30], ['BrewDog Punk IPA', 'Draught IPA', keg30],
-  ['Camden Pale Ale', 'Draught IPA', keg30], ['Atlantic Pale Ale', 'Draught IPA', keg30],
+  ['Camden Pale Ale', 'Draught IPA', keg30], 
   // Draught stout
   ['Guinness', 'Draught Stout', keg50], ["Murphy's", 'Draught Stout', keg50],
   // Draught / cask ale
@@ -51,7 +51,7 @@ const BRANDS = [
   ["Inch's", 'Draught Cider', keg50], ['Stowford Press', 'Draught Cider', keg50],
   ['Aspall', 'Draught Cider', keg50], ['Somersby', 'Draught Cider', keg50],
   // Bottled beer
-  ['Corona Extra', 'Bottled Beer', btl(330, 24)], ['Peroni Nastro Azzurro Bottle', 'Bottled Beer', btl(330, 24)],
+  ['Corona Extra', 'Bottled Beer', btl(330, 24)], 
   ['Desperados', 'Bottled Beer', btl(330, 24)], ['Sol', 'Bottled Beer', btl(330, 24)],
   ['Tiger', 'Bottled Beer', btl(330, 24)], ["Beck's", 'Bottled Beer', btl(275, 24)],
   ['Newcastle Brown Ale', 'Bottled Beer', btl(550, 12)], ['Blue Moon', 'Bottled Beer', btl(330, 24)],
@@ -88,7 +88,7 @@ const BRANDS = [
   ['Silent Pool', 'Gin', sp70], ['Whitley Neill Blood Orange', 'Gin', sp70],
   ['Whitley Neill Parma Violet', 'Gin', sp70],
   // Rum
-  ['Kraken Black Spiced', 'Rum', sp70], ['Sailor Jerry Spiced', 'Rum', sp70],
+  ['Kraken Black Spiced', 'Rum', sp70], ['Kraken Coffee', 'Rum', sp70], ['Sailor Jerry Spiced', 'Rum', sp70],
   ['Havana Club 3 Year', 'Rum', sp70], ['Havana Club Especial', 'Rum', sp70],
   ['Havana Club 7 Year', 'Rum', sp70], ['Mount Gay Eclipse', 'Rum', sp70],
   ['Wray & Nephew Overproof', 'Rum', sp70], ["Lamb's Navy Rum", 'Rum', sp70],
@@ -96,6 +96,7 @@ const BRANDS = [
   ["Dead Man's Fingers Coconut", 'Rum', sp70], ['Diplomatico Reserva Exclusiva', 'Rum', sp70],
   ['Goslings Black Seal', 'Rum', sp70],
   // Whiskey
+  ["Jack Daniel's Fire", 'Whiskey', sp70], ["Jack Daniel's Blackcurrant", 'Whiskey', sp70],
   ["Jack Daniel's Honey", 'Whiskey', sp70], ['The Famous Grouse', 'Whiskey', sp70],
   ["Bell's Original", 'Whiskey', sp70], ['Johnnie Walker Red Label', 'Whiskey', sp70],
   ['Johnnie Walker Black Label', 'Whiskey', sp70], ['Monkey Shoulder', 'Whiskey', sp70],
@@ -116,10 +117,10 @@ const BRANDS = [
   ['Hennessy VS', 'Other Spirits', sp70], ['Remy Martin VSOP', 'Other Spirits', sp70],
   ['Martell VS', 'Other Spirits', sp70], ['Three Barrels VSOP', 'Other Spirits', sp70],
   // Liqueurs & aperitifs
-  ['Campari', 'Liqueurs & Aperitifs', sp70], ['Kahlua', 'Liqueurs & Aperitifs', sp70],
+  ['Campari', 'Liqueurs & Aperitifs', sp70], ['Peach Schnapps', 'Liqueurs & Aperitifs', sp70], ['Kahlua', 'Liqueurs & Aperitifs', sp70],
   ['Grand Marnier', 'Liqueurs & Aperitifs', sp70], ['Raspberry Sourz', 'Liqueurs & Aperitifs', sp70],
   ['Tequila Rose', 'Liqueurs & Aperitifs', sp70], ['Luxardo Limoncello', 'Liqueurs & Aperitifs', sp70],
-  ['Antica Sambuca Classic', 'Liqueurs & Aperitifs', sp70], ['Frangelico', 'Liqueurs & Aperitifs', sp70],
+  ['Frangelico', 'Liqueurs & Aperitifs', sp70],
   ['Drambuie', 'Liqueurs & Aperitifs', sp70], ['Midori', 'Liqueurs & Aperitifs', sp70],
   ['Passoa', 'Liqueurs & Aperitifs', sp70], ['St Germain', 'Liqueurs & Aperitifs', sp70],
   ['Martini Bianco', 'Liqueurs & Aperitifs', sp70], ['Martini Extra Dry', 'Liqueurs & Aperitifs', sp70],
@@ -133,13 +134,14 @@ const BRANDS = [
   ['19 Crimes Red', 'Wine', wine75], ['Yellow Tail Shiraz', 'Wine', wine75],
   ['Whispering Angel Rose', 'Wine', wine75], ['Cloudy Bay Sauvignon Blanc', 'Wine', wine75],
   // Sparkling
+  ['Prosecco 0%', 'Sparkling', btl(200, 24)], ['Prosecco Rose Mini', 'Sparkling', btl(200, 24)],
   ['Freixenet Prosecco', 'Sparkling', wine75], ['Mionetto Prosecco', 'Sparkling', wine75],
   ['Bottega Gold Prosecco', 'Sparkling', wine75], ['Moet & Chandon', 'Sparkling', wine75],
   ['Veuve Clicquot', 'Sparkling', wine75], ['Laurent-Perrier Brut', 'Sparkling', wine75],
   ['Laurent-Perrier Rose', 'Sparkling', wine75], ['Bollinger', 'Sparkling', wine75],
   ['Lanson Black Label', 'Sparkling', wine75], ['Taittinger', 'Sparkling', wine75],
   // Soft drinks
-  ['Diet Coke', 'Soft Drinks', btl(330, 24)], ['Fanta Orange', 'Soft Drinks', btl(330, 24)],
+  ['Diet Coke', 'Soft Drinks', btl(330, 24)], 
   ['J2O Orange & Passionfruit', 'Soft Drinks', btl(275, 24)],
   ['J2O Apple & Raspberry', 'Soft Drinks', btl(275, 24)],
   ['J2O Apple & Mango', 'Soft Drinks', btl(275, 24)],
