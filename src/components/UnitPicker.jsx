@@ -7,16 +7,19 @@
  * counting engine. A "Custom" escape hatch covers the long tail.
  *
  * Props:
- *   value    - { wholeUnit, partUnit }
- *   onChange - (next: { wholeUnit, partUnit, unit }) => void
- *   colors   - theme colours from getThemeColors(isDark)
+ *   value     - { wholeUnit, partUnit }
+ *   onChange  - (next: { wholeUnit, partUnit, unit }) => void
+ *   colors    - theme colours from getThemeColors(isDark)
+ *   suggested - optional { wholeUnit, partUnit } from the product catalog;
+ *               the matching template + size chips get a dashed highlight so
+ *               the likely size is one tap away (never auto-committed).
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { parseUnitInfo, formatItemDescription } from '../utils/stockUnitUtils';
 import { templatesForSection, findUnitSelection as findSelection, templateAcceptsCustomSize, customSizeMeta, customSizeFor } from '../utils/unitTemplates';
 
-function UnitPicker({ value = {}, onChange, colors, section }) {
+function UnitPicker({ value = {}, onChange, colors, section, suggested = null }) {
   const initial = findSelection(value.wholeUnit, value.partUnit);
   const [templateKey, setTemplateKey] = useState(initial.templateKey);
   // Custom mode when there's a value we don't recognise, or the user opts in.
@@ -29,9 +32,22 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
   const [customUnit, setCustomUnit] = useState('');
 
   // Only offer measures that fit the section (no kegs for food, etc.).
+  // Follow external value changes (e.g. a catalog suggestion filling the unit)
+  // so the right template opens without a tap. User taps still win: they set
+  // the value too, so this only fires when the two have drifted apart.
+  useEffect(() => {
+    const sel = findSelection(value.wholeUnit, value.partUnit);
+    if (sel.templateKey && sel.templateKey !== templateKey) {
+      setTemplateKey(sel.templateKey);
+      setCustom(false);
+      setCustomSizeOpen(false);
+    }
+  }, [value.wholeUnit, value.partUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const TEMPLATES = templatesForSection(section);
   const template = TEMPLATES.find(t => t.key === templateKey) || null;
   const selection = findSelection(value.wholeUnit, value.partUnit);
+  const suggestion = suggested?.wholeUnit ? findSelection(suggested.wholeUnit, suggested.partUnit) : { templateKey: null, sizeLabel: null };
 
   const pickTemplate = (t) => {
     setCustom(false);
@@ -66,14 +82,14 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
     onChange({ wholeUnit: value.wholeUnit || '', partUnit: value.partUnit || '', unit: value.unit || '', casePack: n > 0 ? n : 0 });
   };
 
-  const chip = (active) => ({
+  const chip = (active, hinted = false) => ({
     flexShrink: 0,
     padding: '0.5rem 0.85rem',
     borderRadius: '9999px',
-    border: `1px solid ${active ? colors.primary : colors.border}`,
+    border: hinted && !active ? `1px dashed ${colors.primary}` : `1px solid ${active ? colors.primary : colors.border}`,
     backgroundColor: active ? colors.primarySoft : colors.bgCard,
-    color: active ? colors.primary : colors.textPrimary,
-    fontWeight: active ? 700 : 500,
+    color: active || hinted ? colors.primary : colors.textPrimary,
+    fontWeight: active ? 700 : hinted ? 600 : 500,
     fontSize: '0.85rem',
     cursor: 'pointer',
     whiteSpace: 'nowrap',
@@ -94,7 +110,7 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
       {/* Template chips */}
       <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.35rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
         {TEMPLATES.map(t => (
-          <button type="button" key={t.key} onClick={() => pickTemplate(t)} style={chip(!custom && templateKey === t.key)}>
+          <button type="button" key={t.key} onClick={() => pickTemplate(t)} style={chip(!custom && templateKey === t.key, t.key === suggestion.templateKey)}>
             {t.label}
           </button>
         ))}
@@ -108,7 +124,7 @@ function UnitPicker({ value = {}, onChange, colors, section }) {
         <>
           <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', marginTop: '0.5rem', paddingBottom: '0.35rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
             {template.sizes.map(s => (
-              <button type="button" key={s.label} onClick={() => pickSize(s)} style={chip(!customSizeOpen && selection.sizeLabel === s.label)}>
+              <button type="button" key={s.label} onClick={() => pickSize(s)} style={chip(!customSizeOpen && selection.sizeLabel === s.label, template.key === suggestion.templateKey && s.label === suggestion.sizeLabel)}>
                 {s.label}
               </button>
             ))}

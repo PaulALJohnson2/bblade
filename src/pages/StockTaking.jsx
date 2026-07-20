@@ -35,6 +35,7 @@ import CountCategoryPrompt from '../components/CountCategoryPrompt';
 import { itemHasUnit } from '../utils/unitTemplates';
 import { isDuplicateItem } from '../utils/stockDedup';
 import { formatCategoryName, compareCategories } from '../utils/categoryName';
+import { loadCatalog, matchCatalog, bestCatalogMatch } from '../services/catalogService';
 
 // First count of an imported-without-a-category item: confirm the AI suggestion.
 const itemNeedsCategory = (it) =>
@@ -148,6 +149,39 @@ function StockTaking() {
     unitCost: '',
     notes: ''
   });
+
+  // Shared product lookup for the add-item form: known products suggest
+  // themselves while typing; the category fills in and the size highlights.
+  const [catalog, setCatalog] = useState([]);
+  useEffect(() => { if (showAdminForm && !catalog.length) loadCatalog().then(setCatalog); }, [showAdminForm]); // eslint-disable-line react-hooks/exhaustive-deps
+  const catalogSuggestions = useMemo(
+    () => (showAdminForm ? matchCatalog(catalog, formData.name, { section: formData.section }) : []),
+    [showAdminForm, catalog, formData.name, formData.section]
+  );
+  const catalogHit = useMemo(
+    () => (showAdminForm ? bestCatalogMatch(catalog, formData.name, formData.section) : null),
+    [showAdminForm, catalog, formData.name, formData.section]
+  );
+  // Only overwrite a category the lookup itself put there — never the user's.
+  const autoCatRef = useRef('');
+  useEffect(() => {
+    if (!catalogHit?.category) return;
+    setFormData((fd) => {
+      if (fd.category.trim() && fd.category !== autoCatRef.current) return fd;
+      autoCatRef.current = catalogHit.category;
+      return { ...fd, category: catalogHit.category };
+    });
+  }, [catalogHit?.category]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applyCatalogSuggestion = (s) => {
+    if (s.category) autoCatRef.current = s.category;
+    setFormData((fd) => ({
+      ...fd,
+      name: s.name,
+      category: s.category || fd.category,
+      ...(s.wholeUnit ? { wholeUnit: s.wholeUnit, partUnit: s.partUnit || '', unit: s.unit || '' } : {}),
+    }));
+  };
 
   // Check access
   useEffect(() => {
@@ -2808,6 +2842,23 @@ function StockTaking() {
                   }}
                   autoFocus
                 />
+                {/* Known products matching the typed name — tap to take name, category and size. */}
+                {catalogSuggestions.length > 0 && !(catalogSuggestions.length === 1 && catalogSuggestions[0].name === formData.name) && (
+                  <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', marginTop: '0.5rem', paddingBottom: '0.25rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+                    {catalogSuggestions.map((s) => (
+                      <button
+                        type="button" key={s.id || s.name} onClick={() => applyCatalogSuggestion(s)}
+                        style={{
+                          flexShrink: 0, padding: '0.4rem 0.75rem', borderRadius: '9999px',
+                          border: `1px dashed ${colors.primary}`, backgroundColor: colors.bgCard,
+                          color: colors.primary, fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {s.name}{s.category ? <span style={{ fontWeight: 400, color: colors.textSecondary }}> · {s.category}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500', color: colors.textPrimary }}>
@@ -2901,6 +2952,7 @@ function StockTaking() {
                   section={formData.section}
                   value={{ wholeUnit: formData.wholeUnit, partUnit: formData.partUnit }}
                   onChange={(next) => setFormData({ ...formData, wholeUnit: next.wholeUnit, partUnit: next.partUnit, unit: next.unit })}
+                  suggested={catalogHit}
                   colors={colors}
                 />
               </div>

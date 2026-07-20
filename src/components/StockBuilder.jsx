@@ -17,11 +17,12 @@
  *   onClose()
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { saveOrUpdateStockItem, saveStockCount } from '../services/apiService';
+import { loadCatalog, matchCatalog, bestCatalogMatch } from '../services/catalogService';
 import UnitPicker from './UnitPicker';
 import { dupKey } from '../utils/stockDedup';
-import { formatCategoryName } from '../utils/categoryName';
+import { formatCategoryName, compareCategories } from '../utils/categoryName';
 import { parseUnitInfo } from '../utils/stockUnitUtils';
 import { computeCount } from '../utils/countMath';
 import { getThemeColors } from '../utils/theme';
@@ -46,7 +47,30 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
   // Categories the user has added this session, keyed by section, merged with the
   // section's existing ones so the quick-pick never mixes bar and kitchen.
   const [addedCats, setAddedCats] = useState({});
-  const cats = [...new Set([...(categoriesBySection[section] || []), ...(addedCats[section] || [])])].sort();
+  const cats = [...new Set([...(categoriesBySection[section] || []), ...(addedCats[section] || [])])].sort(compareCategories);
+
+  // Shared product lookup: known products suggest themselves while typing —
+  // the category fills in and UnitPicker highlights the known size.
+  const [catalog, setCatalog] = useState([]);
+  useEffect(() => { loadCatalog().then(setCatalog); }, []);
+  const suggestions = useMemo(() => matchCatalog(catalog, name, { section }), [catalog, name, section]);
+  const catalogHit = useMemo(() => bestCatalogMatch(catalog, name, section), [catalog, name, section]);
+  // Only overwrite a category the lookup itself put there — never the user's.
+  const autoCat = useRef('');
+  useEffect(() => {
+    if (!catalogHit?.category) return;
+    if (!category.trim() || category === autoCat.current) {
+      autoCat.current = catalogHit.category;
+      setCategory(catalogHit.category);
+    }
+  }, [catalogHit?.category]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applySuggestion = (e) => {
+    setName(e.name);
+    if (e.category) { autoCat.current = e.category; setCategory(e.category); }
+    if (e.wholeUnit) setUnit({ wholeUnit: e.wholeUnit, partUnit: e.partUnit || '', unit: e.unit || '', casePack: e.casePack || 0 });
+    nameRef.current?.focus();
+  };
 
   const unitInfo = parseUnitInfo({ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit });
   const useTenths = unitInfo.hasPartUnit && unitInfo.hasTenthsOption;
@@ -187,6 +211,24 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
           {isDuplicate ? 'Already in your list at this volume — change the name or the volume.' : ''}
         </div>
 
+        {/* Known products matching the typed name — tap to take name, category and size. */}
+        {suggestions.length > 0 && !(suggestions.length === 1 && suggestions[0].name === name) && (
+          <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', margin: '-0.5rem 0 0.75rem', paddingBottom: '0.25rem', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }}>
+            {suggestions.map((s) => (
+              <button
+                type="button" key={s.id || s.name} onClick={() => applySuggestion(s)}
+                style={{
+                  flexShrink: 0, padding: '0.4rem 0.75rem', borderRadius: '9999px',
+                  border: `1px dashed ${colors.primary}`, backgroundColor: colors.bgCard,
+                  color: colors.primary, fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+              >
+                {s.name}{s.category ? <span style={{ fontWeight: 400, color: colors.textSecondary }}> · {s.category}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+
         <label style={{ fontSize: '0.8rem', fontWeight: 600, color: colors.textSecondary }}>Category (optional)</label>
         <input
           list="sb-cats" value={category}
@@ -222,7 +264,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
 
         <label style={{ fontSize: '0.8rem', fontWeight: 600, color: colors.textSecondary }}>Volume / how it's counted</label>
         <div style={{ marginTop: '0.4rem' }}>
-          <UnitPicker section={section} value={{ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, unit: unit.unit, casePack: unit.casePack }} onChange={setUnit} colors={colors} />
+          <UnitPicker section={section} value={{ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, unit: unit.unit, casePack: unit.casePack }} onChange={setUnit} colors={colors} suggested={catalogHit} />
         </div>
 
         {/* Optional count */}

@@ -111,6 +111,15 @@ service cloud.firestore {
       allow read, write: if platformAdmin();
     }
 
+    // Shared product catalog — cross-venue lookup that pre-fills category and
+    // suggests the size when adding stock. Read-only for every signed-in
+    // member; curated by platform staff (reseeded by script) so one venue's
+    // typo can't feed suggestions to another.
+    match /catalog/{productId} {
+      allow read: if request.auth != null;
+      allow write: if platformAdmin();
+    }
+
     // Deny anything outside the modelled paths above.
     match /{document=**} {
       allow read, write: if false;
