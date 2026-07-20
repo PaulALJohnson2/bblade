@@ -53,8 +53,8 @@ const lightTokens = {
   bgCard: '#FFFFFF',   // legacy → surface
   bgLight: '#EAEEF3',  // legacy → surfaceSunken
 
-  // Header — dark slate with ice-blue lettering
-  headerBg: '#101828', headerText: '#C9D9F4', headerSub: '#8CA0C2', headerBtn: '#1E2A40',
+  // Header — dark slate with white lettering
+  headerBg: '#101828', headerText: '#FFFFFF', headerSub: '#B9C1CE', headerBtn: '#1E2A40',
 
   // Elevation
   shadow: 'rgba(16,24,40,.12)',            // legacy shadow color
@@ -104,8 +104,8 @@ const darkTokens = {
   bgCard: '#12161F',
   bgLight: '#0E1117',
 
-  // Header — near-black slate with steel-blue lettering
-  headerBg: '#0B0D12', headerText: '#8FB4FA', headerSub: '#6F80A0', headerBtn: '#182236',
+  // Header — near-black slate with white lettering
+  headerBg: '#0B0D12', headerText: '#FFFFFF', headerSub: '#99A3B6', headerBtn: '#182236',
 
   // Elevation
   shadow: 'rgba(0,0,0,.5)',
