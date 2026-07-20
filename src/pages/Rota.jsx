@@ -280,6 +280,10 @@ function Rota() {
   // there. Their offered days are ones they work (in any fetched week) where
   // MY rota that week doesn't clash. Days already tied up in another pending
   // request are out on both sides.
+  //
+  // EVERY colleague is returned, unavailable ones with a `reason` — the sheet
+  // shows why each person can't trade rather than silently vanishing them
+  // (an empty filtered list reads as a broken button, not a full rota).
   const colleaguesFor = (dayKey) => {
     const myRow = rows.find((r) => r.memberId === myMemberId);
     const givenShifts = dayShifts(myRow?.shifts?.[dayKey]);
@@ -289,13 +293,15 @@ function Rota() {
     const dateLabel = (w, k) => new Date(`${requestDayISO(w, k)}T12:00:00`)
       .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
     return rows
-      .filter((r) => r.memberId !== myMemberId
-        && !markedOff(r.shifts?.[dayKey])
-        && !shiftsOverlap(r.shifts?.[dayKey], givenShifts))
-      .map((r) => ({
-        memberId: r.memberId,
-        name: r.name,
-        days: (swapWeeks || []).flatMap((wk) => {
+      .filter((r) => r.memberId !== myMemberId)
+      .map((r) => {
+        if (markedOff(r.shifts?.[dayKey])) {
+          return { memberId: r.memberId, name: r.name, days: [], reason: "they're off that day" };
+        }
+        if (shiftsOverlap(r.shifts?.[dayKey], givenShifts)) {
+          return { memberId: r.memberId, name: r.name, days: [], reason: 'their shift that day clashes with yours' };
+        }
+        const days = (swapWeeks || []).flatMap((wk) => {
           const theirRow = wk.rows.find((x) => x.memberId === r.memberId);
           const myWeekRow = wk.rows.find((x) => x.memberId === myMemberId);
           return DAY_KEYS
@@ -313,8 +319,14 @@ function Rota() {
               dayLabel: dateLabel(wk.weekId, k),
               shifts: dayShifts(theirRow?.shifts?.[k]),
             }));
-        }),
-      }));
+        });
+        return {
+          memberId: r.memberId,
+          name: r.name,
+          days,
+          reason: days.length ? null : 'no shifts of theirs you could take in the coming weeks',
+        };
+      });
   };
 
   const submitAsk = async (kind, target) => {
@@ -526,6 +538,7 @@ function Rota() {
           timeFormat={timeFormat}
           colleagues={colleaguesFor(asking.dayKey)}
           swapsLoading={swapWeeks === null}
+          weeksChecked={(swapWeeks || []).length}
           onSubmit={submitAsk}
           onClose={() => setAsking(null)}
         />

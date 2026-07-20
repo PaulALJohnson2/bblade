@@ -26,7 +26,7 @@ function BtnLabel({ idle, busyLabel, busy, align = 'center' }) {
   );
 }
 
-function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, swapsLoading = false, onSubmit, onClose }) {
+function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, swapsLoading = false, weeksChecked = 0, onSubmit, onClose }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const [step, setStep] = useState('choose'); // 'choose' | 'swap'
@@ -87,12 +87,13 @@ function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, swapsLoad
                 Anyone free can take it; your manager approves.
               </span>
             </button>
-            <button type="button" style={bigOption(swapsLoading || !anySwaps || !!busy)} disabled={swapsLoading || !anySwaps || !!busy} onClick={() => setStep('swap')}>
+            <button type="button" style={bigOption(swapsLoading || !colleagues.length || !!busy)} disabled={swapsLoading || !colleagues.length || !!busy} onClick={() => setStep('swap')}>
               <span style={{ fontWeight: 700, fontSize: '0.95rem', display: 'block' }}>Swap with someone</span>
               <span style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>
                 {swapsLoading ? 'Checking the coming weeks…'
-                  : anySwaps ? 'Trade it for one of their days in the coming weeks.'
-                    : 'No swappable days in the coming weeks — everything clashes or is off.'}
+                  : !colleagues.length ? 'No one else is on the rota for this venue.'
+                    : anySwaps ? 'Trade it for one of their days in the coming weeks.'
+                      : 'Nothing trades cleanly right now — tap to see why for each person.'}
               </span>
             </button>
           </>
@@ -102,10 +103,20 @@ function ShiftRequestSheet({ dayLabel, shifts, timeFormat, colleagues, swapsLoad
           <>
             <div style={{ color: colors.textSecondary, fontSize: '0.82rem', marginBottom: '0.6rem' }}>
               Pick the day you'd work instead — they take yours.
+              {weeksChecked > 0 && (
+                <span style={{ display: 'block', color: colors.textMuted, fontSize: '0.76rem', marginTop: '0.15rem' }}>
+                  Looking across {weeksChecked === 1 ? 'this week' : `${weeksChecked} published weeks`} — publishing further ahead offers more days.
+                </span>
+              )}
             </div>
-            {colleagues.filter((c) => c.days.length > 0).map((c) => (
+            {colleagues.map((c) => (
               <div key={c.memberId} style={{ marginBottom: '0.7rem' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>{c.name}</div>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: '0.3rem' }}>
+                  {c.name}
+                  {c.reason && (
+                    <span style={{ fontWeight: 400, color: colors.textMuted, fontSize: '0.78rem' }}> — {c.reason}</span>
+                  )}
+                </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
                   {c.days.map((d) => {
                     const key = `swap:${c.memberId}:${d.weekId || ''}:${d.dayKey}`;
