@@ -33,7 +33,7 @@ function CountUnitPrompt({ item, colors, saving = false, onAssign }) {
   const sizeMeta = template ? customSizeMeta(template.key) : null;
   // Kegs and casks are the container — "comes in a case of" only makes sense
   // for singles, so hide the row and drop any value typed before switching.
-  const isBulkContainer = template && (template.key === 'keg' || template.key === 'cask');
+  const isBulkContainer = template && (template.key === 'keg' || template.key === 'cask' || template.key === 'postmix');
   const cp = () => { if (isBulkContainer) return 0; const n = parseInt(casePack, 10); return n > 0 ? n : 0; };
 
   const select = {

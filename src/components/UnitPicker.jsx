@@ -51,7 +51,7 @@ function UnitPicker({ value = {}, onChange, colors, section, suggested = null })
 
   // Kegs and casks are the container — "comes in a case of" only makes sense
   // for singles (bottles, cans, packs). Prefix test so custom sizes count too.
-  const isBulkContainer = (wholeUnit) => /^(keg|cask)\b/i.test(wholeUnit || '');
+  const isBulkContainer = (wholeUnit) => /^(keg|cask|bib)\b/i.test(wholeUnit || '');
   const keepCasePack = (wholeUnit) => (isBulkContainer(wholeUnit) ? 0 : value.casePack || 0);
 
   const pickTemplate = (t) => {
