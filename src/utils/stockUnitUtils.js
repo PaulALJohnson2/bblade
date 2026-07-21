@@ -569,6 +569,7 @@ function abbreviateLabel(label) {
   const abbrevs = {
     'cases': 'c',
     'kegs': 'k',
+    'bibs': 'bib',
     'bottles': 'b',
     'tenths': 't',
     'dozens': 'd',

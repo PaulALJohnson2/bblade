@@ -56,6 +56,15 @@ export const UNIT_TEMPLATES = [
     ],
   },
   {
+    // Post mix syrup — bag-in-box, counted like kegs: full boxes + litres (or
+    // tenths) remaining in the open box on the line.
+    key: 'postmix', label: '🥤 Post mix (BIB)', sections: ['bar'], sizes: [
+      { label: '7L', wholeUnit: 'BIB 1*7ltr', partUnit: 'Litre' },
+      { label: '10L', wholeUnit: 'BIB 1*10ltr', partUnit: 'Litre' },
+      { label: '20L', wholeUnit: 'BIB 1*20ltr', partUnit: 'Litre' },
+    ],
+  },
+  {
     key: 'bottlecan', label: '🍾 Bottle / can', sections: ['bar'], sizes: [
       { label: '330ml', wholeUnit: '330ml', partUnit: '' },
       { label: '440ml', wholeUnit: '440ml', partUnit: '' },
@@ -121,6 +130,7 @@ export const UNIT_TEMPLATES = [
 const CUSTOM_BUILDERS = {
   keg:    { hint: 'Litres', suffix: 'L',  build: n => ({ wholeUnit: `Keg 1*${n}ltr`,  partUnit: 'Litre',    unit: `${n}L` }) },
   cask:   { hint: 'Gallons', suffix: 'G', build: n => ({ wholeUnit: `Cask 1*${n}gall`, partUnit: 'Gallon',   unit: `${n}G` }) },
+  postmix: { hint: 'Litres', suffix: 'L', build: n => ({ wholeUnit: `BIB 1*${n}ltr`,  partUnit: 'Litre',    unit: `${n}L` }) },
   spirit: { hint: 'cl', suffix: 'cl',     build: n => ({ wholeUnit: `Bottle 1*${n}cl`, partUnit: 'Tenth',    unit: `${n}cl` }) },
   wine:   { hint: 'cl', suffix: 'cl',     build: n => ({ wholeUnit: `Bottle 1*${n}cl`, partUnit: 'Tenth',    unit: `${n}cl` }) },
   bottlecan: { hint: 'ml', suffix: 'ml',  build: n => ({ wholeUnit: `${n}ml`,          partUnit: '',         unit: `${n}ml` }) },

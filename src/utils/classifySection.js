@@ -21,6 +21,7 @@ const BAR = [
   'lager', 'beer', 'cider', 'spirit', 'liquor', 'liqueur', 'brandy', 'ale',
   'port', 'sherry', 'vermouth', 'tonic', 'mixer', 'hot drink', 'coffee', 'tea',
   'aperitif', 'stout', 'ipa', 'pale', 'bitter', 'cordial', 'juice', 'minerals',
+  'post mix', 'postmix', 'post-mix', 'draught soft',
 ];
 
 // Strong "this isn't stock" signals — checked first.
