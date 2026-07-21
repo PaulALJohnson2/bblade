@@ -35,6 +35,11 @@ import CountCategoryPrompt from '../components/CountCategoryPrompt';
 import { itemHasUnit } from '../utils/unitTemplates';
 import { isDuplicateItem } from '../utils/stockDedup';
 import { formatCategoryName, compareCategories } from '../utils/categoryName';
+
+// Stock-walk ordering shared by the summary/view modals and the text/PDF
+// exports: category groups as a drinks menu runs, item names A–Z inside each.
+const walkOrder = (a, b) =>
+  compareCategories(a.category, b.category) || String(a.itemName || '').localeCompare(String(b.itemName || ''));
 import { loadCatalog, matchCatalog, bestCatalogMatch } from '../services/catalogService';
 
 // First count of an imported-without-a-category item: confirm the AI suggestion.
@@ -855,8 +860,9 @@ function StockTaking() {
         const unitInfo = item ? parseUnitInfo(item) : null;
         const hist = Array.isArray(count.history) ? count.history : [];
         const lastDelta = hist.length > 1 ? formatDelta(hist[hist.length - 2].quantity, hist[hist.length - 1].quantity, unitInfo) : null;
-        return { itemId, ...count, summary: formatCountSummary(count, unitInfo), lastDelta };
-      });
+        return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo), lastDelta };
+      })
+      .sort(walkOrder);
 
     const barCounted = buildCounted('bar');
     const kitchenCounted = buildCounted('kitchen');
@@ -874,21 +880,31 @@ function StockTaking() {
       return line + '\n';
     };
 
+    // Section body with a [Category] line wherever the walk-ordered category changes.
+    const sectionText = (counted) => {
+      let out = '';
+      let lastCategory = null;
+      counted.forEach(count => {
+        if (count.category && count.category !== lastCategory) {
+          out += `[${count.category}]\n`;
+          lastCategory = count.category;
+        }
+        out += formatCountText(count);
+      });
+      return out;
+    };
+
     if (barCounted.length > 0) {
       text += `BAR (${barCounted.length} items)\n`;
       text += `${'-'.repeat(40)}\n`;
-      barCounted.forEach(count => {
-        text += formatCountText(count);
-      });
+      text += sectionText(barCounted);
       text += '\n';
     }
 
     if (kitchenCounted.length > 0) {
       text += `KITCHEN (${kitchenCounted.length} items)\n`;
       text += `${'-'.repeat(40)}\n`;
-      kitchenCounted.forEach(count => {
-        text += formatCountText(count);
-      });
+      text += sectionText(kitchenCounted);
       text += '\n';
     }
 
@@ -918,8 +934,9 @@ function StockTaking() {
         const unitInfo = item ? parseUnitInfo(item) : null;
         const hist = Array.isArray(count.history) ? count.history : [];
         const lastDelta = hist.length > 1 ? formatDelta(hist[hist.length - 2].quantity, hist[hist.length - 1].quantity, unitInfo) : null;
-        return { itemId, ...count, summary: formatCountSummary(count, unitInfo), lastDelta };
-      });
+        return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo), lastDelta };
+      })
+      .sort(walkOrder);
 
     const barCounted = buildPdfCounted('bar');
     const kitchenCounted = buildPdfCounted('kitchen');
@@ -946,6 +963,12 @@ function StockTaking() {
         </div>
       `;
     };
+
+    // Items with a category sub-header wherever the (walk-ordered) category changes.
+    const renderItemsGrouped = (counted) => counted.map((count, idx) => {
+      const newCategory = count.category && (idx === 0 || count.category !== counted[idx - 1].category);
+      return (newCategory ? `<div class="cat-head">${count.category}</div>` : '') + renderItemHtml(count);
+    }).join('');
 
     const html = `
       <!DOCTYPE html>
@@ -1053,6 +1076,15 @@ function StockTaking() {
             color: #a0aec0;
             font-size: 11px;
           }
+          .cat-head {
+            margin: 14px 0 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #718096;
+            break-after: avoid;
+          }
           .total {
             margin-top: 30px;
             padding: 15px 20px;
@@ -1087,7 +1119,7 @@ function StockTaking() {
           <div class="section">
             <div class="section-header">Bar (${barCounted.length} items)</div>
             <div class="items">
-              ${barCounted.map(count => renderItemHtml(count)).join('')}
+              ${renderItemsGrouped(barCounted)}
             </div>
           </div>
         ` : ''}
@@ -1096,7 +1128,7 @@ function StockTaking() {
           <div class="section">
             <div class="section-header">Kitchen (${kitchenCounted.length} items)</div>
             <div class="items">
-              ${kitchenCounted.map(count => renderItemHtml(count)).join('')}
+              ${renderItemsGrouped(kitchenCounted)}
             </div>
           </div>
         ` : ''}
@@ -2288,10 +2320,12 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, summary: formatCountSummary(count, unitInfo) };
-                    });
+                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                    })
+                    .sort(walkOrder);
 
                   if (barCounted.length === 0) return null;
+                  const hasCategories = barCounted.some(c => c.category);
 
                   return (
                     <div style={{ marginBottom: '1.25rem' }}>
@@ -2308,11 +2342,18 @@ function StockTaking() {
                         Bar ({barCounted.length})
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {barCounted.map(count => {
+                        {barCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
                           const { total, detail } = splitSummary(count.summary);
+                          const newCategory = hasCategories && (idx === 0 || count.category !== barCounted[idx - 1].category);
                           return (
-                            <div key={count.itemId} style={{
+                            <React.Fragment key={count.itemId}>
+                            {newCategory && (
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.textSecondary, margin: idx === 0 ? '0 0 -0.2rem' : '0.5rem 0 -0.2rem', padding: '0 0.15rem' }}>
+                                {count.category || 'Uncategorised'}
+                              </div>
+                            )}
+                            <div style={{
                               padding: '0.625rem 0.75rem',
                               backgroundColor: colors.bgLight,
                               borderRadius: '6px'
@@ -2328,6 +2369,7 @@ function StockTaking() {
                               {detail && <div style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>{detail}</div>}
                               {renderCountMeta(count, item)}
                             </div>
+                            </React.Fragment>
                           );
                         })}
                       </div>
@@ -2345,10 +2387,12 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, summary: formatCountSummary(count, unitInfo) };
-                    });
+                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                    })
+                    .sort(walkOrder);
 
                   if (kitchenCounted.length === 0) return null;
+                  const hasCategories = kitchenCounted.some(c => c.category);
 
                   return (
                     <div style={{ marginBottom: '1.25rem' }}>
@@ -2365,11 +2409,18 @@ function StockTaking() {
                         Kitchen ({kitchenCounted.length})
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {kitchenCounted.map(count => {
+                        {kitchenCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
                           const { total, detail } = splitSummary(count.summary);
+                          const newCategory = hasCategories && (idx === 0 || count.category !== kitchenCounted[idx - 1].category);
                           return (
-                            <div key={count.itemId} style={{
+                            <React.Fragment key={count.itemId}>
+                            {newCategory && (
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.textSecondary, margin: idx === 0 ? '0 0 -0.2rem' : '0.5rem 0 -0.2rem', padding: '0 0.15rem' }}>
+                                {count.category || 'Uncategorised'}
+                              </div>
+                            )}
+                            <div style={{
                               padding: '0.625rem 0.75rem',
                               backgroundColor: colors.bgLight,
                               borderRadius: '6px'
@@ -2385,6 +2436,7 @@ function StockTaking() {
                               {detail && <div style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>{detail}</div>}
                               {renderCountMeta(count, item)}
                             </div>
+                            </React.Fragment>
                           );
                         })}
                       </div>
@@ -2532,10 +2584,12 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, summary: formatCountSummary(count, unitInfo) };
-                    });
+                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                    })
+                    .sort(walkOrder);
 
                   if (barCounted.length === 0) return null;
+                  const hasCategories = barCounted.some(c => c.category);
 
                   return (
                     <div style={{ marginBottom: '1rem' }}>
@@ -2550,11 +2604,18 @@ function StockTaking() {
                         Bar ({barCounted.length} items)
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        {barCounted.map(count => {
+                        {barCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
                           const { total, detail } = splitSummary(count.summary);
+                          const newCategory = hasCategories && (idx === 0 || count.category !== barCounted[idx - 1].category);
                           return (
-                            <div key={count.itemId} style={{
+                            <React.Fragment key={count.itemId}>
+                            {newCategory && (
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.textSecondary, margin: idx === 0 ? '0 0 -0.05rem' : '0.4rem 0 -0.05rem', padding: '0 0.15rem' }}>
+                                {count.category || 'Uncategorised'}
+                              </div>
+                            )}
+                            <div style={{
                               padding: '0.5rem',
                               backgroundColor: colors.bgLight,
                               borderRadius: '4px',
@@ -2571,6 +2632,7 @@ function StockTaking() {
                               {detail && <div style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>{detail}</div>}
                               {renderCountMeta(count, item)}
                             </div>
+                            </React.Fragment>
                           );
                         })}
                       </div>
@@ -2588,10 +2650,12 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, summary: formatCountSummary(count, unitInfo) };
-                    });
+                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                    })
+                    .sort(walkOrder);
 
                   if (kitchenCounted.length === 0) return null;
+                  const hasCategories = kitchenCounted.some(c => c.category);
 
                   return (
                     <div style={{ marginBottom: '1rem' }}>
@@ -2606,11 +2670,18 @@ function StockTaking() {
                         Kitchen ({kitchenCounted.length} items)
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                        {kitchenCounted.map(count => {
+                        {kitchenCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
                           const { total, detail } = splitSummary(count.summary);
+                          const newCategory = hasCategories && (idx === 0 || count.category !== kitchenCounted[idx - 1].category);
                           return (
-                            <div key={count.itemId} style={{
+                            <React.Fragment key={count.itemId}>
+                            {newCategory && (
+                              <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.textSecondary, margin: idx === 0 ? '0 0 -0.05rem' : '0.4rem 0 -0.05rem', padding: '0 0.15rem' }}>
+                                {count.category || 'Uncategorised'}
+                              </div>
+                            )}
+                            <div style={{
                               padding: '0.5rem',
                               backgroundColor: colors.bgLight,
                               borderRadius: '4px',
@@ -2627,6 +2698,7 @@ function StockTaking() {
                               {detail && <div style={{ color: colors.textSecondary, fontSize: '0.8rem' }}>{detail}</div>}
                               {renderCountMeta(count, item)}
                             </div>
+                            </React.Fragment>
                           );
                         })}
                       </div>
