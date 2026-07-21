@@ -370,6 +370,16 @@ function StockTaking() {
   const hasSessionForBuilder = (section) =>
     !!((currentSession?.id && currentSession.section === section) || builderSessionsRef.current[section]);
 
+  // Most recent completed take for a section — offered by the builder's dialog
+  // as an "add the count to this take" target (missed-items case).
+  const latestCompletedForBuilder = (section) => {
+    const ms = (t) => (t?.toDate ? t.toDate() : new Date(t)).getTime() || 0;
+    const done = allSessions.filter((s) => s.status === 'completed' && s.section === section);
+    if (!done.length) return null;
+    const s = done.reduce((a, b) => (ms(b.completedAt || b.createdAt) > ms(a.completedAt || a.createdAt) ? b : a));
+    return { id: s.id, completedAt: s.completedAt || s.createdAt, byName: resolveName(s.createdByName) };
+  };
+
   const getSessionForBuilder = async (section) => {
     if (currentSession?.id && currentSession.section === section) return currentSession.id;
     if (builderSessionsRef.current[section]) return builderSessionsRef.current[section];
@@ -1048,6 +1058,7 @@ function StockTaking() {
           initialSection={currentSession?.section || 'bar'}
           getSessionId={getSessionForBuilder}
           hasOpenSession={hasSessionForBuilder}
+          recentCompleted={latestCompletedForBuilder}
           onClose={() => setShowBuilder(false)}
         />
       )}
