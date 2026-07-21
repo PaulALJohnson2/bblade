@@ -72,7 +72,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
     nameRef.current?.focus();
   };
 
-  const unitInfo = parseUnitInfo({ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit });
+  const unitInfo = parseUnitInfo({ wholeUnit: unit.wholeUnit, partUnit: unit.partUnit, casePack: unit.casePack });
   const useTenths = unitInfo.hasPartUnit && unitInfo.hasTenthsOption;
   const usePart = unitInfo.hasPartUnit && !unitInfo.hasTenthsOption;
   const hasCount = !computeCount(unitInfo, { cases, whole, tenths, part }).empty;
