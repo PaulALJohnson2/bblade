@@ -364,6 +364,12 @@ function StockTaking() {
   // take if it's the same section, otherwise reuse/create one per section (cached
   // so several items in a builder run land in the same take).
   const builderSessionsRef = useRef({});
+  // Mirrors getSessionForBuilder's reuse rules — true when a count would land in
+  // an existing take rather than silently creating a new one. The builder asks
+  // the user before the first create (see StockBuilder's askSession dialog).
+  const hasSessionForBuilder = (section) =>
+    !!((currentSession?.id && currentSession.section === section) || builderSessionsRef.current[section]);
+
   const getSessionForBuilder = async (section) => {
     if (currentSession?.id && currentSession.section === section) return currentSession.id;
     if (builderSessionsRef.current[section]) return builderSessionsRef.current[section];
@@ -1041,6 +1047,7 @@ function StockTaking() {
           userName={userProfile?.displayName || currentUser?.email}
           initialSection={currentSession?.section || 'bar'}
           getSessionId={getSessionForBuilder}
+          hasOpenSession={hasSessionForBuilder}
           onClose={() => setShowBuilder(false)}
         />
       )}

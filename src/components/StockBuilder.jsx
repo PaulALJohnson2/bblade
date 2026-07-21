@@ -28,7 +28,7 @@ import { computeCount } from '../utils/countMath';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 
-function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [], userName, initialSection = 'bar', getSessionId, onClose }) {
+function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [], userName, initialSection = 'bar', getSessionId, hasOpenSession, onClose }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
   const nameRef = useRef(null);
@@ -43,6 +43,9 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
   const [part, setPart] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  // A count was entered but no stock take is open for this section — ask before
+  // starting one (a silently-created take reads as a mystery session later).
+  const [askSession, setAskSession] = useState(false);
   const [added, setAdded] = useState([]); // recent { name, wholeUnit, partUnit, counted }, newest first
   // Categories the user has added this session, keyed by section, merged with the
   // section's existing ones so the quick-pick never mixes bar and kitchen.
@@ -93,11 +96,19 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
     nameRef.current?.focus();
   };
 
-  const save = async () => {
+  const save = async ({ startSession = false, skipCount = false } = {}) => {
     const nm = name.trim();
     const cat = formatCategoryName(category);
     if (!nm || saving) return;
     if (isDuplicate) { setError(`"${nm}" with that volume is already in your stock list.`); return; }
+
+    const wantCount = !skipCount && !computeCount(unitInfo, { cases, whole, tenths, part }).empty;
+    // Count entered, no open take, user hasn't chosen yet → ask, save nothing.
+    if (wantCount && !startSession && hasOpenSession && !hasOpenSession(section)) {
+      setAskSession(true);
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -123,7 +134,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
     // Optional count → record it into this section's stock take (create on demand).
     const c = computeCount(unitInfo, { cases, whole, tenths, part });
     let counted = false;
-    if (!c.empty) {
+    if (wantCount) {
       try {
         const sid = await getSessionId(section);
         if (!sid) throw new Error('no stock take session');
@@ -318,7 +329,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
       {/* Save bar */}
       <div style={{ padding: '0.85rem 1.25rem max(0.85rem, env(safe-area-inset-bottom))', borderTop: `1px solid ${colors.borderLight}`, backgroundColor: colors.bgCard }}>
         <button
-          onClick={save}
+          onClick={() => save()}
           disabled={!name.trim() || saving || isDuplicate}
           style={{
             width: '100%', maxWidth: '480px', margin: '0 auto', display: 'block',
@@ -331,6 +342,38 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
           {saving ? 'Saving…' : isDuplicate ? 'Already added' : hasCount ? 'Save & count next →' : 'Save & add another →'}
         </button>
       </div>
+
+      {/* No open take for this section — ask what to do with the entered count. */}
+      {askSession && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 3100, backgroundColor: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
+          <div style={{ backgroundColor: colors.bgCard, borderRadius: '12px', padding: '1.25rem', maxWidth: '420px', width: '100%', boxSizing: 'border-box' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary, marginBottom: '0.4rem' }}>
+              No {section === 'kitchen' ? 'kitchen' : 'bar'} stock take is running
+            </div>
+            <div style={{ fontSize: '0.88rem', color: colors.textSecondary, marginBottom: '1rem', lineHeight: 1.45 }}>
+              To keep this count, a new {section === 'kitchen' ? 'kitchen' : 'bar'} stock take has to start. It will
+              show as <strong>in progress</strong> on the stock page until someone completes it.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => { setAskSession(false); save({ startSession: true }); }}
+                style={{ padding: '0.75rem', backgroundColor: colors.primary, color: colors.onPrimary, border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' }}
+              >Start a stock take & save the count</button>
+              <button
+                type="button"
+                onClick={() => { setAskSession(false); save({ skipCount: true }); }}
+                style={{ padding: '0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: `1px solid ${colors.border}`, borderRadius: '8px', fontWeight: 600, fontSize: '0.95rem', cursor: 'pointer' }}
+              >Add the item without the count</button>
+              <button
+                type="button"
+                onClick={() => setAskSession(false)}
+                style={{ padding: '0.6rem', backgroundColor: 'transparent', color: colors.textSecondary, border: 'none', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}
+              >Go back</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
