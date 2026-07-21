@@ -5,6 +5,7 @@
  */
 
 import { parseUnitInfo, formatCountOverview } from './stockUnitUtils';
+import { compareCategories } from './categoryName';
 
 const sectionLabel = (s) => (s === 'kitchen' ? 'Kitchen' : 'Bar');
 
@@ -33,7 +34,9 @@ export const formatDuration = (start, end) => {
 const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// One { name, summary } row per counted item, sorted by name.
+// One { name, summary } row per counted item, in stock-walk order: categories
+// as a drinks menu runs (draught, bottles, wine, spirits, softs…), names A–Z
+// inside each — so the report reads in sections, not one interleaved list.
 function countedRows(session, itemsById) {
   return Object.entries(session.counts || {})
     .map(([itemId, count]) => {
@@ -48,7 +51,19 @@ function countedRows(session, itemsById) {
         countedBy: Array.isArray(count.countedBy) ? count.countedBy.join(', ') : (count.countedBy || ''),
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => compareCategories(a.category, b.category) || a.name.localeCompare(b.name));
+}
+
+// Consecutive same-category runs → [{ category, rows }] for section rendering.
+function groupByCategory(rows) {
+  const groups = [];
+  for (const r of rows) {
+    const category = r.category || 'Uncategorised';
+    const last = groups[groups.length - 1];
+    if (last && last.category === category) last.rows.push(r);
+    else groups.push({ category, rows: [r] });
+  }
+  return groups;
 }
 
 /** Open a printable report for a session (browser print → PDF). */
@@ -63,14 +78,13 @@ export function printSessionReport(session, itemsById, pubName) {
     ? `Started ${esc(started)} &bull; Finished ${esc(finished)}${took ? ` &bull; Took ${esc(took)}` : ''}`
     : `Started ${esc(started)}`;
   const itemsHtml = rows.length
-    ? rows.map((r) => `
+    ? groupByCategory(rows).map((g) => `
+        <div class="cat-head">${esc(g.category)} <span class="cat-count">(${g.rows.length})</span></div>
+        ${g.rows.map((r) => `
         <div class="item">
-          <div class="item-left">
-            <span class="item-name">${esc(r.name)}</span>
-            ${r.category ? `<span class="item-cat">${esc(r.category)}</span>` : ''}
-          </div>
+          <span class="item-name">${esc(r.name)}</span>
           <span class="item-total">${esc(r.summary)}</span>
-        </div>`).join('')
+        </div>`).join('')}`).join('')
     : '<div class="empty">Nothing counted.</div>';
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
@@ -82,9 +96,10 @@ export function printSessionReport(session, itemsById, pubName) {
       .header h1 { font-size:26px; color:#1E46A3; margin-bottom:6px; }
       .header .meta { font-size:14px; color:#4a5568; }
       .badge { display:inline-block; font-size:12px; font-weight:700; padding:2px 8px; border-radius:9999px; background:#E4EBFA; color:#1E46A3; }
+      .cat-head { margin:20px 0 4px; padding:6px 4px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#1E46A3; border-bottom:2px solid #1E46A3; break-after:avoid; }
+      .cat-count { font-weight:500; color:#718096; text-transform:none; letter-spacing:0; }
       .item { display:flex; justify-content:space-between; gap:16px; padding:8px 4px; border-bottom:1px solid #e2e8f0; }
       .item-name { font-weight:600; }
-      .item-cat { display:block; font-size:12px; color:#718096; }
       .item-total { white-space:nowrap; color:#2d3748; }
       .empty { padding:16px; color:#718096; text-align:center; }
       @media print { body { padding:0; } }
