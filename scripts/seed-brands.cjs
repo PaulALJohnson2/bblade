@@ -20,6 +20,7 @@ const keg50 = { wholeUnit: 'Keg 1*50ltr', partUnit: 'Litre', unit: '50L', casePa
 const keg30 = { wholeUnit: 'Keg 1*30ltr', partUnit: 'Litre', unit: '30L', casePack: 0 };
 const cask9 = { wholeUnit: 'Cask 1*9gall', partUnit: 'Gallon', unit: '9G', casePack: 0 };
 const wine75 = { wholeUnit: 'Bottle 1*75cl', partUnit: 'Tenth', unit: '75cl', casePack: 6 };
+const bib7 = { wholeUnit: 'BIB 1*7ltr', partUnit: 'Litre', unit: '7L', casePack: 0 };
 const btl = (ml, cp) => ({ wholeUnit: `${ml}ml`, partUnit: '', unit: `${ml}ml`, casePack: cp });
 
 // ---- the brands: [name, category, unit] -------------------------------------
@@ -161,6 +162,14 @@ const BRANDS = [
   ['Britvic Cranberry Juice', 'Soft Drinks', btl(160, 24)],
   ['Fentimans Rose Lemonade', 'Soft Drinks', btl(275, 12)],
   ['Fentimans Ginger Beer', 'Soft Drinks', btl(275, 12)],
+  // Post mix (bag-in-box syrup — 7L is the UK standard for both CCEP and Britvic)
+  ['Coca-Cola Post Mix', 'Post Mix', bib7], ['Diet Coke Post Mix', 'Post Mix', bib7],
+  ['Coca-Cola Zero Sugar Post Mix', 'Post Mix', bib7],
+  ['Schweppes Lemonade Post Mix', 'Post Mix', bib7],
+  ['Pepsi Post Mix', 'Post Mix', bib7], ['Pepsi Max Post Mix', 'Post Mix', bib7],
+  ['Diet Pepsi Post Mix', 'Post Mix', bib7],
+  ['R Whites Lemonade Post Mix', 'Post Mix', bib7],
+  ['Tango Orange Post Mix', 'Post Mix', bib7], ['7UP Post Mix', 'Post Mix', bib7],
   // Alcopops / RTDs
   ['WKD Blue', 'Alcopops', btl(275, 24)], ['Smirnoff Ice', 'Alcopops', btl(275, 24)],
   ['VK Blue', 'Alcopops', btl(275, 24)], ['VK Orange & Passionfruit', 'Alcopops', btl(275, 24)],
