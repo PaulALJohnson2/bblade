@@ -163,7 +163,9 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
               </span>
               <span style={{ flex: 1 }} />
               <span style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
-                {venue.level.done} of {venue.level.total} · {venue.total} learned
+                {venue.level.complete
+                  ? `all ${venue.level.total} stages`
+                  : `stage ${venue.level.done + 1} of ${venue.level.total}`} · {venue.total} learned
               </span>
             </div>
             <div style={{ height: '8px', borderRadius: '4px', backgroundColor: colors.bgLight, overflow: 'hidden', marginTop: '0.35rem' }}>

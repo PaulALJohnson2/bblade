@@ -240,7 +240,7 @@ export const STAGES = [
     unlocks: 'Every line on a note lands on a real stock item',
     hint: 'Give every line on a note a stock item',
     have: (s) => s.bestLineMatchRate,
-    remaining: (have) => `${Math.round((1 - have) * 100)}% of lines still need a stock item`,
+    remaining: (have) => `a stock item for the other ${Math.round((1 - have) * 100)}% of lines`,
   },
   {
     key: 'recognised', name: 'Recognised', target: 10,

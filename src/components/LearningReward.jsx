@@ -119,7 +119,9 @@ function LearningReward({
             </span>
             {stageReached && <span className="bb-pop" style={{ fontSize: '0.68rem', fontWeight: 800, color: accent }}>REACHED</span>}
             <span style={{ flex: 1 }} />
-            <span style={{ fontSize: '0.68rem', color: colors.textMuted }}>{levelAfter.done} of {levelAfter.total}</span>
+            <span style={{ fontSize: '0.68rem', color: colors.textMuted }}>
+              {levelAfter.complete ? `all ${levelAfter.total} stages` : `stage ${levelAfter.done + 1} of ${levelAfter.total}`}
+            </span>
           </div>
           <div style={{ height: '8px', borderRadius: '4px', backgroundColor: colors.bgLight, overflow: 'hidden' }}>
             <div style={{ width: `${Math.round(barTo * 100)}%`, height: '100%', borderRadius: '4px', backgroundColor: accent, transition: 'width 900ms cubic-bezier(.2,.8,.3,1)' }} />
