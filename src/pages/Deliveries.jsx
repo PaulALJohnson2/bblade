@@ -306,6 +306,48 @@ function Deliveries() {
         onForget={handleForgetLearned}
       />
 
+      {/* Scanned delivery notes — the proof behind the entries above */}
+      {notes.length > 0 && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h2 style={{ fontSize: '1.05rem', color: colors.textPrimary, margin: '0 0 0.75rem' }}>Delivery notes</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {notes.map((n) => {
+              const when = n.uploadedAt?.toDate ? n.uploadedAt.toDate().toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+              const logged = Array.isArray(n.entryIds) ? n.entryIds.length : 0;
+              const confirming = confirmDeleteNote === n.id;
+              return (
+                <div key={n.id} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '10px', padding: '0.6rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <button
+                    onClick={() => openNote(n)}
+                    disabled={!n.imageStored}
+                    title={n.imageStored ? 'View the document' : 'No copy of this document was kept'}
+                    style={{ flexShrink: 0, width: '44px', height: '44px', padding: 0, border: `1px solid ${colors.borderLight}`, borderRadius: '8px', overflow: 'hidden', backgroundColor: colors.bgLight, cursor: n.imageStored ? 'zoom-in' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    {n.thumb
+                      ? <img src={n.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ fontSize: '1.2rem' }}>📄</span>}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {n.supplier || n.fileName || 'Delivery note'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
+                      {[n.reference && `Ref ${n.reference}`, `${logged} logged`, `${n.lineCount || 0} lines`].filter(Boolean).join(' · ')}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>{[n.uploadedBy, when].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {confirming ? (
+                    <button onClick={() => handleDeleteNote(n)} style={{ flexShrink: 0, padding: '0.5rem 0.75rem', backgroundColor: accent, color: colors.onDelivery, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>Confirm</button>
+                  ) : (
+                    <button onClick={() => setConfirmDeleteNote(n.id)} style={{ flexShrink: 0, padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Admin: learn case sizes from the existing stock list */}
       {admin && !bannerDismissed && missingCase.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.65rem 0.85rem', marginBottom: '0.75rem', backgroundColor: colors.deliverySoft, border: `1px solid ${colors.borderLight}`, borderRadius: '10px' }}>
@@ -478,48 +520,6 @@ function Deliveries() {
           </div>
         )}
       </div>
-
-      {/* Scanned delivery notes — the proof behind the entries above */}
-      {notes.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h2 style={{ fontSize: '1.05rem', color: colors.textPrimary, margin: '0 0 0.75rem' }}>Delivery notes</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            {notes.map((n) => {
-              const when = n.uploadedAt?.toDate ? n.uploadedAt.toDate().toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
-              const logged = Array.isArray(n.entryIds) ? n.entryIds.length : 0;
-              const confirming = confirmDeleteNote === n.id;
-              return (
-                <div key={n.id} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '10px', padding: '0.6rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <button
-                    onClick={() => openNote(n)}
-                    disabled={!n.imageStored}
-                    title={n.imageStored ? 'View the document' : 'No copy of this document was kept'}
-                    style={{ flexShrink: 0, width: '44px', height: '44px', padding: 0, border: `1px solid ${colors.borderLight}`, borderRadius: '8px', overflow: 'hidden', backgroundColor: colors.bgLight, cursor: n.imageStored ? 'zoom-in' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    {n.thumb
-                      ? <img src={n.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <span style={{ fontSize: '1.2rem' }}>📄</span>}
-                  </button>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {n.supplier || n.fileName || 'Delivery note'}
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
-                      {[n.reference && `Ref ${n.reference}`, `${logged} logged`, `${n.lineCount || 0} lines`].filter(Boolean).join(' · ')}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>{[n.uploadedBy, when].filter(Boolean).join(' · ')}</div>
-                  </div>
-                  {confirming ? (
-                    <button onClick={() => handleDeleteNote(n)} style={{ flexShrink: 0, padding: '0.5rem 0.75rem', backgroundColor: accent, color: colors.onDelivery, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>Confirm</button>
-                  ) : (
-                    <button onClick={() => setConfirmDeleteNote(n.id)} style={{ flexShrink: 0, padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Capture → read → review → log */}
       {scanOpen && (
