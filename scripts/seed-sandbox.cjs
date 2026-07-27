@@ -65,7 +65,13 @@ const fields = (o) => Object.fromEntries(
 );
 
 const writes = [];
-const put = (path, data) => writes.push({ update: { name: `${PARENT}/${path}`, fields: fields(data) } });
+// Everything this script writes is stamped `seeded`, and pruning only ever
+// removes documents carrying that stamp. Without it, re-seeding would delete
+// an in-progress stock take somebody was part way through — a playground where
+// refreshing the fixtures destroys your work is worse than no fixtures.
+const put = (path, data) => writes.push({
+  update: { name: `${PARENT}/${path}`, fields: fields({ ...data, seeded: true }) },
+});
 const del = (path) => writes.push({ delete: `${PARENT}/${path}` });
 
 /**
@@ -86,7 +92,8 @@ async function prune(collectionPath, keepIds) {
     const body = await res.json();
     for (const d of body.documents || []) {
       const id = d.name.split('/').pop();
-      if (!keepIds.has(id)) { del(`${collectionPath}/${id}`); n += 1; }
+      const isSeed = d.fields?.seeded?.booleanValue === true;
+      if (isSeed && !keepIds.has(id)) { del(`${collectionPath}/${id}`); n += 1; }
     }
     pageToken = body.nextPageToken || '';
   } while (pageToken);
@@ -363,6 +370,7 @@ const SHAPE_COVERAGE = [
 const SUPPLIERS = {
   WK: 'Welloak Drinks', WB: 'Welloak Drinks', WS: 'Welloak Drinks',
   WW: 'Welloak Drinks', WP: 'Welloak Drinks', HP: 'Harbour Provisions',
+  SB: 'Sandbox Supplies', ZZ: 'Sandbox Supplies',
 };
 const supplierOf = (code) => SUPPLIERS[code.slice(0, 2)] || 'Welloak Drinks';
 
@@ -430,7 +438,7 @@ async function mirrorStockList(accountId, venueId) {
   const body = await res.json();
   const g = (f, k) => (f[k] ? Object.values(f[k])[0] : '');
   return (body.documents || [])
-    .map((d) => {
+    .map((d, i) => {
       const f = d.fields || {};
       return {
         id: slug(g(f, 'name')),
@@ -442,12 +450,32 @@ async function mirrorStockList(accountId, venueId) {
           partUnit: g(f, 'partUnit'),
           unit: g(f, 'unit'),
         },
-        code: '',
+        // Mirrored items arrive with no supplier code. Synthesising one lets
+        // the sandbox generate delivery notes and learned mappings like any
+        // other venue — it's a test fixture, not a claim about the source.
+        code: `SB${String(1000 + i)}`,
         cost: Number(g(f, 'costPrice')) || 0,
         archived: g(f, 'archived') === true,
       };
     })
     .filter((i) => i.name && !i.archived);
+}
+
+/**
+ * A plausible weekly usage for a mirrored item, which arrives without one.
+ * Category-shaped rather than uniform, so the sandbox's fast lines behave like
+ * fast lines — a playground where everything moves at the same rate hides the
+ * bugs that only show up at the extremes.
+ */
+function assumeWeekly(item) {
+  const c = (item.category || '').toLowerCase();
+  const base =
+    /draught|post mix/.test(c) ? 1.6 :
+    /soft|snack|bottled/.test(c) ? 1.1 :
+    /wine|sparkling/.test(c) ? 1.3 :
+    /gin|vodka|rum|whisk|tequila|liqueur|spirit/.test(c) ? 1.0 :
+    0.7;
+  return Math.round((base * (0.35 + rand() * 1.5)) * 100) / 100;
 }
 
 /** Item metadata only — no writes yet, because quantity depends on history. */
@@ -662,12 +690,12 @@ function stockTakes(accountId, venueId, items, team, daysBackList) {
 }
 
 /** A little wastage, so the variance report has something to show. */
-function wastage(accountId, venueId, items, team) {
+function wastage(accountId, venueId, items, team, howMany = 46) {
   const path = `accounts/${accountId}/venues/${venueId}`;
   const lost = [];
-  for (let i = 0; i < 46; i++) {
+  for (let i = 0; i < howMany; i++) {
     const it = pick(items);
-    const at = daysAgo(between(1, 150));
+    const at = daysAgo(between(1, howMany > 20 ? 150 : 44));
     lost.push({ itemId: it.id, quantity: 1, at });
     put(`${path}/wastageLog/waste-${i}`, {
       itemId: it.id, itemName: it.name, section: it.section,
@@ -716,19 +744,31 @@ async function buildTest() {
   rows = [...rows, ...extras];
   if (extras.length) console.log(`  added ${extras.length} items to cover unit shapes the source doesn't stock`);
 
-  // Invented quantities, weighted so a stock take has part-units to count
-  // rather than a screen of round numbers.
+  // Give every item a usage figure so the sandbox can generate a history the
+  // same way the demo does.
+  for (const r of rows) r.weekly = r.weekly || assumeWeekly(r);
+
+  // A short history — enough to exercise variance, usage rates and the
+  // contribution panel without turning the playground into a second demo.
+  // Four counts is three measurable periods: sufficient to test the maths,
+  // small enough to hold in your head when something looks wrong.
+  const received = deliveries(TEST_ACCOUNT, TEST_VENUE, rows, {
+    supplier: 'Sandbox Supplies', weekday: 3, everyWeeks: 1, count: 7, prefix: 'SB', team: TEST_TEAM,
+  });
+  const lastTake = stockTakes(TEST_ACCOUNT, TEST_VENUE, rows, TEST_TEAM, [45, 31, 17, 3]);
+  const lost = wastage(TEST_ACCOUNT, TEST_VENUE, rows, TEST_TEAM, 12);
+
   const qty = {};
-  for (const r of rows) {
-    const upw = unitsPerWhole(r.unit);
-    qty[r.id] = between(0, 4) * upw + Math.round(rand() * upw * 0.7);
-  }
+  for (const r of rows) qty[r.id] = lastTake?.counts[r.id]?.quantity || 0;
+  const since = lastTake ? lastTake.at.getTime() : 0;
+  for (const r of received) if (r.at.getTime() > since) qty[r.itemId] = (qty[r.itemId] || 0) + r.quantity;
+  for (const w of lost) if (w.at.getTime() > since) qty[w.itemId] = (qty[w.itemId] || 0) - w.quantity;
+
   writeStockItems(TEST_ACCOUNT, TEST_VENUE, rows, qty, 'Sandbox Owner');
-  const dropped = await prune(
-    `accounts/${TEST_ACCOUNT}/venues/${TEST_VENUE}/stockItems`,
-    new Set(rows.map((r) => r.id)),
-  );
-  if (dropped) console.log(`  pruned ${dropped} items no longer in the source list`);
+  const dropped = await pruneSeeded(`accounts/${TEST_ACCOUNT}/venues/${TEST_VENUE}`, [
+    'stockItems', 'stockSessions', 'deliveryNotes', 'deliveryLog', 'supplierProducts', 'wastageLog',
+  ]);
+  if (dropped) console.log(`  pruned ${dropped} documents no longer produced by the seed`);
 
   const shapes = [...new Set(rows.map((r) => (r.unit.wholeUnit || '').split(' ')[0]))].sort();
   console.log(`  account ${TEST_ACCOUNT} · venue ${TEST_VENUE} · ${rows.length} items · ${TEST_TEAM.length} members`);
