@@ -1147,6 +1147,21 @@ export async function saveSupplierProducts(venuePath, records) {
   }
 }
 
+/**
+ * Forget a learned mapping. The next note carrying that code falls back to
+ * name matching and can be confirmed afresh — the escape hatch for a mapping
+ * that was confirmed in error.
+ */
+export async function deleteSupplierProduct(venuePath, productId) {
+  try {
+    await deleteDoc(doc(db, `${venuePath}/supplierProducts/${productId}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting supplier product:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ============================================
 // SALES REPORTS  (till exports under {venuePath}/salesReports, doc id = YYYY-MM-DD)
 // ============================================

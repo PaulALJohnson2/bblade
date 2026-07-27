@@ -11,12 +11,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack, bulkSetCasePacks, subscribeToDeliveryNotes, deleteDeliveryNote, getDeliveryNoteDocument } from '../services/apiService';
+import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack, bulkSetCasePacks, subscribeToDeliveryNotes, deleteDeliveryNote, getDeliveryNoteDocument,
+  getSupplierProducts, deleteSupplierProduct } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { deliveryUnitsFor, computeDeliveryQuantity, summariseDeliveryUnits } from '../utils/deliveryUnits';
 import { formatItemDescription } from '../utils/stockUnitUtils';
 import DeliveryEntry from '../components/DeliveryEntry';
 import DeliveryNoteScan from '../components/DeliveryNoteScan';
+import SupplierProfiles from '../components/SupplierProfiles';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import { compareCategories } from '../utils/categoryName';
@@ -42,6 +44,7 @@ function Deliveries() {
   const { items } = useStockData();
   const [recent, setRecent] = useState([]);
   const [notes, setNotes] = useState([]);        // scanned delivery notes
+  const [learned, setLearned] = useState([]);    // learned supplier → item mappings
   const [scanOpen, setScanOpen] = useState(false);
   const [viewNote, setViewNote] = useState(null); // note whose document is open
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
@@ -75,6 +78,20 @@ function Deliveries() {
     const unsubNotes = subscribeToDeliveryNotes(selectedPub.path, (list) => setNotes(list || []));
     return () => { unsubLog(); unsubNotes(); };
   }, [selectedPub]);
+
+  // Learned mappings are small and change only on scan — a one-shot read,
+  // refreshed when a note is logged or a mapping is forgotten.
+  const refreshLearned = React.useCallback(() => {
+    if (!selectedPub) return;
+    getSupplierProducts(selectedPub.path).then((res) => setLearned(res.data || []));
+  }, [selectedPub]);
+  useEffect(() => { refreshLearned(); }, [refreshLearned]);
+
+  const handleForgetLearned = async (record) => {
+    const res = await deleteSupplierProduct(selectedPub.path, record.id);
+    if (res.success) { refreshLearned(); showToast(`Forgot ${record.itemName}`); }
+    else showToast('Could not forget: ' + res.error);
+  };
 
   const resetEntry = () => {
     setSelectedId(null);
@@ -415,6 +432,15 @@ function Deliveries() {
         )}
       </div>
 
+      {/* Who delivers what, how often, and how reliably — all derived */}
+      <SupplierProfiles
+        notes={notes}
+        learned={learned}
+        colors={colors}
+        accent={accent}
+        onForget={handleForgetLearned}
+      />
+
       {/* Scanned delivery notes — the proof behind the entries above */}
       {notes.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
@@ -469,6 +495,7 @@ function Deliveries() {
           onClose={() => setScanOpen(false)}
           onDone={(logged, failed) => {
             setScanOpen(false);
+            refreshLearned();
             showToast(failed
               ? `Logged ${logged}, ${failed} failed`
               : `Logged ${logged} deliver${logged === 1 ? 'y' : 'ies'} from the note`);

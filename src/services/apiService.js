@@ -56,6 +56,7 @@ export {
   // Supplier products (learned supplier code → stock item)
   getSupplierProducts,
   saveSupplierProducts,
+  deleteSupplierProduct,
 
   // Sales reports (till exports)
   saveSalesReport,

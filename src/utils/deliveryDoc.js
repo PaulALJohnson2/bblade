@@ -26,6 +26,7 @@
  */
 
 import { deliveryUnitsFor } from './deliveryUnits';
+import { parseUnitInfo } from './stockUnitUtils';
 
 /**
  * The hard constraint when matching. Deliberately coarse: bottles/cans/cases
@@ -225,6 +226,45 @@ export function unitsForLine(line, item) {
     (t, r) => t + (parseFloat(values[r.key]) || 0) * r.perBase, 0);
 
   return { values, needsCasePack, units, baseLabel, quantity: Math.round(quantity * 1e6) / 1e6 };
+}
+
+// ---------------------------------------------------------------------------
+//  Money (only when the document carries it — delivery notes often don't)
+// ---------------------------------------------------------------------------
+
+/**
+ * What this line cost, before VAT. Prefers the printed line total over
+ * multiplying out: suppliers apply per-line discounts that a unit price
+ * doesn't show, and the total is what the invoice actually charges.
+ *
+ * @returns {number|null} null when the document prints no prices.
+ */
+export function lineCost(line) {
+  if (typeof line?.lineTotal === 'number' && line.lineTotal >= 0) return line.lineTotal;
+  const unit = line?.unitPrice;
+  const qty = deliveredQty(line);
+  if (typeof unit === 'number' && unit >= 0 && qty > 0) return Math.round(unit * qty * 100) / 100;
+  return null;
+}
+
+/**
+ * Cost per WHOLE unit — the convention the rest of the app uses for
+ * `costPrice` (£ per keg, per bottle, per case; varianceReport divides it back
+ * down by unitsPerWhole).
+ *
+ * Derived through base units so it's right whatever the line was counted in:
+ * 3 kegs at £450 is 150 litres at £3, and 50 litres to a keg makes £150 a keg.
+ *
+ * @returns {number|null}
+ */
+export function costPerWholeUnit(line, item) {
+  const cost = lineCost(line);
+  if (cost === null || !item) return null;
+  const { quantity } = unitsForLine(line, item);
+  if (!(quantity > 0)) return null;
+  const { unitsPerWhole } = parseUnitInfo(item);
+  const per = (cost / quantity) * (unitsPerWhole || 1);
+  return Number.isFinite(per) && per > 0 ? Math.round(per * 100) / 100 : null;
 }
 
 // ---------------------------------------------------------------------------

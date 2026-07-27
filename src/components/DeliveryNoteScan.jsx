@@ -20,7 +20,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { prepareDocument, ACCEPTED_TYPES, supportsCameraCapture } from '../utils/documentCapture';
 import { extractDeliveryNote, matchDeliveryLines } from '../services/aiInference';
 import {
-  reconcileLines, withItem, unitsForLine,
+  reconcileLines, withItem, unitsForLine, lineCost, costPerWholeUnit,
   containerClassOfLine, containerClassOfItem, containersCompatible,
 } from '../utils/deliveryDoc';
 import {
@@ -31,8 +31,10 @@ import { formatItemDescription } from '../utils/stockUnitUtils';
 import { loadCatalog, bestCatalogMatch } from '../services/catalogService';
 import {
   logDelivery, saveDeliveryNote, setDeliveryNoteEntries, setStockItemCasePack,
-  getSupplierProducts, saveSupplierProducts, saveOrUpdateStockItem,
+  getSupplierProducts, saveSupplierProducts, saveOrUpdateStockItem, bulkSetCostPrices,
 } from '../services/apiService';
+
+const money = (n) => `£${Number(n).toFixed(2)}`;
 
 const prettyDate = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '';
@@ -65,6 +67,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
   const [draft, setDraft] = useState(null);       // { name, category, section, unit… }
   const [adding, setAdding] = useState(false);
   const [learnedCount, setLearnedCount] = useState(0); // recognised from memory
+  const [updateCosts, setUpdateCosts] = useState(false); // priced documents only
   const [confirmClose, setConfirmClose] = useState(false);
   // Set/added-now-saved changes survive a discard; the prompt has to say so.
   const [keptChanges, setKeptChanges] = useState(false);
@@ -134,8 +137,15 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         });
       }
 
+      // A credit note reverses a charge — logging its lines would add stock the
+      // venue is being refunded for. Kept and readable, never loggable.
+      if (read.documentKind === 'credit-note') {
+        reconciled = reconciled.map((r) => ({ ...r, include: false }));
+      }
+
       setNote(read);
       setRows(reconciled);
+      setUpdateCosts(reconciled.some((r) => r.item && costPerWholeUnit(r.line, r.item) !== null));
       setStage('review');
     } catch (err) {
       console.error('Delivery note scan failed:', err);
@@ -229,6 +239,22 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
   // ---- log -----------------------------------------------------------------
 
   const included = rows.filter((r) => r.include && r.item);
+  const isCreditNote = note?.documentKind === 'credit-note';
+
+  /**
+   * Cost prices this document would change. A delivery note with no prices
+   * yields nothing here and the whole affordance stays hidden — most don't
+   * print money, and an empty checkbox is just noise.
+   */
+  const costChanges = useMemo(() => included
+    .map((r) => ({ id: r.item.id, name: r.item.name, was: Number(r.item.costPrice) || 0, costPrice: costPerWholeUnit(r.line, r.item) }))
+    .filter((c) => c.costPrice !== null && Math.abs(c.costPrice - c.was) >= 0.01),
+  [included]);
+
+  const noteValue = useMemo(() => rows.reduce((t, r) => {
+    const c = r.include ? lineCost(r.line) : null;
+    return t + (c || 0);
+  }, 0), [rows]);
 
   const handleLogAll = async () => {
     if (!included.length || stage === 'saving') return;
@@ -270,7 +296,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         quantity,
         baseLabel,
         supplier: note.supplier || '',
-        cost: null,
+        cost: lineCost(row.line),
         note: note.reference ? `Delivery note ${note.reference}` : 'Scanned delivery note',
         noteId: saved.id,
         receivedBy,
@@ -281,6 +307,14 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     }
 
     await setDeliveryNoteEntries(venuePath, saved.id, entryIds);
+
+    // What the venue actually paid beats anything derived from till cost of
+    // sales — but only when they've asked for it, since a one-off promotional
+    // price shouldn't quietly become the valuation.
+    if (updateCosts && costChanges.length) {
+      const res = await bulkSetCostPrices(venuePath, costChanges.map((c) => ({ id: c.id, costPrice: c.costPrice })));
+      if (!res.success) console.warn('Could not update cost prices:', res.error);
+    }
 
     // Learn from what was confirmed. Deliberately last and unawaited-on-failure:
     // the stock movements are what matter, and a venue that never learns is a
@@ -481,8 +515,11 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
               <div style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', fontWeight: 600, color: colors.textPrimary }}>
                 {row.line.packSize ? `${row.line.packSize} ` : ''}{row.line.description}
               </div>
-              <div style={{ flexShrink: 0, fontSize: '0.85rem', fontWeight: 700, color: colors.textPrimary }}>
-                {qtyLabel(row)}
+              <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: colors.textPrimary }}>{qtyLabel(row)}</div>
+                {lineCost(row.line) !== null && (
+                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>{money(lineCost(row.line))}</div>
+                )}
               </div>
             </div>
 
@@ -603,6 +640,13 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
             The document is too large to keep a copy of — the lines below will still be saved.
           </div>
         )}
+
+        {isCreditNote && (
+          <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
+            This is a credit note — it reverses a charge rather than delivering stock. It can be
+            kept as a record, but its lines won't be logged as goods in.
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
@@ -611,6 +655,21 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
 
       <div style={{ padding: '0.85rem 1rem', borderTop: `1px solid ${colors.borderLight}` }}>
         {error && <div style={{ fontSize: '0.82rem', color: colors.error, marginBottom: '0.5rem', fontWeight: 600 }}>{error}</div>}
+
+        {/* Only shown for documents that actually carry prices */}
+        {costChanges.length > 0 && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.6rem', fontSize: '0.78rem', color: colors.textSecondary, cursor: 'pointer' }}>
+            <input
+              type="checkbox" checked={updateCosts} onChange={(e) => setUpdateCosts(e.target.checked)}
+              style={{ marginTop: '0.1rem', width: '18px', height: '18px', flexShrink: 0, accentColor: accent }}
+            />
+            <span>
+              Update cost prices for {costChanges.length} item{costChanges.length === 1 ? '' : 's'} from this document
+              {noteValue > 0 && <> · note value {money(noteValue)}</>}
+            </span>
+          </label>
+        )}
+
         <div style={{ display: 'flex', gap: '0.6rem' }}>
           <button onClick={requestClose} disabled={stage === 'saving'} style={quietBtn}>Cancel</button>
           <button onClick={handleLogAll} disabled={!included.length || stage === 'saving'} style={primaryBtn(!!included.length && stage !== 'saving')}>
