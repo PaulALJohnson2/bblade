@@ -16,6 +16,13 @@
  *   measure, and how to use it without doing harm, is on this screen rather
  *   than in a document nobody opens.
  *
+ * A SNAPSHOT, NOT A LIVE VIEW, and it says so. Scoring reads every delivery
+ * note, every learnt code and every completed count — subscribing to all of
+ * that on the home screen is precisely what the lazy load exists to avoid, so
+ * a listener would be the wrong trade. What it must not do is present stale
+ * figures as current: it carries the time it was worked out, and refreshes
+ * whenever it's reopened or asked.
+ *
  * Two paths, because scoring reads back-office collections staff can't:
  *   MANAGERS compute it live from notes, mappings and every completed count —
  *   too much to pull on every home-screen visit, so it loads on demand — and
@@ -50,15 +57,21 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
   const [showMine, setShowMine] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [error, setError] = useState('');
+  const [loadedAt, setLoadedAt] = useState(null); // when these figures were worked out
 
+  // Every call refetches. Holding the first result for the life of the page
+  // meant a figure could sit there for an hour contradicting a delivery logged
+  // five minutes earlier, with nothing to suggest it was out of date.
   const load = async () => {
     setOpen(true);
-    if (state || cached || loading) return;
+    if (loading) return;
     setLoading(true);
+    setError('');
     try {
       if (!isManager) {
         const res = await getLearningProfile(venuePath);
         setCached(res.data);
+        setLoadedAt(null); // the cached doc carries its own, older, timestamp
         return;
       }
       const long = new Date(Date.now() - 3 * 365 * 86400000);
@@ -73,6 +86,7 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
         sessions: (sessions.success ? sessions.data : []) || [],
       };
       setState(loaded);
+      setLoadedAt(new Date());
       // Publishing is a side effect of a manager looking, so the figure staff
       // see is refreshed by ordinary use rather than needing its own chore.
       saveLearningProfile(venuePath, buildLearningProfile({ ...loaded, items }))
@@ -137,6 +151,16 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <span style={heading}>What your venue has learnt</span>
         <span style={{ flex: 1 }} />
+        {(loadedAt || asOf) && !loading && (
+          <span style={{ fontSize: '0.7rem', color: colors.textMuted }}>
+            as of {(loadedAt || asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          </span>
+        )}
+        <button
+          onClick={load}
+          disabled={loading}
+          style={{ border: 'none', background: 'transparent', color: colors.textSecondary, fontSize: '0.78rem', cursor: loading ? 'wait' : 'pointer' }}
+        >{loading ? 'Working…' : 'Refresh'}</button>
         <button
           onClick={() => setOpen(false)}
           style={{ border: 'none', background: 'transparent', color: colors.textSecondary, fontSize: '0.78rem', cursor: 'pointer' }}
@@ -185,7 +209,8 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
             )}
             {asOf && (
               <div style={{ fontSize: '0.7rem', color: colors.textMuted, marginTop: '0.3rem' }}>
-                As of {asOf.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                Last worked out {asOf.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} — a manager
+                opening this page brings it up to date.
               </div>
             )}
             {venue.timeSavedMinutes > 0 && (
