@@ -90,23 +90,53 @@ function LearningReward({
         {failed > 0 && ` · ${failed} failed`}
       </div>
 
-      {total > 0 ? (
-        <>
-          <div className="bb-rise" style={{ fontSize: '2.6rem', fontWeight: 800, color: accent, lineHeight: 1.1, marginTop: '0.35rem' }}>
-            +{shown}
-          </div>
-          <div style={{ fontSize: '0.85rem', color: colors.textPrimary, fontWeight: 600 }}>
-            learned from this note
-          </div>
-          {person && (
-            <div className="bb-rise" style={{ fontSize: '0.78rem', color: colors.textSecondary, marginTop: '0.2rem', animationDelay: '0.1s' }}>
-              Nice one, {person}
-            </div>
-          )}
-        </>
-      ) : (
+      {total === 0 && (
         <div style={{ fontSize: '0.9rem', color: colors.textSecondary, marginTop: '0.5rem' }}>
           Nothing new to learn from this one — it already knew every line.
+        </div>
+      )}
+
+      {/*
+        The facts lead, not the number. What motivates is a signal of
+        COMPETENCE, and "taught 15 supplier codes" carries that in a way an
+        abstract 19 never does — the score's job is to accumulate towards
+        something someone can be thanked for at the end of a month, not to be
+        the reward itself. It stays, quietly, so the accumulation is visible
+        at the moment it happens.
+      */}
+      {rows.length > 0 && (
+        <div style={{ marginTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', textAlign: 'left' }}>
+          {rows.map((r, i) => (
+            <div
+              key={r.kind}
+              className="bb-rise"
+              style={{
+                animationDelay: `${0.06 + i * 0.11}s`,
+                display: 'flex', alignItems: 'center', gap: '0.55rem',
+                padding: '0.5rem 0.6rem', borderRadius: '9px',
+                backgroundColor: colors.deliverySoft,
+              }}
+            >
+              <span style={{ flexShrink: 0, color: accent, fontWeight: 700 }}>✓</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: colors.textPrimary }}>{r.label}</div>
+                {r.detail && (
+                  <div style={{ fontSize: '0.72rem', color: colors.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {r.detail}{r.count > 1 ? ' and others' : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {total > 0 && (
+        <div
+          className="bb-rise"
+          style={{ animationDelay: `${0.12 + rows.length * 0.11}s`, marginTop: '0.6rem', fontSize: '0.8rem', color: colors.textSecondary }}
+        >
+          <strong style={{ color: accent, fontWeight: 700 }}>+{shown}</strong> towards {person ? `${person.split(' ')[0]}'s` : 'your'} month
         </div>
       )}
 
@@ -139,41 +169,12 @@ function LearningReward({
         </div>
       )}
 
-      {/* What it learned, arriving one at a time */}
-      {rows.length > 0 && (
-        <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', textAlign: 'left' }}>
-          {rows.map((r, i) => (
-            <div
-              key={r.kind}
-              className="bb-rise"
-              style={{
-                animationDelay: `${0.18 + i * 0.11}s`,
-                display: 'flex', alignItems: 'center', gap: '0.55rem',
-                padding: '0.5rem 0.6rem', borderRadius: '9px',
-                backgroundColor: colors.deliverySoft,
-              }}
-            >
-              <span style={{ flexShrink: 0, color: accent, fontWeight: 700 }}>✓</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: colors.textPrimary }}>{r.label}</div>
-                {r.detail && (
-                  <div style={{ fontSize: '0.7rem', color: colors.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {r.detail}{r.count > 1 ? ' and others' : ''}
-                  </div>
-                )}
-              </div>
-              <span style={{ flexShrink: 0, fontSize: '0.8rem', fontWeight: 700, color: accent }}>+{r.value}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* The promise. The next scan either keeps it or it doesn't. */}
       {prediction?.lines > 0 && (
         <div
           className="bb-rise"
           style={{
-            animationDelay: `${0.28 + rows.length * 0.11}s`,
+            animationDelay: `${0.2 + rows.length * 0.11}s`,
             marginTop: '1rem', padding: '0.7rem 0.8rem', textAlign: 'left',
             border: `1px dashed ${accent}`, borderRadius: '10px',
           }}
