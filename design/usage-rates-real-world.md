@@ -44,23 +44,31 @@ separately for the audit trail, and a future date is refused so a misread year
 can't park stock beyond every boundary. The review screen says which date the
 stock will move on.
 
+Manual entry has an arrival-date field too, defaulting to today — which is
+right nearly always, since most deliveries are logged off the van. It only
+speaks up when you change it, and then it says which period the stock will
+land in.
+
+### Reopening an older take moved a period boundary
+`reopenStockSession` sets `completedAt: null`; re-completing stamps a new one.
+Reopen last month's count, close it again today, and every delivery in between
+silently changes period — a variance already reviewed and signed off quietly
+becomes a different number.
+
+Reopening is now offered only on the newest completed take in each section.
+That's enough: amending the most recent count only ever affects the open-ended
+period nobody has drawn conclusions from yet, and there's no legitimate reason
+to reopen an earlier one. Per section, because a bar take and a kitchen take
+each have their own "most recent".
+
+A guard against corrupting history rather than a security control — the rules
+already restrict reopening to managers, and a manager is trusted. Making it a
+rule would mean denormalising "is this the latest" onto every session, which
+is a worse trade than a UI guard on an already-trusted actor.
+
 ---
 
 ## Known and unfixed
-
-### Manual delivery entry still stamps "now"
-The scan path reads the date off the document. Hand-entered deliveries have no
-document to read, so a manager catching up on Monday for Thursday's drop
-reintroduces exactly the bug above. Needs a date field on the manual entry
-form — small, and worth doing before any venue leans on par levels.
-
-### Reopening a completed take moves a period boundary
-`reopenStockSession` sets `completedAt: null`; re-completing stamps a new one.
-Reopen last month's count, close it again today, and every delivery in between
-silently changes period. While it's open the take is excluded from
-`usagePeriods` altogether, merging two periods into one. Both behaviours are
-arguably correct and neither is visible. Preserving the original `completedAt`
-across a reopen would be the honest fix.
 
 ### A base-unit change corrupts a period silently
 Quantities are stored in base units, so a keg going from 50L to 30L is safe —

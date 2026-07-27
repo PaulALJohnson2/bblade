@@ -513,6 +513,32 @@ function StockTaking() {
 
 
 
+  /**
+   * The newest completed take in each section — the only ones that may be
+   * reopened.
+   *
+   * Reopening an older take silently moves a period boundary: every delivery
+   * between it and the next count changes which period it belongs to, so a
+   * variance already reviewed and signed off quietly becomes a different
+   * number. Amending the most recent count only ever affects the open-ended
+   * period nobody has drawn conclusions from yet.
+   *
+   * This is a guard against corrupting history by accident, not a security
+   * control — the rules already restrict reopening to managers, and a manager
+   * is trusted. It isn't enforceable in rules without denormalising "is this
+   * the latest", which would be a worse trade.
+   */
+  const reopenableIds = useMemo(() => {
+    const newest = {};
+    for (const s of allSessions) {
+      if (s.status !== 'completed' || !s.completedAt) continue;
+      const key = s.section || 'bar';
+      const at = s.completedAt?.toMillis ? s.completedAt.toMillis() : 0;
+      if (!newest[key] || at > newest[key].at) newest[key] = { at, id: s.id };
+    }
+    return new Set(Object.values(newest).map((x) => x.id));
+  }, [allSessions]);
+
   const handleReopenSession = async (session) => {
     if (!selectedPub) return;
 
@@ -2282,7 +2308,13 @@ function StockTaking() {
               </div>
             )}
 
-            {summarySession?.status === 'completed' && (
+            {summarySession?.status === 'completed' && !reopenableIds.has(summarySession.id) && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: colors.textSecondary, textAlign: 'center' }}>
+                Only the most recent count can be reopened — changing an older one would move
+                a period boundary and alter a variance that's already been signed off.
+              </div>
+            )}
+            {summarySession?.status === 'completed' && reopenableIds.has(summarySession.id) && (
               <button
                 onClick={() => { handleReopenSession(summarySession); setShowSummary(false); setSummarySession(null); }}
                 style={{
@@ -2571,7 +2603,13 @@ function StockTaking() {
               </button>
             </div>
 
-            {viewingSession.status === 'completed' && (
+            {viewingSession.status === 'completed' && !reopenableIds.has(viewingSession.id) && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: colors.textSecondary, textAlign: 'center' }}>
+                Only the most recent count can be reopened — changing an older one would move
+                a period boundary and alter a variance that's already been signed off.
+              </div>
+            )}
+            {viewingSession.status === 'completed' && reopenableIds.has(viewingSession.id) && (
               <button
                 onClick={() => handleReopenSession(viewingSession)}
                 style={{

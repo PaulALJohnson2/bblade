@@ -25,6 +25,19 @@ import { compareCategories } from '../utils/categoryName';
 
 const sectionOf = (it) => (it.section === 'kitchen' ? 'kitchen' : 'bar');
 
+const isoToday = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+/** Midday local, so a timezone shift can't drop the date onto the day before. */
+const arrivalDate = (iso) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0);
+};
+
 // Human summary of a delivery entry from its stored purchase-unit breakdown.
 function deliverySummary(e) {
   if (Array.isArray(e.units) && e.units.length) {
@@ -57,6 +70,12 @@ function Deliveries() {
   const [supplier, setSupplier] = useState('');
   const [cost, setCost] = useState('');
   const [note, setNote] = useState('');
+  // When the goods ARRIVED. Defaults to today, because most of the time
+  // someone is logging a delivery as it comes off the van — but every stock
+  // period is windowed on this, so catching up on Monday for Thursday's drop
+  // has to be able to say so, or the delivery lands in the wrong period and
+  // the variance report invents a shortfall.
+  const [arrivedOn, setArrivedOn] = useState(isoToday());
   const setValue = (key, val) => setValues((v) => ({ ...v, [key]: val }));
 
   const [saving, setSaving] = useState(false);
@@ -98,7 +117,7 @@ function Deliveries() {
 
   const resetEntry = () => {
     setSelectedId(null);
-    setValues({}); setSupplier(''); setCost(''); setNote('');
+    setValues({}); setSupplier(''); setCost(''); setNote(''); setArrivedOn(isoToday());
   };
 
   const selectItem = (it) => {
@@ -155,6 +174,7 @@ function Deliveries() {
       cost: cost === '' ? null : parseFloat(cost),
       note: note.trim(),
       receivedBy: byName,
+      receivedAt: arrivalDate(arrivedOn),
     });
     setSaving(false);
     if (res.success) { showToast(`Logged delivery: ${selectedItem.name}`); resetEntry(); }
@@ -356,23 +376,36 @@ function Deliveries() {
                     onSetCasePack={(n) => handleSetCasePack(it, n)}
                   />
 
-                  {/* Supplier + cost */}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {/* Supplier, arrival date, cost. Wraps on a narrow screen. */}
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <input
                       value={supplier}
                       onChange={(e) => setSupplier(e.target.value)}
                       placeholder="Supplier (optional)"
                       list="delivery-suppliers"
-                      style={{ ...input, flex: 2 }}
+                      style={{ ...input, flex: '2 1 150px' }}
+                    />
+                    <input
+                      type="date"
+                      value={arrivedOn}
+                      max={isoToday()}
+                      onChange={(e) => setArrivedOn(e.target.value)}
+                      title="When the delivery arrived"
+                      style={{ ...input, flex: '1 1 140px' }}
                     />
                     <input
                       value={cost}
                       onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ''))}
                       placeholder="Cost £"
                       inputMode="decimal"
-                      style={{ ...input, flex: 1, minWidth: 0 }}
+                      style={{ ...input, flex: '1 1 90px', minWidth: 0 }}
                     />
                   </div>
+                  {arrivedOn !== isoToday() && (
+                    <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '-0.35rem' }}>
+                      Dated {arrivalDate(arrivedOn)?.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })} — it'll count towards that day's stock period, not today's.
+                    </div>
+                  )}
                   <datalist id="delivery-suppliers">
                     {knownSuppliers.map((s) => <option key={s} value={s} />)}
                   </datalist>
