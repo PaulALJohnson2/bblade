@@ -62,11 +62,13 @@ function LearningReward({
   const total = delta?.total || 0;
   const shown = useCountUp(total);
   const rows = summarise(delta || {});
-  const levelledUp = levelAfter && levelBefore && levelAfter.level > levelBefore.level;
-  const next = levelAfter?.next;
+  const stageReached = levelAfter && levelBefore && levelAfter.done > levelBefore.done;
+  const current = levelAfter?.current;
+  // Name the stage just banked, not a rank.
+  const banked = stageReached ? levelAfter.stages[levelAfter.done - 1] : null;
 
   // The bar fills from where it stood, so the movement is the reward.
-  const [barTo, setBarTo] = useState(levelledUp ? 0 : (levelBefore?.progress || 0));
+  const [barTo, setBarTo] = useState(stageReached ? 0 : (levelBefore?.progress || 0));
   useEffect(() => {
     const t = setTimeout(() => setBarTo(levelAfter?.progress || 0), 420);
     return () => clearTimeout(t);
@@ -112,22 +114,24 @@ function LearningReward({
       {levelAfter && (
         <div style={{ marginTop: '1.1rem', textAlign: 'left' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.3rem' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: levelledUp ? accent : colors.textSecondary }}>
-              Level {levelAfter.level} · {levelAfter.name}
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: stageReached ? accent : colors.textSecondary }}>
+              {stageReached ? banked?.name : (current ? `Working towards ${current.name}` : 'Fully learned')}
             </span>
-            {levelledUp && <span className="bb-pop" style={{ fontSize: '0.68rem', fontWeight: 800, color: accent }}>UNLOCKED</span>}
+            {stageReached && <span className="bb-pop" style={{ fontSize: '0.68rem', fontWeight: 800, color: accent }}>REACHED</span>}
+            <span style={{ flex: 1 }} />
+            <span style={{ fontSize: '0.68rem', color: colors.textMuted }}>{levelAfter.done} of {levelAfter.total}</span>
           </div>
           <div style={{ height: '8px', borderRadius: '4px', backgroundColor: colors.bgLight, overflow: 'hidden' }}>
             <div style={{ width: `${Math.round(barTo * 100)}%`, height: '100%', borderRadius: '4px', backgroundColor: accent, transition: 'width 900ms cubic-bezier(.2,.8,.3,1)' }} />
           </div>
-          {levelledUp && levelBefore && (
+          {stageReached && banked && (
             <div style={{ fontSize: '0.76rem', color: accent, fontWeight: 600, marginTop: '0.35rem' }}>
-              {levelAfter.rows[levelAfter.level - 1]?.unlocks}
+              {banked.unlocks}
             </div>
           )}
-          {next && (
+          {current && (
             <div style={{ fontSize: '0.74rem', color: colors.textSecondary, marginTop: '0.3rem' }}>
-              {Math.max(0, next.target - next.have)} to go until <strong>{next.name}</strong> — {next.unlocks.toLowerCase()}
+              <strong>{current.name}</strong> — {current.unlocks.toLowerCase()}. Needs {levelAfter.remaining}.
             </div>
           )}
         </div>

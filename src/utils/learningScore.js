@@ -215,39 +215,60 @@ export function learningFacts(state) {
 }
 
 // ---------------------------------------------------------------------------
-//  Levels — each one a real capability turning on, not a cosmetic tier
+//  Stages — each one a real capability turning on, not a cosmetic tier
 // ---------------------------------------------------------------------------
 
-export const LEVELS = [
+/**
+ * NAMED STAGES, NOT NUMBERED LEVELS.
+ *
+ * A number is a rank: it invites "what's the maximum?", makes everyone below it
+ * feel incomplete, and forces a floor — which is how a venue that had just
+ * taught the system 199 points' worth ended up looking at "LEVEL 0 · GETTING
+ * STARTED". The name already carries the whole meaning ("Recognised — supplier
+ * codes match instantly"); the number added only hierarchy.
+ *
+ * So the UI leads with the stage being WORKED TOWARDS rather than the last one
+ * banked. There is no zeroth stage to be stuck on: before anything is complete
+ * you are working towards Stocked, which is a start rather than a failure.
+ */
+export const STAGES = [
   {
+    // Fractional on purpose. As a binary gate this sat at 0% however many
+    // lines were matched, so a note that taught fifteen codes moved nothing —
+    // the surest way to make a progress bar feel like a judgement.
     key: 'stocked', name: 'Stocked', target: 1,
     unlocks: 'Every line on a note lands on a real stock item',
-    hint: 'Scan a delivery note and give every line a stock item',
-    have: (s) => s.fullyMatchedNotes,
+    hint: 'Give every line on a note a stock item',
+    have: (s) => s.bestLineMatchRate,
+    remaining: (have) => `${Math.round((1 - have) * 100)}% of lines still need a stock item`,
   },
   {
     key: 'recognised', name: 'Recognised', target: 10,
     unlocks: 'Supplier codes match instantly, no guessing',
     hint: 'Confirm matches on a few more notes',
     have: (s) => s.codes,
+    remaining: (have, target) => `${Math.ceil(target - have)} more supplier codes`,
   },
   {
     key: 'estimated', name: 'Estimated', target: 4,
     unlocks: 'Usage rates from your delivery pattern',
     hint: 'Scan a few more notes from the same supplier',
     have: (s) => s.mostNotesFromOneSupplier,
+    remaining: (have, target) => `${Math.ceil(target - have)} more notes from one supplier`,
   },
   {
     key: 'measured', name: 'Measured', target: 2,
     unlocks: 'True usage measured between counts',
     hint: 'Complete a second stock take',
     have: (s) => s.completedTakes,
+    remaining: (have, target) => `${Math.ceil(target - have)} more stock take${Math.ceil(target - have) === 1 ? '' : 's'}`,
   },
   {
     key: 'predicted', name: 'Predicted', target: 1,
     unlocks: 'Par levels and an order sheet',
     hint: 'Keep counts recent — a count in the last fortnight anchors the forecast',
     have: (s) => s.recentCount,
+    remaining: () => 'a stock take in the last fortnight',
   },
   // The goal gradient is tied to an OPEN goal: pace collapses the moment the
   // last one is claimed (Kivetz et al.). A terminal top level would kill the
@@ -259,8 +280,12 @@ export const LEVELS = [
     unlocks: 'Forecasts stay trustworthy',
     hint: 'Scan each supplier’s notes as they arrive and keep counts recent',
     have: (s) => s.suppliersCurrent,
+    remaining: () => 'every supplier’s paperwork up to date',
   },
 ];
+
+/** @deprecated kept so nothing breaks mid-rename. */
+export const LEVELS = STAGES;
 
 const RECENT_COUNT_DAYS = 14;
 /** A supplier whose paperwork hasn't been seen this long has gone stale. */
@@ -269,12 +294,12 @@ const STALE_SUPPLIER_DAYS = 45;
 /** The raw counts the level gates read. */
 function levelInputs({ items, supplierProducts, notes, sessions }, now) {
   const perSupplier = new Map();
-  let fullyMatched = 0;
+  let bestRate = 0;
   for (const n of notes || []) {
     const key = String(n.supplier || '').trim().toLowerCase() || 'unknown';
     perSupplier.set(key, (perSupplier.get(key) || 0) + 1);
     const real = (n.lines || []).filter((l) => l.status !== 'return');
-    if (real.length && real.every((l) => l.itemId)) fullyMatched += 1;
+    if (real.length) bestRate = Math.max(bestRate, real.filter((l) => l.itemId).length / real.length);
   }
   const completed = (sessions || []).filter((s) => s.status === 'completed');
   const lastCount = completed.reduce((m, s) => Math.max(m, millis(s.completedAt)), 0);
@@ -290,7 +315,7 @@ function levelInputs({ items, supplierProducts, notes, sessions }, now) {
   const stale = [...lastBySupplier.values()].some((at) => (now - at) > STALE_SUPPLIER_DAYS * 86400000);
 
   return {
-    fullyMatchedNotes: fullyMatched,
+    bestLineMatchRate: bestRate,
     codes: (supplierProducts || []).length,
     mostNotesFromOneSupplier: perSupplier.size ? Math.max(...perSupplier.values()) : 0,
     completedTakes: completed.length,
@@ -301,28 +326,37 @@ function levelInputs({ items, supplierProducts, notes, sessions }, now) {
 }
 
 /**
- * Level standing plus the next gate, so progress can be shown as a bar.
- * Levels are sequential: reaching one requires everything below it.
+ * Where the venue is along the path.
+ *
+ * Reports the stage being WORKED TOWARDS rather than the last one banked, so
+ * there is never a zeroth rank to be stuck on: a venue that has just started is
+ * "working towards Stocked", which reads as a beginning rather than a verdict.
+ * Stages are sequential — reaching one needs everything before it.
+ *
+ * @returns {{ stages, current, done, total, progress, complete }}
  */
 export function venueLevel(state, now = Date.now()) {
   const inputs = levelInputs(state || {}, now);
-  const rows = LEVELS.map((l) => {
+  const stages = STAGES.map((l) => {
     const have = l.have(inputs);
     return { ...l, have, done: have >= l.target, progress: Math.min(1, have / l.target) };
   });
 
-  let level = 0;
-  for (const r of rows) {
+  let done = 0;
+  for (const r of stages) {
     if (!r.done) break;
-    level += 1;
+    done += 1;
   }
-  const next = rows[level] || null;
+  const current = stages[done] || null;
   return {
-    level,
-    name: level > 0 ? rows[level - 1].name : 'Getting started',
-    rows,
-    next,
-    progress: next ? next.progress : 1,
+    stages,
+    current,
+    done,
+    total: stages.length,
+    progress: current ? current.progress : 1,
+    complete: !current,
+    // What's still needed for the stage in hand, in that stage's own terms.
+    remaining: current ? current.remaining(current.have, current.target) : '',
   };
 }
 
@@ -438,16 +472,19 @@ const startOfMonth = (now) => {
 export function buildLearningProfile(state, now = Date.now()) {
   const venue = scoreVenue(state, now);
   const people = scoreByPerson(state, { from: startOfMonth(now) });
-  const next = venue.level.next;
+  const l = venue.level;
   return {
     total: venue.total,
     factCount: venue.factCount,
     timeSavedMinutes: venue.timeSavedMinutes,
     level: {
-      level: venue.level.level,
-      name: venue.level.name,
-      progress: venue.level.progress,
-      next: next ? { name: next.name, unlocks: next.unlocks, have: next.have, target: next.target } : null,
+      done: l.done,
+      total: l.total,
+      progress: l.progress,
+      complete: l.complete,
+      remaining: l.remaining,
+      current: l.current ? { name: l.current.name, unlocks: l.current.unlocks } : null,
+      banked: l.stages.filter((x) => x.done).map((x) => x.name),
     },
     // The month figure is only meaningful inside the month it was computed in.
     periodKey: periodKeyOf(now),

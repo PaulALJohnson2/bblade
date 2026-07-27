@@ -157,20 +157,28 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
               <span style={{ fontSize: '1.05rem', fontWeight: 800, color: colors.textPrimary }}>
-                Level {venue.level.level} · {venue.level.name}
+                {venue.level.complete
+                  ? 'Fully learned'
+                  : `Working towards ${venue.level.current?.name || ''}`}
               </span>
               <span style={{ flex: 1 }} />
               <span style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
-                {venue.total} learned
+                {venue.level.done} of {venue.level.total} · {venue.total} learned
               </span>
             </div>
             <div style={{ height: '8px', borderRadius: '4px', backgroundColor: colors.bgLight, overflow: 'hidden', marginTop: '0.35rem' }}>
               <div style={{ width: `${Math.round(venue.level.progress * 100)}%`, height: '100%', borderRadius: '4px', backgroundColor: accent, transition: 'width 700ms cubic-bezier(.2,.8,.3,1)' }} />
             </div>
-            {venue.level.next && (
-              <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '0.3rem' }}>
-                {Math.max(0, venue.level.next.target - venue.level.next.have)} to go until{' '}
-                <strong style={{ color: colors.textPrimary }}>{venue.level.next.name}</strong> — {venue.level.next.unlocks.toLowerCase()}
+            <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.4rem' }}>
+              {/* A track of named stages, so "where am I" needs no rank. */}
+              {Array.from({ length: venue.level.total }).map((_, i) => (
+                <span key={i} style={{ flex: 1, height: '4px', borderRadius: '2px', backgroundColor: i < venue.level.done ? accent : colors.bgLight }} />
+              ))}
+            </div>
+            {venue.level.current && (
+              <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '0.35rem' }}>
+                <strong style={{ color: colors.textPrimary }}>{venue.level.current.name}</strong> — {venue.level.current.unlocks.toLowerCase()}.
+                {venue.level.remaining ? ` Needs ${venue.level.remaining}.` : ''}
               </div>
             )}
             {asOf && (

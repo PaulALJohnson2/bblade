@@ -107,6 +107,13 @@ children's app.
 
 **Rules**
 - No badges. No cross-venue leaderboards. No mandatory fun.
+- **No level numbers.** A number is a rank: it invites "what's the maximum?",
+  makes everyone below it feel incomplete, and forces a floor — which is how a
+  venue that had just taught the system 199 points' worth ended up staring at
+  "LEVEL 0 · GETTING STARTED". The stage names already carry the meaning; the
+  number added only hierarchy. Lead with the stage being *worked towards*.
+- **A gate that can only read 0% or 100% is a judgement, not a progress bar.**
+  Make the measure fractional wherever the work is fractional.
 - The reward is the **capability that turns on**, not the token. Our levels each
   unlock a real feature; a level that unlocks nothing shouldn't exist.
 - Tone: professional with a lift. A landlord with a bar to run finds confetti
@@ -168,7 +175,8 @@ screen, not live in a document nobody opens.
 | Reward tracks information gained | ✅ diminishing returns by design |
 | Surprise, not fixed payout | ⚠️ partial — prediction line varies, values don't |
 | No badges / leaderboards | ✅ |
-| Levels unlock real capability | ✅ five gates, each a real feature |
+| Stages unlock real capability | ✅ six gates, each a real feature |
+| No rank numbering | ✅ named stages, no "Level 0" |
 | Always an open next goal | ⚠️ level 5 is terminal |
 | Corroboration required | ✅ items need a note, mapping or count |
 | Nothing that can mask loss | ✅ wastage excluded |
