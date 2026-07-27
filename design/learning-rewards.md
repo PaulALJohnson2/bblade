@@ -175,8 +175,10 @@ screen, not live in a document nobody opens.
 | Self-farming closed | ✅ correction needs a changed target + another owner |
 | Itemised and contestable | ✅ `scoreByPerson` returns the facts |
 | Feedback framed as competence | ✅ the moment names the capability gained |
-| Manager view carries its caveats | ❌ not built yet |
-| No default ranking of staff | ❌ `scoreByPerson` currently sorts by earned |
+| Manager view carries its caveats | ✅ inline, behind "what these numbers are, and are not" |
+| No default ranking of staff | ✅ alphabetical by default |
+| Always an open goal at the top | ✅ level 6 "Current" reopens when paperwork goes stale |
+| Staff can see their own contribution | ❌ blocked on rules — see open question 6 |
 
 ## Open questions
 
@@ -188,8 +190,14 @@ screen, not live in a document nobody opens.
    against stock variance. Score up and variance up together is the alarm.
 4. **Should the venue score be visible to staff, or only their own?** Shared
    goals support relatedness; visible individual comparison doesn't.
-5. **Does `scoreByPerson` keep sorting by earned?** It's a ranking in all but
-   name. Fine as an API; wrong as a default view.
+5. ~~**Does `scoreByPerson` keep sorting by earned?**~~ Settled: alphabetical.
+6. **How do staff see their own contribution?** Scoring reads
+   `supplierProducts` and `deliveryNotes`, both manager-level, so the panel is
+   manager-only today. A partial score from the collections staff *can* read
+   would disagree with the manager's figure — worse than nothing. Likely fix: a
+   small cached summary doc (venue total, level, per-person month and lifetime)
+   written when a manager recomputes, member-readable. It also removes the load
+   cost that forced the panel to be lazy in the first place.
 
 ## Sources
 

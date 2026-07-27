@@ -249,9 +249,22 @@ export const LEVELS = [
     hint: 'Keep counts recent — a count in the last fortnight anchors the forecast',
     have: (s) => s.recentCount,
   },
+  // The goal gradient is tied to an OPEN goal: pace collapses the moment the
+  // last one is claimed (Kivetz et al.). A terminal top level would kill the
+  // pull at exactly the point the venue is most valuable, so the final gate is
+  // a maintenance one that reopens whenever the venue drifts — earned by
+  // keeping every supplier's paperwork current rather than by a new milestone.
+  {
+    key: 'current', name: 'Current', target: 1,
+    unlocks: 'Forecasts stay trustworthy',
+    hint: 'Scan each supplier’s notes as they arrive and keep counts recent',
+    have: (s) => s.suppliersCurrent,
+  },
 ];
 
 const RECENT_COUNT_DAYS = 14;
+/** A supplier whose paperwork hasn't been seen this long has gone stale. */
+const STALE_SUPPLIER_DAYS = 45;
 
 /** The raw counts the level gates read. */
 function levelInputs({ items, supplierProducts, notes, sessions }, now) {
@@ -265,12 +278,24 @@ function levelInputs({ items, supplierProducts, notes, sessions }, now) {
   }
   const completed = (sessions || []).filter((s) => s.status === 'completed');
   const lastCount = completed.reduce((m, s) => Math.max(m, millis(s.completedAt)), 0);
+  const recentCount = lastCount && (now - lastCount) <= RECENT_COUNT_DAYS * 86400000 ? 1 : 0;
+
+  // "Current" means nobody's paperwork has gone stale: every supplier the venue
+  // uses has been scanned inside its own usual gap, plus a fortnight's grace.
+  const lastBySupplier = new Map();
+  for (const n of notes || []) {
+    const key = String(n.supplier || '').trim().toLowerCase() || 'unknown';
+    lastBySupplier.set(key, Math.max(lastBySupplier.get(key) || 0, millis(n.uploadedAt)));
+  }
+  const stale = [...lastBySupplier.values()].some((at) => (now - at) > STALE_SUPPLIER_DAYS * 86400000);
+
   return {
     fullyMatchedNotes: fullyMatched,
     codes: (supplierProducts || []).length,
     mostNotesFromOneSupplier: perSupplier.size ? Math.max(...perSupplier.values()) : 0,
     completedTakes: completed.length,
-    recentCount: lastCount && (now - lastCount) <= RECENT_COUNT_DAYS * 86400000 ? 1 : 0,
+    recentCount,
+    suppliersCurrent: lastBySupplier.size > 0 && !stale && recentCount ? 1 : 0,
     items: (items || []).length,
   };
 }
@@ -364,6 +389,11 @@ export function scoreByPerson(state, window = {}) {
     if (inWindow(f, from, to)) p.facts.push(f);
   }
 
+  // Sorted by NAME, deliberately. A list ordered by points is a leaderboard
+  // whichever way it's labelled, and stack-ranking colleagues is the single
+  // best-evidenced way to make workplace gamification backfire. Callers that
+  // genuinely need another order can re-sort; the default won't hand anyone a
+  // ranking by accident.
   return [...people.values()]
     .map((p) => {
       const { total, byKind } = tally(p.facts);
@@ -379,7 +409,7 @@ export function scoreByPerson(state, window = {}) {
       };
     })
     .filter((p) => p.lifetime > 0)
-    .sort((a, b) => b.earned - a.earned || b.lifetime - a.lifetime);
+    .sort((a, b) => a.person.localeCompare(b.person));
 }
 
 /** Difference between two states, for the "+120 learned" moment after a scan. */

@@ -17,6 +17,8 @@ import { isActionableForMember } from '../utils/rota';
 import { subscribeToShiftRequests } from '../services/apiService';
 import useTheme from '../hooks/useTheme';
 import Tile from '../components/Tile';
+import ContributionPanel from '../components/ContributionPanel';
+import { useStockData } from '../contexts/StockDataContext';
 
 const todayISO = () => {
   const d = new Date();
@@ -28,7 +30,8 @@ const todayISO = () => {
 // Owner/manager features (sales, reports, settings) belong on /admin.
 function Home() {
   const navigate = useNavigate();
-  const { pubName, isAdmin, currentMember, selectedPub } = useAuth();
+  const { pubName, isAdmin, currentMember, currentUser, userProfile, selectedPub } = useAuth();
+  const { items } = useStockData();
   const admin = !!(isAdmin && isAdmin());
   // Strict (no loading-grace) so the tile pops in rather than flashing away.
   const stockAccess = admin || !!currentMember?.withStock;
@@ -113,6 +116,29 @@ function Home() {
           />
         ))}
       </div>
+
+      {/* The shared goal, and each person's part in it. Loads on demand —
+          scoring reads every note and completed count.
+
+          Managers only for now, and not by choice: scoring reads
+          supplierProducts and deliveryNotes, both manager-level in the rules.
+          Showing staff a partial score computed from only the collections they
+          can read would disagree with the manager's figure, which is worse than
+          showing nothing. The fix is a small cached summary doc staff can read
+          — see design/learning-rewards.md. */}
+      {selectedPub?.path && admin && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <ContributionPanel
+            venuePath={selectedPub.path}
+            items={items}
+            personName={userProfile?.displayName || currentUser?.email || ''}
+            isManager={admin}
+            colors={colors}
+            accent={colors.primary}
+            onAccent={colors.onPrimary}
+          />
+        </div>
+      )}
     </div>
   );
 }
