@@ -7,16 +7,21 @@
  * a human reviews → the included lines become delivery-log entries and the
  * note itself is kept as proof.
  *
- * The review step is not a formality. Three things on a real note can't be
- * settled by reading it alone, and each is surfaced rather than guessed:
- *   - lines with no matching stock item (the pub doesn't stock that product);
- *   - returns going the other way (empty kegs collected), excluded and locked;
- *   - short deliveries, where what was signed for is less than what was sent.
+ * THE REVIEW SCREEN IS EXCEPTION HANDLING, and it's laid out that way. On a
+ * typical note most lines are simply right, and giving all of them equal
+ * weight buries the two or three that actually need a decision under a long
+ * scroll of things that don't. So lines are grouped by what they ask of you —
+ * needs you, delivered short, ready, not stock in — and the ready ones
+ * collapse to a single tappable line each.
+ *
+ * Reading a photographed note takes ten to twenty seconds with nothing to
+ * report in between, which reads as a hang. The working screen shows the real
+ * steps ticking off with what each one found.
  *
  * Props: venuePath, items, colors, accent, onAccent, receivedBy, onClose, onDone
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { prepareDocument, ACCEPTED_TYPES, supportsCameraCapture } from '../utils/documentCapture';
 import { extractDeliveryNote, matchDeliveryLines } from '../services/aiInference';
 import {
@@ -48,31 +53,52 @@ const qtyLabel = (row) => `${row.qty}${row.line.unitCode ? ` ${row.line.unitCode
 /** "1 Cases (×6)" reads wrong on a review screen — singularise the container. */
 const unitPhrase = (u) => `${u.count} ${u.count === 1 ? u.label.replace(/^(\w+?)s\b/, '$1') : u.label}`;
 
+const STEPS = [
+  { key: 'prepare', label: 'Preparing the document' },
+  { key: 'read', label: 'Reading the delivery note' },
+  { key: 'match', label: 'Matching against your stock list' },
+];
+
 function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, receivedBy, onClose, onDone }) {
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
 
   const [stage, setStage] = useState('pick'); // pick | working | review | saving
-  const [status, setStatus] = useState('');
   const [error, setError] = useState('');
-  const [docFile, setDocFile] = useState(null); // prepared document
-  const [note, setNote] = useState(null); // extracted header
+  const [docFile, setDocFile] = useState(null);
+  const [note, setNote] = useState(null);
   const [rows, setRows] = useState([]);
-  const [pickerFor, setPickerFor] = useState(null); // row index with the item picker open
+
+  const [stepIndex, setStepIndex] = useState(0);
+  const [stepDetail, setStepDetail] = useState({});
+  const [elapsed, setElapsed] = useState(0);
+
+  const [expanded, setExpanded] = useState(null);   // row index showing its actions
+  const [pickerFor, setPickerFor] = useState(null);
   const [pickerQuery, setPickerQuery] = useState('');
   const [pickerAll, setPickerAll] = useState(false);
-  const [caseSizes, setCaseSizes] = useState({}); // row index → typed case size
-  const [progress, setProgress] = useState(null); // { done, total }
-  const [addFor, setAddFor] = useState(null);     // row index with the add-item form open
-  const [draft, setDraft] = useState(null);       // { name, category, section, unit… }
+  const [addFor, setAddFor] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [learnedCount, setLearnedCount] = useState(0); // recognised from memory
-  const [updateCosts, setUpdateCosts] = useState(false); // priced documents only
+  const [caseSizes, setCaseSizes] = useState({});
+  const [showDone, setShowDone] = useState(true);   // "ready to log" group open
+  const [showSkipped, setShowSkipped] = useState(false);
+
+  const [progress, setProgress] = useState(null);
+  const [learnedCount, setLearnedCount] = useState(0);
+  const [updateCosts, setUpdateCosts] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
-  // Set/added-now-saved changes survive a discard; the prompt has to say so.
   const [keptChanges, setKeptChanges] = useState(false);
 
   const live = useMemo(() => items.filter((i) => !i.archived), [items]);
+
+  // Elapsed seconds drive the "this is taking a while" reassurance, so a slow
+  // model call reads as slow rather than broken.
+  useEffect(() => {
+    if (stage !== 'working') { setElapsed(0); return undefined; }
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [stage]);
 
   // ---- capture + read ------------------------------------------------------
 
@@ -80,20 +106,25 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     if (!file) return;
     setError('');
     setStage('working');
+    setStepIndex(0);
+    setStepDetail({});
     try {
-      setStatus('Preparing the document…');
       const prepared = await prepareDocument(file);
       setDocFile(prepared);
+      setStepDetail((d) => ({
+        ...d,
+        prepare: `${prepared.mimeType === 'application/pdf' ? 'PDF' : 'Photo'} · ${Math.round(prepared.bytes / 1024)} KB`,
+      }));
+      setStepIndex(1);
 
-      setStatus('Reading the delivery note…');
       const { note: read, error: readError } = await extractDeliveryNote(prepared.base64, prepared.mimeType);
       if (!read) {
         setError(readError || 'Could not read that document');
         setStage('pick');
         return;
       }
-
-      setStatus('Matching against your stock list…');
+      setStepDetail((d) => ({ ...d, read: `${read.lines.length} lines · ${read.supplier || 'unknown supplier'}` }));
+      setStepIndex(2);
 
       // What this venue already learned from earlier notes. A confirmed
       // supplier code beats any name matching, so it's consulted first.
@@ -143,6 +174,10 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         reconciled = reconciled.map((r) => ({ ...r, include: false }));
       }
 
+      setStepDetail((d) => ({
+        ...d,
+        match: `${reconciled.filter((r) => r.status === 'matched').length} of ${reconciled.length} matched`,
+      }));
       setNote(read);
       setRows(reconciled);
       setUpdateCosts(reconciled.some((r) => r.item && costPerWholeUnit(r.line, r.item) !== null));
@@ -174,7 +209,15 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     setPickerFor(null);
   };
 
-  // ---- adding a product the venue buys but doesn't count -------------------
+  // Capture a missing case size the same way the manual entry screen does —
+  // persisted onto the item, so the next delivery of it needs no asking.
+  const applyCaseSize = (row) => {
+    const n = parseInt(caseSizes[row.index] ?? suggestedCasePack(row.line), 10) || 0;
+    if (n <= 0 || !row.item) return;
+    setStockItemCasePack(venuePath, row.item.id, n);
+    setKeptChanges(true);
+    setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, { ...r.item, casePack: n }) : r)));
+  };
 
   const openAddForm = async (row) => {
     if (addFor === row.index) { setAddFor(null); return; }
@@ -184,8 +227,6 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     const section = cls === 'weight' ? 'kitchen' : 'bar';
     setDraft({ name, category: '', section, ...unit });
     setAddFor(row.index);
-    // The shared catalog knows most of the UK trade — fill the category in if
-    // it can identify the product unambiguously.
     try {
       const hit = bestCatalogMatch(await loadCatalog(), name, section);
       if (hit?.category) setDraft((d) => (d ? { ...d, category: hit.category } : d));
@@ -209,7 +250,11 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     });
     setAdding(false);
     if (!res.success) { setError('Could not add that item: ' + res.error); return; }
-    const item = { id: res.id, name: draft.name.trim(), category: draft.category.trim(), section: draft.section, unit: draft.unit, wholeUnit: draft.wholeUnit, partUnit: draft.partUnit, casePack: draft.casePack || 0, archived: false };
+    const item = {
+      id: res.id, name: draft.name.trim(), category: draft.category.trim(), section: draft.section,
+      unit: draft.unit, wholeUnit: draft.wholeUnit, partUnit: draft.partUnit,
+      casePack: draft.casePack || 0, archived: false,
+    };
     setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, item, { corrected: true }) : r)));
     setAddFor(null);
     setDraft(null);
@@ -226,17 +271,21 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     else onClose();
   };
 
-  // Capture a missing case size the same way the manual entry screen does —
-  // persisted onto the item, so the next delivery of it needs no asking.
-  const applyCaseSize = (row) => {
-    const n = parseInt(caseSizes[row.index] ?? suggestedCasePack(row.line), 10) || 0;
-    if (n <= 0 || !row.item) return;
-    setStockItemCasePack(venuePath, row.item.id, n);
-    setKeptChanges(true);
-    setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, { ...r.item, casePack: n }) : r)));
-  };
+  // ---- grouping: what does each line ask of you? ---------------------------
 
-  // ---- log -----------------------------------------------------------------
+  const groups = useMemo(() => {
+    const needsYou = [];
+    const short = [];
+    const ready = [];
+    const skipped = [];
+    for (const r of rows) {
+      if (r.status === 'return') skipped.push(r);
+      else if (r.status === 'unmatched' || r.needsCasePack) needsYou.push(r);
+      else if (r.shortDelivery) short.push(r);
+      else ready.push(r);
+    }
+    return { needsYou, short, ready, skipped };
+  }, [rows]);
 
   const included = rows.filter((r) => r.include && r.item);
   const isCreditNote = note?.documentKind === 'credit-note';
@@ -251,10 +300,9 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     .filter((c) => c.costPrice !== null && Math.abs(c.costPrice - c.was) >= 0.01),
   [included]);
 
-  const noteValue = useMemo(() => rows.reduce((t, r) => {
-    const c = r.include ? lineCost(r.line) : null;
-    return t + (c || 0);
-  }, 0), [rows]);
+  const noteValue = useMemo(() => rows.reduce((t, r) => t + (r.include ? (lineCost(r.line) || 0) : 0), 0), [rows]);
+
+  // ---- log -----------------------------------------------------------------
 
   const handleLogAll = async () => {
     if (!included.length || stage === 'saving') return;
@@ -319,8 +367,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     // Learn from what was confirmed. Deliberately last and unawaited-on-failure:
     // the stock movements are what matter, and a venue that never learns is a
     // slower product, not a broken one.
-    const learned = learnedRecordsFrom(rows, note, receivedBy);
-    saveSupplierProducts(venuePath, learned)
+    saveSupplierProducts(venuePath, learnedRecordsFrom(rows, note, receivedBy))
       .catch((err) => console.warn('Could not save what this note taught us:', err));
 
     onDone(entryIds.length, failed);
@@ -328,11 +375,6 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
 
   // ---- styles --------------------------------------------------------------
 
-  const sheet = {
-    backgroundColor: colors.bgCard, borderRadius: '14px', width: '100%', maxWidth: '640px',
-    maxHeight: '92vh', display: 'flex', flexDirection: 'column',
-    boxShadow: `0 12px 40px ${colors.shadow}`, overflow: 'hidden',
-  };
   const primaryBtn = (enabled = true) => ({
     flex: 1, padding: '0.85rem', border: 'none', borderRadius: '10px',
     backgroundColor: accent, color: onAccent, fontWeight: 700, fontSize: '1rem',
@@ -342,12 +384,22 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     flexShrink: 0, padding: '0.85rem 1.1rem', border: 'none', borderRadius: '10px',
     backgroundColor: colors.bgLight, color: colors.textPrimary, fontWeight: 600, cursor: 'pointer',
   };
+  const smallBtn = (tone) => ({
+    padding: '0.35rem 0.7rem', borderRadius: '7px', fontSize: '0.76rem', fontWeight: 600,
+    cursor: 'pointer', border: `1px solid ${tone || colors.border}`,
+    backgroundColor: 'transparent', color: tone || colors.textSecondary,
+  });
   const chip = (bg, fg) => ({
     display: 'inline-block', padding: '0.1rem 0.45rem', borderRadius: '9999px',
-    fontSize: '0.68rem', fontWeight: 700, backgroundColor: bg, color: fg, whiteSpace: 'nowrap',
+    fontSize: '0.66rem', fontWeight: 700, letterSpacing: '0.02em',
+    backgroundColor: bg, color: fg, whiteSpace: 'nowrap',
   });
+  const field = {
+    width: '100%', padding: '0.5rem', fontSize: '0.88rem', border: `2px solid ${colors.border}`,
+    borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box',
+  };
 
-  // ---- panes ---------------------------------------------------------------
+  // ---- capture pane --------------------------------------------------------
 
   const pickPane = (
     <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
@@ -381,26 +433,72 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         style={{ display: 'none' }}
       />
 
-      {error && (
-        <div style={{ fontSize: '0.85rem', color: colors.error, fontWeight: 600 }}>{error}</div>
+      {error && <div style={{ fontSize: '0.85rem', color: colors.error, fontWeight: 600 }}>{error}</div>}
+    </div>
+  );
+
+  // ---- working pane: real steps, real findings -----------------------------
+
+  const workingPane = (
+    <div style={{ padding: '1.25rem' }}>
+      <div style={{ height: '4px', borderRadius: '2px', backgroundColor: colors.bgLight, overflow: 'hidden', marginBottom: '1.25rem' }}>
+        <div className="bb-sweep" style={{ width: '25%', height: '100%', borderRadius: '2px', backgroundColor: accent }} />
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'flex-start' }}>
+        {docFile?.thumbDataUrl && (
+          <img
+            src={docFile.thumbDataUrl} alt=""
+            style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '8px', border: `1px solid ${colors.borderLight}`, flexShrink: 0 }}
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+          {STEPS.map((s, i) => {
+            const done = i < stepIndex;
+            const active = i === stepIndex;
+            return (
+              <div key={s.key} style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', opacity: done || active ? 1 : 0.4 }}>
+                <div
+                  className={active ? 'bb-pulse' : undefined}
+                  style={{
+                    flexShrink: 0, width: '18px', height: '18px', marginTop: '0.1rem', borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem', fontWeight: 700,
+                    backgroundColor: done ? accent : (active ? accent : colors.bgLight),
+                    color: done || active ? onAccent : colors.textMuted,
+                    border: done || active ? 'none' : `1px solid ${colors.border}`,
+                  }}
+                >{done ? '✓' : ''}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: active ? 700 : 500, color: colors.textPrimary }}>
+                    {s.label}
+                  </div>
+                  {stepDetail[s.key] && (
+                    <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>{stepDetail[s.key]}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Reading is the slow step and the only one with nothing to report while
+          it runs — say so rather than let the silence read as a hang. */}
+      {elapsed >= 8 && stepIndex === 1 && (
+        <div style={{ marginTop: '1.1rem', fontSize: '0.78rem', color: colors.textSecondary }}>
+          Still reading — a photographed note can take up to a minute. {elapsed}s so far.
+        </div>
       )}
     </div>
   );
 
-  const workingPane = (
-    <div style={{ padding: '2.5rem 1.25rem', textAlign: 'center', color: colors.textSecondary }}>
-      <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📄</div>
-      <div style={{ fontWeight: 600, color: colors.textPrimary }}>{status}</div>
-      <div style={{ fontSize: '0.82rem', marginTop: '0.35rem' }}>This takes a few seconds.</div>
-    </div>
-  );
+  // ---- review: pickers and forms -------------------------------------------
 
   const itemPicker = (row) => {
     const cls = containerClassOfLine(row.line);
     const q = pickerQuery.trim().toLowerCase();
-    const pool = pickerAll
-      ? live
-      : live.filter((i) => containersCompatible(cls, containerClassOfItem(i)));
+    const pool = pickerAll ? live : live.filter((i) => containersCompatible(cls, containerClassOfItem(i)));
     const results = pool
       .filter((i) => !q || i.name.toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q))
       .slice(0, 40);
@@ -408,12 +506,11 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       <div style={{ marginTop: '0.5rem', padding: '0.6rem', border: `1px solid ${colors.borderLight}`, borderRadius: '8px', backgroundColor: colors.bgLight }}>
         <input
           autoFocus value={pickerQuery} onChange={(e) => setPickerQuery(e.target.value)}
-          placeholder="Search stock items…"
-          style={{ width: '100%', padding: '0.55rem', fontSize: '0.9rem', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box' }}
+          placeholder="Search stock items…" style={field}
         />
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0.5rem 0', fontSize: '0.78rem', color: colors.textSecondary }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0.5rem 0', fontSize: '0.75rem', color: colors.textSecondary }}>
           <input type="checkbox" checked={pickerAll} onChange={(e) => setPickerAll(e.target.checked)} />
-          Show items of every container type (this line looks like a {cls === 'other' ? 'unknown container' : cls})
+          Show every container type (this line looks like a {cls === 'other' ? 'unknown container' : cls})
         </label>
         <div style={{ maxHeight: '190px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
           {results.length === 0 && (
@@ -432,10 +529,8 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
           ))}
         </div>
         <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
-          <button onClick={() => setPickerFor(null)} style={{ ...quietBtn, padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}>Close</button>
-          {row.item && (
-            <button onClick={() => clearItem(row.index)} style={{ ...quietBtn, padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}>Skip this line</button>
-          )}
+          <button onClick={() => setPickerFor(null)} style={smallBtn()}>Close</button>
+          {row.item && <button onClick={() => clearItem(row.index)} style={smallBtn()}>Skip this line</button>}
         </div>
       </div>
     );
@@ -448,7 +543,6 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
    * supplier's "SCAMP FRIE CARD" is a starting point, not a product name.
    */
   const addForm = (row) => {
-    const field = { width: '100%', padding: '0.5rem', fontSize: '0.88rem', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box' };
     const countedAs = formatItemDescription({ wholeUnit: draft.wholeUnit });
     const sectionBtn = (key, label) => (
       <button
@@ -458,9 +552,6 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     );
     return (
       <div style={{ marginTop: '0.5rem', padding: '0.6rem', border: `1px solid ${accent}`, borderRadius: '8px', backgroundColor: colors.bgLight, display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
-          You buy this but don't count it. Add it to the stock list?
-        </div>
         <input
           autoFocus value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           placeholder="Product name" style={field}
@@ -469,7 +560,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
           value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}
           placeholder="Category (e.g. Snacks)" style={field}
         />
-        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <div style={{ display: 'flex', flex: 1, gap: '0.25rem', padding: '0.2rem', borderRadius: '8px', backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}` }}>
             {sectionBtn('bar', 'Bar')}
             {sectionBtn('kitchen', 'Kitchen')}
@@ -480,7 +571,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem' }}>
-          <button onClick={() => { setAddFor(null); setDraft(null); }} style={{ ...quietBtn, padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}>Cancel</button>
+          <button onClick={() => { setAddFor(null); setDraft(null); }} style={smallBtn()}>Cancel</button>
           <button
             onClick={() => addToStockList(row)} disabled={!draft.name.trim() || adding}
             style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '8px', backgroundColor: accent, color: onAccent, fontWeight: 700, fontSize: '0.82rem', cursor: adding ? 'wait' : 'pointer', opacity: draft.name.trim() ? 1 : 0.5 }}
@@ -490,74 +581,99 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     );
   };
 
-  const lineRow = (row) => {
+  // ---- review: one row --------------------------------------------------
+
+  /**
+   * `compact` is the resting state for lines that need nothing: source text on
+   * top, what it becomes underneath, quantity on the right, and no buttons at
+   * all until the row is tapped. Fifteen of those fit where four used to.
+   */
+  const lineRow = (row, { compact }) => {
     const isReturn = row.status === 'return';
     const unmatched = row.status === 'unmatched';
+    const open = expanded === row.index;
     const units = row.item && !row.needsCasePack ? unitsForLine(row.line, row.item) : null;
+    const cost = lineCost(row.line);
+    const tone = unmatched || row.needsCasePack ? colors.warning : (row.shortDelivery ? colors.error : accent);
+
     return (
       <div
         key={row.index}
         style={{
-          border: `1px solid ${row.include ? accent : colors.borderLight}`,
-          borderRadius: '10px', padding: '0.6rem 0.7rem',
+          border: `1px solid ${open ? tone : colors.borderLight}`,
+          borderLeft: compact ? `1px solid ${colors.borderLight}` : `3px solid ${tone}`,
+          borderRadius: '9px',
           backgroundColor: isReturn ? colors.bgLight : colors.bgCard,
-          opacity: isReturn ? 0.75 : 1,
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-          <input
-            type="checkbox" checked={row.include} disabled={isReturn || unmatched || row.needsCasePack}
-            onChange={() => toggleInclude(row.index)}
-            style={{ marginTop: '0.2rem', width: '20px', height: '20px', flexShrink: 0, accentColor: accent }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}>
-              <div style={{ flex: 1, minWidth: 0, fontSize: '0.85rem', fontWeight: 600, color: colors.textPrimary }}>
-                {row.line.packSize ? `${row.line.packSize} ` : ''}{row.line.description}
-              </div>
-              <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: colors.textPrimary }}>{qtyLabel(row)}</div>
-                {lineCost(row.line) !== null && (
-                  <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>{money(lineCost(row.line))}</div>
-                )}
-              </div>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', padding: compact ? '0.45rem 0.6rem' : '0.6rem 0.7rem' }}>
+          {!isReturn && (
+            <input
+              type="checkbox" checked={row.include} disabled={unmatched || row.needsCasePack}
+              onChange={() => toggleInclude(row.index)}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: '19px', height: '19px', flexShrink: 0, accentColor: accent, cursor: unmatched ? 'not-allowed' : 'pointer' }}
+            />
+          )}
+          {isReturn && <span style={{ flexShrink: 0, width: '19px', textAlign: 'center', color: colors.textMuted }}>⊘</span>}
 
-            {/* What it was matched to, and what that means in stock terms */}
-            <div style={{ marginTop: '0.25rem', fontSize: '0.78rem', color: colors.textSecondary }}>
-              {isReturn && <span style={chip(colors.bgLight, colors.textSecondary)}>RETURN — going back, not stock in</span>}
-              {unmatched && <span style={chip(colors.bgLight, colors.textSecondary)}>No matching stock item</span>}
-              {row.item && (
-                <span>
-                  → <strong style={{ color: colors.textPrimary }}>{row.item.name}</strong>
-                  {units && units.units.length > 0 && (
-                    <> · adds {units.units.map(unitPhrase).join(', ')}</>
-                  )}
-                  {row.viaLearned && (
-                    <span style={{ ...chip(colors.deliverySoft, accent), marginLeft: '0.35rem' }}>REMEMBERED</span>
-                  )}
-                </span>
-              )}
-            </div>
+          <button
+            onClick={() => setExpanded(open ? null : row.index)}
+            style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer' }}
+          >
+            {/* Matched: the STOCK ITEM leads, because that's the thing being
+                changed. The supplier's text is the evidence, not the answer. */}
+            {row.item ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', fontWeight: 700, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.item.name}
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: '0.82rem', fontWeight: 700, color: colors.textPrimary }}>
+                    {units && units.units.length ? units.units.map(unitPhrase).join(', ') : qtyLabel(row)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginTop: '0.1rem' }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '0.72rem', color: colors.textSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.line.packSize} {row.line.description}
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: '0.72rem', color: colors.textMuted }}>
+                    {qtyLabel(row)}{cost !== null ? ` · ${money(cost)}` : ''}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '0.86rem', fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.line.packSize} {row.line.description}
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: '0.82rem', fontWeight: 700, color: colors.textPrimary }}>{qtyLabel(row)}</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: isReturn ? colors.textMuted : colors.warning, marginTop: '0.1rem', fontWeight: 600 }}>
+                  {isReturn ? 'Going back to the supplier — not stock in' : 'Not in your stock list'}
+                </div>
+              </>
+            )}
+          </button>
 
-            {/* Anything the document says that a manager needs to act on */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.3rem' }}>
-              {row.shortDelivery && (
-                <span style={chip(colors.dangerSoft, colors.error)}>
-                  SHORT — {row.line.qtyDelivered} delivered of {row.line.qtyDespatched} despatched
-                </span>
-              )}
-              {row.shortDespatch && (
-                <span style={chip(colors.bgLight, colors.textSecondary)}>
-                  {row.line.qtyDespatched} sent of {row.line.qtyOrdered} ordered
-                </span>
-              )}
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.15rem', flexShrink: 0 }}>
+            {row.viaLearned && <span style={chip(colors.deliverySoft, accent)}>REMEMBERED</span>}
+            {row.shortDelivery && (
+              <span style={chip(colors.dangerSoft, colors.error)}>
+                {row.line.qtyDelivered} OF {row.line.qtyDespatched}
+              </span>
+            )}
+          </div>
+        </div>
 
-            {/* A "1 CA" line against an item with no case size can't be converted */}
+        {/* Actions only exist once you ask for them */}
+        {(open || row.needsCasePack || unmatched) && !isReturn && (
+          <div style={{ padding: '0 0.7rem 0.6rem', borderTop: open ? `1px solid ${colors.borderLight}` : 'none', paddingTop: open ? '0.55rem' : 0 }}>
             {row.needsCasePack && row.item && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.4rem', padding: '0.45rem 0.55rem', border: `1px dashed ${colors.border}`, borderRadius: '8px' }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', color: colors.textSecondary }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.45rem', padding: '0.45rem 0.55rem', border: `1px dashed ${colors.warning}`, borderRadius: '8px' }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: '0.76rem', color: colors.textSecondary }}>
                   Case of how many? Needed to convert {qtyLabel(row)}.
                 </span>
                 <input
@@ -570,76 +686,72 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
               </div>
             )}
 
-            {!isReturn && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.35rem' }}>
-                <button
-                  onClick={() => { setPickerFor(pickerFor === row.index ? null : row.index); setPickerQuery(''); setPickerAll(false); setAddFor(null); }}
-                  style={{ padding: '0.3rem 0.6rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '0.75rem', cursor: 'pointer' }}
-                >
-                  {row.item ? 'Change item' : 'Choose item'}
-                </button>
-                {/* An unmatched line is evidence: they buy this and don't count it */}
-                {unmatched && (
-                  <button
-                    onClick={() => { setPickerFor(null); openAddForm(row); }}
-                    style={{ padding: '0.3rem 0.6rem', border: `1px solid ${accent}`, borderRadius: '6px', backgroundColor: 'transparent', color: accent, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
-                  >
-                    + Add to stock list
-                  </button>
-                )}
+            {row.shortDespatch && (
+              <div style={{ fontSize: '0.72rem', color: colors.textSecondary, marginBottom: '0.4rem' }}>
+                {row.line.qtyDespatched} sent of {row.line.qtyOrdered} ordered.
               </div>
             )}
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+              <button
+                onClick={() => { setPickerFor(pickerFor === row.index ? null : row.index); setAddFor(null); setPickerQuery(''); setPickerAll(false); }}
+                style={smallBtn()}
+              >{row.item ? 'Change item' : 'Choose item'}</button>
+              {unmatched && (
+                <button onClick={() => { setPickerFor(null); openAddForm(row); }} style={smallBtn(accent)}>
+                  + Add to stock list
+                </button>
+              )}
+            </div>
 
             {pickerFor === row.index && itemPicker(row)}
             {addFor === row.index && draft && addForm(row)}
           </div>
-        </div>
+        )}
       </div>
     );
   };
 
-  const counts = {
-    matched: rows.filter((r) => r.status === 'matched').length,
-    unmatched: rows.filter((r) => r.status === 'unmatched').length,
-    returns: rows.filter((r) => r.status === 'return').length,
-    short: rows.filter((r) => r.shortDelivery).length,
-  };
+  const groupHeader = (label, count, tone, { collapsible, open, onToggle } = {}) => (
+    <div
+      onClick={collapsible ? onToggle : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.4rem',
+        margin: '0.9rem 0 0.4rem', cursor: collapsible ? 'pointer' : 'default',
+      }}
+    >
+      <span style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: tone }}>
+        {label}
+      </span>
+      <span style={{ fontSize: '0.7rem', fontWeight: 700, color: colors.textMuted }}>{count}</span>
+      <span style={{ flex: 1, height: '1px', backgroundColor: colors.borderLight }} />
+      {collapsible && <span style={{ fontSize: '0.7rem', color: colors.textSecondary }}>{open ? 'Hide' : 'Show'}</span>}
+    </div>
+  );
 
   const reviewPane = (
     <>
-      <div style={{ padding: '0.85rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-          {docFile?.mimeType?.startsWith('image/') ? (
+      <div style={{ padding: '0.8rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
+        <div style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
+          {docFile?.thumbDataUrl && (
             <img
-              src={docFile.dataUrl} alt="Delivery note"
-              style={{ width: '68px', height: '68px', objectFit: 'cover', borderRadius: '8px', border: `1px solid ${colors.borderLight}`, flexShrink: 0 }}
+              src={docFile.thumbDataUrl} alt="Delivery note"
+              style={{ width: '52px', height: '52px', objectFit: 'cover', borderRadius: '8px', border: `1px solid ${colors.borderLight}`, flexShrink: 0 }}
             />
-          ) : (
-            <div style={{ width: '68px', height: '68px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', backgroundColor: colors.bgLight, fontSize: '1.6rem', flexShrink: 0 }}>📄</div>
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, color: colors.textPrimary }}>{note?.supplier || 'Delivery note'}</div>
-            <div style={{ fontSize: '0.8rem', color: colors.textSecondary }}>
-              {[note?.documentType, prettyDate(note?.deliveryDate)].filter(Boolean).join(' · ')}
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary }}>{note?.supplier || 'Delivery note'}</div>
+            <div style={{ fontSize: '0.76rem', color: colors.textSecondary }}>
+              {[note?.documentType, prettyDate(note?.deliveryDate), note?.reference && `Ref ${note.reference}`]
+                .filter(Boolean).join(' · ')}
             </div>
-            {note?.reference && (
-              <div style={{ fontSize: '0.75rem', color: colors.textMuted }}>Ref {note.reference}</div>
+            {learnedCount > 0 && (
+              <div style={{ fontSize: '0.72rem', color: accent, fontWeight: 600, marginTop: '0.15rem' }}>
+                {learnedCount} recognised from previous notes
+              </div>
             )}
-            <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
-              {counts.matched} matched
-              {learnedCount > 0 && ` (${learnedCount} remembered)`}
-              {counts.unmatched > 0 && ` · ${counts.unmatched} not in your stock list`}
-              {counts.returns > 0 && ` · ${counts.returns} return`}
-              {counts.short > 0 && ` · ${counts.short} short`}
-            </div>
           </div>
         </div>
-
-        {!docFile?.storable && (
-          <div style={{ marginTop: '0.6rem', fontSize: '0.75rem', color: colors.textSecondary }}>
-            The document is too large to keep a copy of — the lines below will still be saved.
-          </div>
-        )}
 
         {isCreditNote && (
           <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
@@ -647,13 +759,60 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
             kept as a record, but its lines won't be logged as goods in.
           </div>
         )}
+        {!docFile?.storable && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.73rem', color: colors.textSecondary }}>
+            The document is too large to keep a copy of — the lines below will still be saved.
+          </div>
+        )}
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-        {rows.map(lineRow)}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 1rem 0.75rem' }}>
+        {groups.needsYou.length > 0 && (
+          <>
+            {groupHeader('Needs you', groups.needsYou.length, colors.warning)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {groups.needsYou.map((r) => lineRow(r, { compact: false }))}
+            </div>
+          </>
+        )}
+
+        {groups.short.length > 0 && (
+          <>
+            {groupHeader('Delivered short', groups.short.length, colors.error)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {groups.short.map((r) => lineRow(r, { compact: false }))}
+            </div>
+          </>
+        )}
+
+        {groups.ready.length > 0 && (
+          <>
+            {groupHeader('Ready to log', groups.ready.length, accent, {
+              collapsible: true, open: showDone, onToggle: () => setShowDone((v) => !v),
+            })}
+            {showDone && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {groups.ready.map((r) => lineRow(r, { compact: true }))}
+              </div>
+            )}
+          </>
+        )}
+
+        {groups.skipped.length > 0 && (
+          <>
+            {groupHeader('Not stock in', groups.skipped.length, colors.textMuted, {
+              collapsible: true, open: showSkipped, onToggle: () => setShowSkipped((v) => !v),
+            })}
+            {showSkipped && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {groups.skipped.map((r) => lineRow(r, { compact: true }))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      <div style={{ padding: '0.85rem 1rem', borderTop: `1px solid ${colors.borderLight}` }}>
+      <div style={{ padding: '0.8rem 1rem', borderTop: `1px solid ${colors.borderLight}` }}>
         {error && <div style={{ fontSize: '0.82rem', color: colors.error, marginBottom: '0.5rem', fontWeight: 600 }}>{error}</div>}
 
         {/* Only shown for documents that actually carry prices */}
@@ -664,7 +823,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
               style={{ marginTop: '0.1rem', width: '18px', height: '18px', flexShrink: 0, accentColor: accent }}
             />
             <span>
-              Update cost prices for {costChanges.length} item{costChanges.length === 1 ? '' : 's'} from this document
+              Update cost prices for {costChanges.length} item{costChanges.length === 1 ? '' : 's'}
               {noteValue > 0 && <> · note value {money(noteValue)}</>}
             </span>
           </label>
@@ -689,8 +848,15 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       onClick={() => stage === 'pick' && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 5000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={sheet}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.85rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: colors.bgCard, borderRadius: '14px', width: '100%', maxWidth: '640px',
+          maxHeight: '92vh', display: 'flex', flexDirection: 'column',
+          boxShadow: `0 12px 40px ${colors.shadow}`, overflow: 'hidden',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
           <div style={{ flex: 1, fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>Scan delivery note</div>
           {stage !== 'saving' && stage !== 'working' && (
             <button onClick={requestClose} aria-label="Close" style={{ width: '30px', height: '30px', border: 'none', borderRadius: '50%', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>

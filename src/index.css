@@ -121,6 +121,27 @@ code {
     monospace;
 }
 
+/* ===== Motion =====
+ * Used by long-running work (reading a scanned document) where there is no
+ * honest percentage to show — an indeterminate bar and a pulsing step marker
+ * say "still working" without pretending to know how far along it is.
+ */
+@keyframes bb-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+@keyframes bb-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+.bb-sweep { animation: bb-sweep 1.4s ease-in-out infinite; }
+.bb-pulse { animation: bb-pulse 1.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-sweep, .bb-pulse { animation: none; }
+  .bb-sweep { transform: translateX(0); width: 100% !important; opacity: 0.5; }
+}
+
 #root {
   min-height: 100vh;
 }
