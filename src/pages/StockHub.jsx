@@ -39,7 +39,7 @@ function StockHub() {
     {
       key: 'add',
       label: 'Add Stock',
-      desc: 'Scan a delivery note or log stock in',
+      desc: 'Scan paperwork or log stock in by hand',
       to: '/deliveries',
       accent: colors.delivery,
       show: admin,

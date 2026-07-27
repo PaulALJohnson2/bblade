@@ -643,7 +643,7 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
           it runs — say so rather than let the silence read as a hang. */}
       {elapsed >= 8 && stepIndex === 1 && (
         <div style={{ marginTop: '1.1rem', fontSize: '0.78rem', color: colors.textSecondary }}>
-          Still reading — an image note can take up to a minute. {elapsed}s so far.
+          Still reading — a photographed document can take up to a minute. {elapsed}s so far.
         </div>
       )}
     </div>
@@ -1046,7 +1046,7 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
-          <div style={{ flex: 1, fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>Scan delivery note</div>
+          <div style={{ flex: 1, fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>Scan paperwork</div>
           {stage !== 'saving' && stage !== 'working' && stage !== 'done' && (
             <button onClick={requestClose} aria-label="Close" style={{ width: '30px', height: '30px', border: 'none', borderRadius: '50%', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
           )}

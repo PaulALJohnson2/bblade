@@ -284,15 +284,18 @@ function Deliveries() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
         <button onClick={() => navigate('/stock')} style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}>← Back</button>
-        <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Deliveries</h1>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Add stock</h1>
       </div>
 
       {/* Scan the paperwork instead of keying it in item by item */}
       <button
         onClick={() => setScanOpen(true)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.85rem', marginBottom: '0.75rem', border: `2px dashed ${accent}`, borderRadius: '10px', backgroundColor: colors.deliverySoft, color: colors.textPrimary, fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' }}
+        style={{ width: '100%', padding: '0.9rem', marginBottom: '0.75rem', border: `2px dashed ${accent}`, borderRadius: '10px', backgroundColor: colors.deliverySoft, color: colors.textPrimary, cursor: 'pointer', textAlign: 'center' }}
       >
-        📄 Scan a delivery note
+        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>📄 Scan paperwork</div>
+        <div style={{ fontSize: '0.78rem', color: colors.textSecondary, marginTop: '0.15rem' }}>
+          Delivery note, invoice or receipt — photo, PDF or screenshot
+        </div>
       </button>
 
       {/* Who delivers what, how often, and how reliably — all derived.
@@ -366,6 +369,16 @@ function Deliveries() {
           >×</button>
         </div>
       )}
+
+      {/* The no-paperwork case. Plenty arrives without a document — a cash run,
+          a keg borrowed off another pub — and the list below was unlabelled. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', margin: '1.5rem 0 0.75rem' }}>
+        <span style={{ flex: 1, height: '1px', backgroundColor: colors.borderLight }} />
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: colors.textSecondary }}>
+          Or add it by hand
+        </span>
+        <span style={{ flex: 1, height: '1px', backgroundColor: colors.borderLight }} />
+      </div>
 
       {/* Section tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
