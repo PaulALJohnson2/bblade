@@ -52,6 +52,17 @@ const prettyDate = (iso) => {
 
 const qtyLabel = (row) => `${row.qty}${row.line.unitCode ? ` ${row.line.unitCode}` : ''}`;
 
+/**
+ * The date the goods arrived, from the note itself. Midday local so a timezone
+ * shift can't nudge it onto the day before, which for a note delivered the day
+ * of a stock take is the difference between two periods.
+ */
+const arrivalDate = (iso) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0);
+};
+
 /** "1 Cases (×6)" reads wrong on a review screen — singularise the container. */
 const unitPhrase = (u) => `${u.count} ${u.count === 1 ? u.label.replace(/^(\w+?)s\b/, '$1') : u.label}`;
 
@@ -378,6 +389,8 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
         note: note.reference ? `Delivery note ${note.reference}` : 'Scanned delivery note',
         noteId: saved.id,
         receivedBy,
+        // The note's own delivery date, not the moment it was scanned.
+        receivedAt: arrivalDate(note.deliveryDate),
       });
       if (res.success) entryIds.push(res.id);
       else failed += 1;
@@ -864,6 +877,11 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
             {learnedCount > 0 && (
               <div style={{ fontSize: '0.72rem', color: accent, fontWeight: 600, marginTop: '0.15rem' }}>
                 {learnedCount} recognised from previous notes
+              </div>
+            )}
+            {arrivalDate(note?.deliveryDate) && (
+              <div style={{ fontSize: '0.72rem', color: colors.textSecondary, marginTop: '0.15rem' }}>
+                Stock will be dated {prettyDate(note.deliveryDate)}, not today
               </div>
             )}
           </div>

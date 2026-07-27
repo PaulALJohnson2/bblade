@@ -886,7 +886,8 @@ export async function deleteWastageEntry(venuePath, entryId) {
  * lets concurrent edits from other devices merge.
  *
  * @param {Object} data - { itemName, section, units: [{label, count}],
- *   quantity (base units received), baseLabel, supplier, cost, note, receivedBy }
+ *   quantity (base units received), baseLabel, supplier, cost, note, receivedBy,
+ *   receivedAt (Date — when the goods ARRIVED, not when this was entered) }
  */
 export async function logDelivery(venuePath, itemId, data) {
   try {
@@ -895,6 +896,14 @@ export async function logDelivery(venuePath, itemId, data) {
     const entryRef = doc(collection(db, `${venuePath}/deliveryLog`));
     const received = Number(data.quantity) || 0;
     const cost = Number(data.cost);
+
+    // Trust a supplied arrival date, but never one in the future — a misread
+    // year on a delivery note would otherwise park stock beyond every period
+    // boundary and quietly vanish from the sums.
+    const supplied = data.receivedAt instanceof Date && !Number.isNaN(data.receivedAt.getTime())
+      ? Timestamp.fromDate(data.receivedAt)
+      : null;
+    const arrivedAt = supplied && supplied.toMillis() <= now.toMillis() ? supplied : now;
 
     await setDoc(entryRef, {
       itemId,
@@ -910,7 +919,16 @@ export async function logDelivery(venuePath, itemId, data) {
       // can be traced back to the document that was signed for.
       noteId: data.noteId || null,
       receivedBy: data.receivedBy || '',
-      receivedAt: now,
+      // WHEN THE GOODS ARRIVED, which is not always when someone got round to
+      // entering them. Every stock period is windowed on this, so a delivery
+      // stamped with the moment it was keyed in lands on the wrong side of a
+      // count that happened in between — the period it belongs to loses it and
+      // the next one gains a phantom. That understates one period's usage and
+      // overstates the next, and in the variance report it manufactures a
+      // shortfall out of paperwork nobody had typed up yet.
+      receivedAt: arrivedAt,
+      // Kept separately so the audit trail still shows when it was entered.
+      loggedAt: now,
       accountId,
       venueId,
     });
