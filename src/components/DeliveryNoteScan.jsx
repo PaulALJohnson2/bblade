@@ -521,7 +521,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
           it runs — say so rather than let the silence read as a hang. */}
       {elapsed >= 8 && stepIndex === 1 && (
         <div style={{ marginTop: '1.1rem', fontSize: '0.78rem', color: colors.textSecondary }}>
-          Still reading — a photographed note can take up to a minute. {elapsed}s so far.
+          Still reading — an image note can take up to a minute. {elapsed}s so far.
         </div>
       )}
     </div>
