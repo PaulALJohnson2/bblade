@@ -3,6 +3,7 @@
 //   TOKEN=$(gcloud auth print-access-token) DRY=1 node scripts/seed-sandbox.cjs   # preview
 //   TOKEN=$(gcloud auth print-access-token)       node scripts/seed-sandbox.cjs   # write
 //   TOKEN=... ONLY=demo node scripts/seed-sandbox.cjs                             # one of them
+//   TOKEN=... ONLY=demo node scripts/seed-sandbox.cjs --clean                      # wipe first
 //
 // SAFE TO RE-RUN, and meant to be. Every document id is deterministic, so a
 // second run updates in place rather than duplicating, and every date is
@@ -24,6 +25,12 @@ const PARENT = 'projects/bar-blade/databases/(default)/documents';
 const TOKEN = process.env.TOKEN;
 const DRY = !!process.env.DRY;
 const ONLY = (process.env.ONLY || '').toLowerCase(); // '', 'test', 'demo'
+// --clean removes EVERYTHING in the target venue's collections, including
+// documents added by hand, before reseeding. Ordinary runs only prune what the
+// seed itself produced, so work done in the sandbox survives a refresh — but
+// that also means test scans accumulate, and a demo venue slowly fills with
+// whatever was scanned into it while testing.
+const CLEAN = process.argv.includes('--clean');
 
 if (!TOKEN) {
   console.error('Set TOKEN=$(gcloud auth print-access-token)');
@@ -82,6 +89,12 @@ const del = (path) => writes.push({ delete: `${PARENT}/${path}` });
  * quietly diverge the sandbox from the thing it's meant to reflect.
  */
 async function prune(collectionPath, keepIds) {
+  // Hard stop. Everything below deletes without confirmation, and the only
+  // thing standing between that and a customer's venue is the path it's handed.
+  if (!collectionPath.startsWith('accounts/zz-sandbox-')) {
+    throw new Error(`refusing to prune outside the sandbox accounts: ${collectionPath}`);
+  }
+  const isNotes = collectionPath.endsWith('/deliveryNotes');
   let n = 0;
   let pageToken = '';
   do {
@@ -93,7 +106,13 @@ async function prune(collectionPath, keepIds) {
     for (const d of body.documents || []) {
       const id = d.name.split('/').pop();
       const isSeed = d.fields?.seeded?.booleanValue === true;
-      if (isSeed && !keepIds.has(id)) { del(`${collectionPath}/${id}`); n += 1; }
+      if ((CLEAN || isSeed) && !keepIds.has(id)) {
+        del(`${collectionPath}/${id}`);
+        // A scanned note keeps its document image in a subdoc; deleting the
+        // parent leaves that orphaned and unreachable.
+        if (isNotes) del(`${collectionPath}/${id}/document/file`);
+        n += 1;
+      }
     }
     pageToken = body.nextPageToken || '';
   } while (pageToken);
@@ -161,7 +180,12 @@ function rng(seed) {
     return s / 4294967296;
   };
 }
-const rand = rng(20260727);
+// Each account gets its OWN generator, reset at the start of its build.
+// Sharing one meant `ONLY=demo` consumed a different number of draws than a
+// full run and produced a different venue — so a targeted reseed churned every
+// document id it had written the time before.
+let rand = rng(1);
+const reseed = (seed) => { rand = rng(seed); };
 const pick = (arr) => arr[Math.floor(rand() * arr.length)];
 const between = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1));
 
@@ -741,6 +765,7 @@ function wastage(accountId, venueId, items, team, howMany = 46) {
 // ---------------------------------------------------------------------------
 
 async function buildTest() {
+  reseed(20260727);
   console.log('\nSandbox (dev playground)');
   account(TEST_ACCOUNT, 'BBlade Sandbox', 'internal');
   venue(TEST_ACCOUNT, TEST_VENUE, 'Sandbox Venue');
@@ -800,6 +825,7 @@ async function buildTest() {
 }
 
 async function buildDemo() {
+  reseed(19981105);
   console.log('\nDemo (The Fox & Compass — fictional)');
   account(DEMO_ACCOUNT, 'The Fox & Compass', 'demo');
   venue(DEMO_ACCOUNT, DEMO_VENUE, 'The Fox & Compass');
@@ -838,7 +864,9 @@ async function buildDemo() {
   const dropped = await pruneSeeded(`accounts/${DEMO_ACCOUNT}/venues/${DEMO_VENUE}`, [
     'stockItems', 'stockSessions', 'deliveryNotes', 'deliveryLog', 'supplierProducts', 'wastageLog',
   ]);
-  if (dropped) console.log(`  pruned ${dropped} documents from earlier runs`);
+  if (dropped) {
+    console.log(`  ${CLEAN ? 'CLEANED' : 'pruned'} ${dropped} documents${CLEAN ? ' (including anything added by hand)' : ' from earlier runs'}`);
+  }
 
   console.log(`  account ${DEMO_ACCOUNT} · venue ${DEMO_VENUE} · ${all.length} items · ${DEMO_TEAM.length} members`);
   console.log(`  ${received.length} delivery lines · 9 stock takes · closing stock derived from the history`);
@@ -867,6 +895,10 @@ async function showPasswords() {
 
 (async () => {
   if (process.argv.includes('--passwords')) return showPasswords();
+  if (CLEAN) {
+    console.log('--clean: every document in the target venue will be removed before reseeding,');
+    console.log('         including stock takes, scanned notes and items added by hand.');
+  }
   if (ONLY !== 'demo') await buildTest();
   if (ONLY !== 'test') await buildDemo();
   await commit();
