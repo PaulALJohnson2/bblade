@@ -36,6 +36,14 @@ const DEMO_ACCOUNT = 'zz-sandbox-demo';
 const TEST_VENUE = 'sandbox-venue';
 const DEMO_VENUE = 'fox-and-compass';
 
+// The sandbox mirrors a real venue's STOCK LIST — not its trade. Testing
+// against invented items misses everything that actually breaks: tenths,
+// gallon casks, bag-in-box, cases of odd sizes, curly apostrophes in names.
+// This is internal only and must stay that way; the demo account is synthetic
+// precisely because that one gets shown to people.
+const MIRROR_ACCOUNT = '6MtupVAFlsowDZnqpHQ0'; // The Richmond
+const MIRROR_VENUE = '6wjbSy9qEHG6Nhu6OeSh';
+
 // ---------------------------------------------------------------------------
 // Firestore REST plumbing
 // ---------------------------------------------------------------------------
@@ -58,14 +66,37 @@ const fields = (o) => Object.fromEntries(
 
 const writes = [];
 const put = (path, data) => writes.push({ update: { name: `${PARENT}/${path}`, fields: fields(data) } });
+const del = (path) => writes.push({ delete: `${PARENT}/${path}` });
+
+/**
+ * Drop documents the seed no longer produces.
+ *
+ * A mirror that only ever adds isn't a mirror: items dropped upstream, or left
+ * behind by an earlier version of this script, would linger for ever and
+ * quietly diverge the sandbox from the thing it's meant to reflect.
+ */
+async function prune(collectionPath, keepIds) {
+  const res = await fetch(`${BASE}/${PARENT}/${collectionPath}?pageSize=1000`, {
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  });
+  if (!res.ok) return 0;
+  const body = await res.json();
+  let n = 0;
+  for (const d of body.documents || []) {
+    const id = d.name.split('/').pop();
+    if (!keepIds.has(id)) { del(`${collectionPath}/${id}`); n += 1; }
+  }
+  return n;
+}
 
 async function commit() {
   if (DRY) {
     console.log(`\nDRY RUN — ${writes.length} documents would be written. Nothing sent.`);
     const byCol = {};
     for (const w of writes) {
-      const p = w.update.name.replace(`${PARENT}/`, '').split('/');
-      const col = p.slice(0, -1).join('/');
+      const name = w.update ? w.update.name : w.delete;
+      const p = name.replace(`${PARENT}/`, '').split('/');
+      const col = `${w.update ? '' : 'DELETE '}${p.slice(0, -1).join('/')}`;
       byCol[col] = (byCol[col] || 0) + 1;
     }
     for (const [k, n] of Object.entries(byCol).sort()) console.log(`  ${n.toString().padStart(4)}  ${k}`);
@@ -200,6 +231,20 @@ const DEMO_KITCHEN = [
   ['Garlic Ciabatta',         'Sides',          CASE(30), 'HP7808', 13.40],
 ];
 
+/**
+ * Unit shapes a real bar list won't necessarily contain. The mirror gives
+ * realistic names and messy real-world strings; these make sure casks,
+ * weights, packs and loose singles are all present to test against too.
+ */
+const SHAPE_COVERAGE = [
+  ['Sandbox Cask Ale',      'Draught Ale',  CASK(9),        'ZZ9001', 82.00],
+  ['Sandbox Pin',           'Draught Ale',  CASK(4.5),      'ZZ9002', 44.00],
+  ['Sandbox Bottled Single','Bottled Beer', { wholeUnit: '330ml', partUnit: '', unit: '330ml' }, 'ZZ9003', 1.40],
+  ['Sandbox Bulk Flour',    'Dry Goods',    BAG(16),        'ZZ9004', 14.20],
+  ['Sandbox Loose Item',    'Sundries',     { wholeUnit: 'Each', partUnit: '', unit: 'Each' }, 'ZZ9005', 0.85],
+  ['Sandbox Pack of 6',     'Sundries',     { wholeUnit: 'Pack 1*6Each', partUnit: 'Each', unit: 'of 6' }, 'ZZ9006', 5.40],
+];
+
 const SUPPLIERS = {
   WK: 'Welloak Drinks', WB: 'Welloak Drinks', WS: 'Welloak Drinks',
   WW: 'Welloak Drinks', WP: 'Welloak Drinks', HP: 'Harbour Provisions',
@@ -253,6 +298,41 @@ function members(accountId, team) {
       updatedAt: new Date(),
     });
   }
+}
+
+/**
+ * Pull a live venue's stock list and reshape it into item metadata.
+ *
+ * Names, categories and units come across verbatim — the unit strings are the
+ * whole point, since they're what exercises parseUnitInfo. Quantities do NOT:
+ * the sandbox gets its own invented stock so nobody mistakes a playground for
+ * a mirror of somebody's live cellar.
+ */
+async function mirrorStockList(accountId, venueId) {
+  const url = `${BASE}/${PARENT}/accounts/${accountId}/venues/${venueId}/stockItems?pageSize=1000`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  if (!res.ok) throw new Error(`could not read the mirror source: ${res.status}`);
+  const body = await res.json();
+  const g = (f, k) => (f[k] ? Object.values(f[k])[0] : '');
+  return (body.documents || [])
+    .map((d) => {
+      const f = d.fields || {};
+      return {
+        id: slug(g(f, 'name')),
+        name: g(f, 'name'),
+        category: g(f, 'category'),
+        section: g(f, 'section') === 'kitchen' ? 'kitchen' : 'bar',
+        unit: {
+          wholeUnit: g(f, 'wholeUnit'),
+          partUnit: g(f, 'partUnit'),
+          unit: g(f, 'unit'),
+        },
+        code: '',
+        cost: Number(g(f, 'costPrice')) || 0,
+        archived: g(f, 'archived') === true,
+      };
+    })
+    .filter((i) => i.name && !i.archived);
 }
 
 /** Item metadata only — no writes yet, because quantity depends on history. */
@@ -477,17 +557,51 @@ function wastage(accountId, venueId, items, team) {
 // Build
 // ---------------------------------------------------------------------------
 
-function buildTest() {
+async function buildTest() {
   console.log('\nSandbox (dev playground)');
   account(TEST_ACCOUNT, 'BBlade Sandbox', 'internal');
   venue(TEST_ACCOUNT, TEST_VENUE, 'Sandbox Venue');
   members(TEST_ACCOUNT, TEST_TEAM);
-  // Deliberately small and boring: a playground wants to be quick to reason
-  // about and cheap to break, not realistic.
-  const rows = [...itemMeta(DEMO_ITEMS.slice(0, 8), 'bar'), ...itemMeta(DEMO_KITCHEN.slice(0, 3), 'kitchen')];
-  const qty = Object.fromEntries(rows.map((r) => [r.id, between(2, 40)]));
+
+  // Mirror a real stock list so the playground exercises real unit shapes.
+  // Falls back to the demo range if the source is unreachable — a sandbox that
+  // can't be seeded is worse than one seeded from fiction.
+  let rows;
+  try {
+    rows = await mirrorStockList(MIRROR_ACCOUNT, MIRROR_VENUE);
+    console.log(`  mirrored ${rows.length} items from the source venue's stock list`);
+  } catch (err) {
+    console.warn(`  mirror unavailable (${err.message}) — falling back to the demo range`);
+    rows = [...itemMeta(DEMO_ITEMS, 'bar'), ...itemMeta(DEMO_KITCHEN, 'kitchen')];
+  }
+
+  // Top up with the shapes the source venue doesn't stock, so cask gallons,
+  // bulk weight, packs and loose singles all have something to test against.
+  const covered = new Set(rows.map((r) => (r.unit.wholeUnit || '').split(' ')[0].replace(/\d.*/, '')));
+  const extras = itemMeta(SHAPE_COVERAGE, 'bar').filter((e) => {
+    const head = (e.unit.wholeUnit || '').split(' ')[0].replace(/\d.*/, '');
+    return !covered.has(head) || /^Sandbox (Cask|Pin)/.test(e.name);
+  });
+  rows = [...rows, ...extras];
+  if (extras.length) console.log(`  added ${extras.length} items to cover unit shapes the source doesn't stock`);
+
+  // Invented quantities, weighted so a stock take has part-units to count
+  // rather than a screen of round numbers.
+  const qty = {};
+  for (const r of rows) {
+    const upw = unitsPerWhole(r.unit);
+    qty[r.id] = between(0, 4) * upw + Math.round(rand() * upw * 0.7);
+  }
   writeStockItems(TEST_ACCOUNT, TEST_VENUE, rows, qty, 'Sandbox Owner');
+  const dropped = await prune(
+    `accounts/${TEST_ACCOUNT}/venues/${TEST_VENUE}/stockItems`,
+    new Set(rows.map((r) => r.id)),
+  );
+  if (dropped) console.log(`  pruned ${dropped} items no longer in the source list`);
+
+  const shapes = [...new Set(rows.map((r) => (r.unit.wholeUnit || '').split(' ')[0]))].sort();
   console.log(`  account ${TEST_ACCOUNT} · venue ${TEST_VENUE} · ${rows.length} items · ${TEST_TEAM.length} members`);
+  console.log(`  container shapes covered: ${shapes.join(', ')}`);
 }
 
 function buildDemo() {
@@ -548,7 +662,7 @@ async function showPasswords() {
 
 (async () => {
   if (process.argv.includes('--passwords')) return showPasswords();
-  if (ONLY !== 'demo') buildTest();
+  if (ONLY !== 'demo') await buildTest();
   if (ONLY !== 'test') buildDemo();
   await commit();
   if (!DRY) {
