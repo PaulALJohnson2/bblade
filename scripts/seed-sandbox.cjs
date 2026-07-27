@@ -76,17 +76,45 @@ const del = (path) => writes.push({ delete: `${PARENT}/${path}` });
  * quietly diverge the sandbox from the thing it's meant to reflect.
  */
 async function prune(collectionPath, keepIds) {
-  const res = await fetch(`${BASE}/${PARENT}/${collectionPath}?pageSize=1000`, {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-  if (!res.ok) return 0;
-  const body = await res.json();
   let n = 0;
-  for (const d of body.documents || []) {
-    const id = d.name.split('/').pop();
-    if (!keepIds.has(id)) { del(`${collectionPath}/${id}`); n += 1; }
-  }
+  let pageToken = '';
+  do {
+    const url = `${BASE}/${PARENT}/${collectionPath}?pageSize=300`
+      + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    if (!res.ok) return n;
+    const body = await res.json();
+    for (const d of body.documents || []) {
+      const id = d.name.split('/').pop();
+      if (!keepIds.has(id)) { del(`${collectionPath}/${id}`); n += 1; }
+    }
+    pageToken = body.nextPageToken || '';
+  } while (pageToken);
   return n;
+}
+
+/**
+ * Prune every seeded collection under a venue, keeping exactly what this run
+ * produced. Without it a changed document id — `take-1` becoming `take-02`,
+ * say — leaves the old history sitting alongside the new, and a usage rate
+ * measured across a doubled set of stock takes is worse than no demo at all.
+ */
+async function pruneSeeded(venuePrefix, collections) {
+  const keep = {};
+  for (const w of writes) {
+    if (!w.update) continue;
+    const rel = w.update.name.replace(`${PARENT}/`, '');
+    for (const c of collections) {
+      const p = `${venuePrefix}/${c}/`;
+      if (rel.startsWith(p)) {
+        if (!keep[c]) keep[c] = new Set();
+        keep[c].add(rel.slice(p.length));
+      }
+    }
+  }
+  let total = 0;
+  for (const c of collections) total += await prune(`${venuePrefix}/${c}`, keep[c] || new Set());
+  return total;
 }
 
 async function commit() {
@@ -155,82 +183,169 @@ const BAG = (kg) => ({ wholeUnit: `Bag 1*${kg}kg`, partUnit: 'Kilogram', unit: `
 // [name, category, unit, supplierCode, costPrice] — codes drive the learned
 // mappings, so the demo shows "REMEMBERED" on a second scan.
 const DEMO_ITEMS = [
-  ['Harbour Pale',            'Draught Ale',    KEG(30),  'WK1101', 92.40],
-  ['Compass Bitter',          'Draught Ale',    CASK(9),  'WK1102', 88.00],
-  ['Meridian Lager',          'Draught Lager',  KEG(50),  'WK1103', 128.50],
-  ['Meridian Lager 0.0',      'Draught Lager',  KEG(30),  'WK1104', 96.00],
-  ['Northbank Pilsner',       'Draught Lager',  KEG(50),  'WK1105', 141.20],
-  ['Old Quay Stout',          'Draught Stout',  KEG(50),  'WK1106', 152.75],
-  ['Windward Cider',          'Draught Cider',  KEG(50),  'WK1107', 118.90],
-  ['Windward Berry',          'Draught Cider',  KEG(30),  'WK1108', 84.30],
-  ['Session IPA',             'Draught IPA',    KEG(30),  'WK1109', 99.60],
+  // [name, category, unit, supplierCode, costPrice, weeklyUsage]
+  // weeklyUsage is in WHOLE units and is the spine of the whole dataset:
+  // deliveries replace it, counts hold a week or so of it, and the usage-rate
+  // feature measures its way back to roughly this number. Guessing quantities
+  // independently is what made the first cut look like an abandoned pub.
+  ['Harbour Pale',            'Draught Ale',    KEG(30),  'WK1101', 92.40, 2.2],
+  ['Compass Bitter',          'Draught Ale',    CASK(9),  'WK1102', 88.00, 1.4],
+  ['Anchor Best',             'Draught Ale',    CASK(9),  'WK1103', 84.50, 0.9],
+  ['Ironworks Amber',         'Draught Ale',    KEG(30),  'WK1104', 89.90, 0.7],
+  ['Meridian Lager',          'Draught Lager',  KEG(50),  'WK1105', 128.50, 4.5],
+  ['Meridian Lager 0.0',      'Draught Lager',  KEG(30),  'WK1106', 96.00, 0.6],
+  ['Northbank Pilsner',       'Draught Lager',  KEG(50),  'WK1107', 141.20, 2.8],
+  ['Sternlight Premium',      'Draught Lager',  KEG(50),  'WK1108', 152.00, 1.9],
+  ['Bay Ridge Helles',        'Draught Lager',  KEG(30),  'WK1109', 118.40, 1.1],
+  ['Old Quay Stout',          'Draught Stout',  KEG(50),  'WK1110', 152.75, 3.1],
+  ['Windward Cider',          'Draught Cider',  KEG(50),  'WK1111', 118.90, 2.4],
+  ['Windward Berry',          'Draught Cider',  KEG(30),  'WK1112', 84.30, 1.3],
+  ['Orchard Lane Dry',        'Draught Cider',  KEG(50),  'WK1113', 112.60, 0.8],
+  ['Session IPA',             'Draught IPA',    KEG(30),  'WK1114', 99.60, 1.6],
+  ['Halyard Hazy',            'Draught IPA',    KEG(30),  'WK1115', 108.20, 1.0],
 
-  ['Meridian Bottles',        'Bottled Beer',   CASE(24), 'WB2201', 28.80],
-  ['Old Quay Bottles',        'Bottled Beer',   CASE(24), 'WB2202', 31.20],
-  ['Low Tide 0.5%',           'Bottled Beer',   CASE(24), 'WB2203', 24.00],
-  ['Windward Bottles',        'Bottled Cider',  CASE(12), 'WB2204', 19.80],
+  ['Meridian Bottles',        'Bottled Beer',   CASE(24), 'WB2201', 28.80, 1.8],
+  ['Old Quay Bottles',        'Bottled Beer',   CASE(24), 'WB2202', 31.20, 0.9],
+  ['Low Tide 0.5%',           'Bottled Beer',   CASE(24), 'WB2203', 24.00, 0.6],
+  ['Sternlight Bottles',      'Bottled Beer',   CASE(24), 'WB2204', 33.60, 1.1],
+  ['Corona Bay',              'Bottled Beer',   CASE(24), 'WB2205', 30.00, 1.5],
+  ['Gluten Free Lager',       'Bottled Beer',   CASE(24), 'WB2206', 32.40, 0.3],
+  ['Windward Bottles',        'Bottled Cider',  CASE(12), 'WB2207', 19.80, 0.7],
+  ['Orchard Rhubarb',         'Bottled Cider',  CASE(12), 'WB2208', 21.60, 0.9],
+  ['Orchard Mango',           'Bottled Cider',  CASE(12), 'WB2209', 21.60, 0.8],
+  ['Orchard Wildberry',       'Bottled Cider',  CASE(12), 'WB2210', 21.60, 1.0],
+  ['Alcohol Free Cider',      'Bottled Cider',  CASE(12), 'WB2211', 18.00, 0.2],
 
-  ['Saltmarsh Gin',           'Gin',            BTL(70),  'WS3301', 16.40],
-  ['Saltmarsh Rhubarb',       'Gin',            BTL(70),  'WS3302', 17.10],
-  ['Saltmarsh Pink',          'Gin',            BTL(70),  'WS3303', 16.90],
-  ['Juniper Row London Dry',  'Gin',            BTL(150), 'WS3304', 29.50],
-  ['Polar Star Vodka',        'Vodka',          BTL(150), 'WS3305', 26.80],
-  ['Polar Star Citrus',       'Vodka',          BTL(70),  'WS3306', 15.20],
-  ['Cane & Anchor White',     'Rum',            BTL(150), 'WS3307', 25.40],
-  ['Cane & Anchor Spiced',    'Rum',            BTL(150), 'WS3308', 26.10],
-  ['Cane & Anchor Dark',      'Rum',            BTL(70),  'WS3309', 14.80],
-  ['Glen Toller Blend',       'Whisky',         BTL(70),  'WS3310', 18.60],
-  ['Glen Toller 12',          'Whisky',         BTL(70),  'WS3311', 32.40],
-  ['Kentucky Mile Bourbon',   'Whisky',         BTL(70),  'WS3312', 21.30],
-  ['Agave Nine Reposado',     'Tequila',        BTL(70),  'WS3313', 24.90],
-  ['Amaro Vespro',            'Liqueurs',       BTL(70),  'WS3314', 15.70],
-  ['Cocoa Nib Cream',         'Liqueurs',       BTL(70),  'WS3315', 13.20],
-  ['Aniseed Forty',           'Liqueurs',       BTL(70),  'WS3316', 14.10],
-  ['Bitter Orange Aperitif',  'Liqueurs',       BTL(100), 'WS3317', 17.80],
+  ['Saltmarsh Gin',           'Gin',            BTL(70),  'WS3301', 16.40, 2.4],
+  ['Saltmarsh Rhubarb',       'Gin',            BTL(70),  'WS3302', 17.10, 1.6],
+  ['Saltmarsh Pink',          'Gin',            BTL(70),  'WS3303', 16.90, 1.9],
+  ['Saltmarsh Blackberry',    'Gin',            BTL(70),  'WS3304', 17.10, 1.1],
+  ['Saltmarsh Lemon',         'Gin',            BTL(70),  'WS3305', 17.10, 0.7],
+  ['Juniper Row London Dry',  'Gin',            BTL(150), 'WS3306', 29.50, 2.1],
+  ['Juniper Row Pink',        'Gin',            BTL(150), 'WS3307', 29.50, 1.4],
+  ['Harbourmaster Navy',      'Gin',            BTL(70),  'WS3308', 22.80, 0.5],
+  ['Botanist Reserve',        'Gin',            BTL(70),  'WS3309', 31.20, 0.4],
+  ['Polar Star Vodka',        'Vodka',          BTL(150), 'WS3310', 26.80, 3.2],
+  ['Polar Star Citrus',       'Vodka',          BTL(70),  'WS3311', 15.20, 0.8],
+  ['Polar Star Raspberry',    'Vodka',          BTL(70),  'WS3312', 15.20, 0.9],
+  ['Iceflow Premium',         'Vodka',          BTL(70),  'WS3313', 24.60, 0.6],
+  ['Cane & Anchor White',     'Rum',            BTL(150), 'WS3314', 25.40, 1.7],
+  ['Cane & Anchor Spiced',    'Rum',            BTL(150), 'WS3315', 26.10, 2.6],
+  ['Cane & Anchor Dark',      'Rum',            BTL(70),  'WS3316', 14.80, 0.9],
+  ['Cane & Anchor Coconut',   'Rum',            BTL(70),  'WS3317', 14.20, 1.2],
+  ['Cane & Anchor Cherry',    'Rum',            BTL(70),  'WS3318', 14.20, 0.7],
+  ['Glen Toller Blend',       'Whisky',         BTL(70),  'WS3319', 18.60, 1.5],
+  ['Glen Toller 12',          'Whisky',         BTL(70),  'WS3320', 32.40, 0.5],
+  ['Kentucky Mile Bourbon',   'Whisky',         BTL(70),  'WS3321', 21.30, 1.8],
+  ['Kentucky Mile Honey',     'Whisky',         BTL(70),  'WS3322', 21.30, 1.1],
+  ['Kentucky Mile Apple',     'Whisky',         BTL(70),  'WS3323', 21.30, 0.9],
+  ['Islay Shore 10',          'Whisky',         BTL(70),  'WS3324', 38.90, 0.3],
+  ['Dublin Quay Irish',       'Whisky',         BTL(70),  'WS3325', 22.40, 1.0],
+  ['Agave Nine Reposado',     'Tequila',        BTL(70),  'WS3326', 24.90, 0.8],
+  ['Agave Nine Blanco',       'Tequila',        BTL(70),  'WS3327', 22.60, 1.3],
+  ['Vieux Pont VS',           'Brandy',         BTL(70),  'WS3328', 23.80, 0.4],
+  ['Amaro Vespro',            'Liqueurs',       BTL(70),  'WS3329', 15.70, 0.9],
+  ['Cocoa Nib Cream',         'Liqueurs',       BTL(70),  'WS3330', 13.20, 0.7],
+  ['Aniseed Forty',           'Liqueurs',       BTL(70),  'WS3331', 14.10, 1.4],
+  ['Aniseed Forty Black',     'Liqueurs',       BTL(70),  'WS3332', 14.10, 0.8],
+  ['Bitter Orange Aperitif',  'Liqueurs',       BTL(100), 'WS3333', 17.80, 1.6],
+  ['Elderflower Cordial Liq', 'Liqueurs',       BTL(70),  'WS3334', 16.20, 0.5],
+  ['Coffee Liqueur',          'Liqueurs',       BTL(70),  'WS3335', 15.40, 1.2],
+  ['Peach Schnapps',          'Liqueurs',       BTL(70),  'WS3336', 12.60, 0.6],
+  ['Triple Sec',              'Liqueurs',       BTL(70),  'WS3337', 11.80, 0.9],
+  ['Herbal Digestif',         'Liqueurs',       BTL(70),  'WS3338', 18.40, 1.1],
+  ['Cream Liqueur',           'Liqueurs',       BTL(70),  'WS3339', 13.90, 0.8],
+  ['Summer Cup',              'Liqueurs',       BTL(70),  'WS3340', 16.60, 1.0],
 
-  ['House White',             'Wine',           CASE(6),  'WW4401', 38.40],
-  ['House Red',               'Wine',           CASE(6),  'WW4402', 38.40],
-  ['House Rosé',              'Wine',           CASE(6),  'WW4403', 37.20],
-  ['Coastal Sauvignon',       'Wine',           CASE(6),  'WW4404', 52.80],
-  ['Hillside Malbec',         'Wine',           CASE(6),  'WW4405', 56.40],
-  ['Stone Ridge Pinot Grigio','Wine',           CASE(6),  'WW4406', 46.20],
-  ['Prosecco Brut',           'Sparkling',      CASE(6),  'WW4407', 61.50],
-  ['Prosecco Rosé',           'Sparkling',      CASE(6),  'WW4408', 64.80],
+  ['House White',             'Wine',           CASE(6),  'WW4401', 38.40, 3.4],
+  ['House Red',               'Wine',           CASE(6),  'WW4402', 38.40, 2.9],
+  ['House Rosé',              'Wine',           CASE(6),  'WW4403', 37.20, 2.2],
+  ['Coastal Sauvignon',       'Wine',           CASE(6),  'WW4404', 52.80, 1.8],
+  ['Hillside Malbec',         'Wine',           CASE(6),  'WW4405', 56.40, 1.5],
+  ['Stone Ridge Pinot Grigio','Wine',           CASE(6),  'WW4406', 46.20, 2.4],
+  ['Old Vine Rioja',          'Wine',           CASE(6),  'WW4407', 58.80, 0.9],
+  ['Loire Chenin',            'Wine',           CASE(6),  'WW4408', 51.00, 0.6],
+  ['Provence Rosé',           'Wine',           CASE(6),  'WW4409', 66.00, 0.8],
+  ['Chianti Riserva',         'Wine',           CASE(6),  'WW4410', 61.20, 0.5],
+  ['Prosecco Brut',           'Sparkling',      CASE(6),  'WW4411', 61.50, 1.7],
+  ['Prosecco Rosé',           'Sparkling',      CASE(6),  'WW4412', 64.80, 1.1],
+  ['Mini Prosecco',           'Sparkling',      CASE(24), 'WW4413', 58.80, 0.6],
+  ['Champagne Brut',          'Sparkling',      CASE(6),  'WW4414', 168.00, 0.2],
 
-  ['Cola Post Mix',           'Post Mix',       BIB(7),   'WP5501', 42.30],
-  ['Diet Cola Post Mix',      'Post Mix',       BIB(7),   'WP5502', 42.30],
-  ['Lemonade Post Mix',       'Post Mix',       BIB(7),   'WP5503', 39.90],
-  ['Tonic',                   'Soft Drinks',    CASE(24), 'WP5504', 14.40],
-  ['Slimline Tonic',          'Soft Drinks',    CASE(24), 'WP5505', 14.40],
-  ['Elderflower Tonic',       'Soft Drinks',    CASE(24), 'WP5506', 16.80],
-  ['Ginger Ale',              'Soft Drinks',    CASE(24), 'WP5507', 15.60],
-  ['Soda Water',              'Soft Drinks',    CASE(24), 'WP5508', 11.20],
-  ['Orange Juice',            'Soft Drinks',    CASE(12), 'WP5509',  9.60],
-  ['Apple Juice',             'Soft Drinks',    CASE(12), 'WP5510',  9.60],
-  ['Cranberry Juice',         'Soft Drinks',    CASE(12), 'WP5511', 10.20],
-  ['Still Water',             'Soft Drinks',    CASE(24), 'WP5512', 10.80],
-  ['Sparkling Water',         'Soft Drinks',    CASE(24), 'WP5513', 10.80],
-  ['Energy Drink',            'Soft Drinks',    CASE(24), 'WP5514', 26.40],
+  ['Cola Post Mix',           'Post Mix',       BIB(7),   'WP5501', 42.30, 2.6],
+  ['Diet Cola Post Mix',      'Post Mix',       BIB(7),   'WP5502', 42.30, 2.1],
+  ['Lemonade Post Mix',       'Post Mix',       BIB(7),   'WP5503', 39.90, 1.8],
+  ['Orange Post Mix',         'Post Mix',       BIB(7),   'WP5504', 39.90, 0.7],
+  ['Tonic',                   'Soft Drinks',    CASE(24), 'WP5505', 14.40, 2.8],
+  ['Slimline Tonic',          'Soft Drinks',    CASE(24), 'WP5506', 14.40, 2.2],
+  ['Elderflower Tonic',       'Soft Drinks',    CASE(24), 'WP5507', 16.80, 1.1],
+  ['Mediterranean Tonic',     'Soft Drinks',    CASE(24), 'WP5508', 16.80, 0.9],
+  ['Ginger Ale',              'Soft Drinks',    CASE(24), 'WP5509', 15.60, 1.0],
+  ['Ginger Beer',             'Soft Drinks',    CASE(24), 'WP5510', 16.20, 1.3],
+  ['Soda Water',              'Soft Drinks',    CASE(24), 'WP5511', 11.20, 1.4],
+  ['Orange Juice',            'Soft Drinks',    CASE(12), 'WP5512',  9.60, 1.6],
+  ['Apple Juice',             'Soft Drinks',    CASE(12), 'WP5513',  9.60, 1.2],
+  ['Cranberry Juice',         'Soft Drinks',    CASE(12), 'WP5514', 10.20, 0.8],
+  ['Pineapple Juice',         'Soft Drinks',    CASE(12), 'WP5515', 10.20, 0.7],
+  ['Tomato Juice',            'Soft Drinks',    CASE(24), 'WP5516', 12.00, 0.3],
+  ['Still Water',             'Soft Drinks',    CASE(24), 'WP5517', 10.80, 1.5],
+  ['Sparkling Water',         'Soft Drinks',    CASE(24), 'WP5518', 10.80, 1.2],
+  ['Energy Drink',            'Soft Drinks',    CASE(24), 'WP5519', 26.40, 1.9],
+  ['Cloudy Lemonade',         'Soft Drinks',    CASE(24), 'WP5520', 15.00, 0.9],
+  ['Apple & Raspberry',       'Soft Drinks',    CASE(24), 'WP5521', 17.40, 1.1],
+  ['Orange & Passionfruit',   'Soft Drinks',    CASE(24), 'WP5522', 17.40, 1.0],
 
-  // Harbour Provisions — the second supplier, snacks and kitchen.
-  ['Sea Salt Crisps',         'Snacks',         CASE(24), 'HP7701',  8.40],
-  ['Cheese & Onion Crisps',   'Snacks',         CASE(24), 'HP7702',  8.40],
-  ['Salted Peanuts',          'Snacks',         CASE(24), 'HP7703',  9.60],
-  ['Pork Crackling',          'Snacks',         CASE(20), 'HP7704', 11.00],
-  ['Olives',                  'Snacks',         CASE(12), 'HP7705', 14.40],
+  ['Sea Salt Crisps',         'Snacks',         CASE(24), 'HP7701',  8.40, 1.4],
+  ['Cheese & Onion Crisps',   'Snacks',         CASE(24), 'HP7702',  8.40, 1.2],
+  ['Salt & Vinegar Crisps',   'Snacks',         CASE(24), 'HP7703',  8.40, 1.0],
+  ['Salted Peanuts',          'Snacks',         CASE(24), 'HP7704',  9.60, 0.8],
+  ['Dry Roasted Peanuts',     'Snacks',         CASE(24), 'HP7705',  9.60, 0.7],
+  ['Pork Crackling',          'Snacks',         CASE(20), 'HP7706', 11.00, 0.5],
+  ['Scampi Bites',            'Snacks',         CASE(24), 'HP7707', 10.20, 0.6],
+  ['Olives',                  'Snacks',         CASE(12), 'HP7708', 14.40, 0.4],
 ];
-
 const DEMO_KITCHEN = [
-  ['Skin-on Fries',           'Sides',          BAG(10),  'HP7801', 12.60],
-  ['Beef Patties',            'Mains',          CASE(24), 'HP7802', 28.40],
-  ['Brioche Buns',            'Bakery',         CASE(48), 'HP7803',  9.80],
-  ['Mature Cheddar',          'Dairy',          BAG(2.5), 'HP7804', 18.20],
-  ['Streaky Bacon',           'Meat',           BAG(2.5), 'HP7805', 16.90],
-  ['Buttermilk Chicken',      'Mains',          BAG(5),   'HP7806', 31.50],
-  ['Onion Rings',             'Sides',          BAG(2.5), 'HP7807',  8.70],
-  ['Garlic Ciabatta',         'Sides',          CASE(30), 'HP7808', 13.40],
+  ['Skin-on Fries',           'Sides',          BAG(10),  'HP7801', 12.60, 6.5],
+  ['Chunky Chips',            'Sides',          BAG(10),  'HP7802', 12.20, 3.2],
+  ['Onion Rings',             'Sides',          BAG(2.5), 'HP7803',  8.70, 1.8],
+  ['Garlic Ciabatta',         'Sides',          CASE(30), 'HP7804', 13.40, 1.1],
+  ['Sweet Potato Fries',      'Sides',          BAG(2.5), 'HP7805',  9.40, 2.0],
+  ['Beef Patties',            'Mains',          CASE(24), 'HP7806', 28.40, 3.4],
+  ['Buttermilk Chicken',      'Mains',          BAG(5),   'HP7807', 31.50, 2.6],
+  ['Beer Battered Cod',       'Mains',          CASE(20), 'HP7808', 42.00, 1.9],
+  ['Vegan Patties',           'Mains',          CASE(12), 'HP7809', 22.80, 0.8],
+  ['Gammon Steaks',           'Mains',          BAG(5),   'HP7810', 34.60, 1.2],
+  ['Pork Sausages',           'Mains',          BAG(5),   'HP7811', 21.40, 1.5],
+  ['Scampi',                  'Mains',          BAG(2.5), 'HP7812', 26.80, 1.0],
+  ['Brioche Buns',            'Bakery',         CASE(48), 'HP7813',  9.80, 2.2],
+  ['Seeded Baps',             'Bakery',         CASE(48), 'HP7814',  8.60, 1.1],
+  ['Sourdough Loaf',          'Bakery',         CASE(12), 'HP7815', 14.40, 0.9],
+  ['Mature Cheddar',          'Dairy',          BAG(2.5), 'HP7816', 18.20, 1.4],
+  ['Mozzarella',              'Dairy',          BAG(2.5), 'HP7817', 16.80, 0.7],
+  ['Butter Portions',         'Dairy',          CASE(100),'HP7818', 11.20, 0.8],
+  ['Double Cream',            'Dairy',          CASE(12), 'HP7819', 15.60, 0.6],
+  ['Whole Milk',              'Dairy',          CASE(12), 'HP7820',  9.90, 2.4],
+  ['Streaky Bacon',           'Meat',           BAG(2.5), 'HP7821', 16.90, 1.6],
+  ['Pulled Pork',             'Meat',           BAG(2.5), 'HP7822', 19.80, 0.9],
+  ['Chicken Wings',           'Meat',           BAG(5),   'HP7823', 24.20, 1.7],
+  ['Smoked Salmon',           'Fish',           BAG(1),   'HP7824', 28.60, 0.4],
+  ['Baby Potatoes',           'Veg',            BAG(10),  'HP7825',  8.80, 1.3],
+  ['Mixed Salad',             'Veg',            CASE(6),  'HP7826', 12.40, 2.8],
+  ['Tomatoes',                'Veg',            BAG(5),   'HP7827',  9.60, 1.5],
+  ['Red Onions',              'Veg',            BAG(5),   'HP7828',  6.80, 1.1],
+  ['Garden Peas',             'Frozen',         BAG(2.5), 'HP7829',  5.40, 1.0],
+  ['Vanilla Ice Cream',       'Frozen',         CASE(4),  'HP7830', 18.60, 0.7],
+  ['Sticky Toffee Pudding',   'Frozen',         CASE(12), 'HP7831', 16.20, 0.9],
+  ['Chocolate Brownie',       'Frozen',         CASE(12), 'HP7832', 15.40, 1.0],
+  ['Plain Flour',             'Dry Goods',      BAG(16),  'HP7833', 14.20, 0.4],
+  ['Rapeseed Oil',            'Dry Goods',      CASE(4),  'HP7834', 26.40, 1.2],
+  ['Sea Salt',                'Dry Goods',      BAG(2.5), 'HP7835',  4.80, 0.2],
+  ['Peppercorns',             'Dry Goods',      BAG(1),   'HP7836',  9.20, 0.15],
+  ['Ketchup',                 'Condiments',     CASE(6),  'HP7837', 13.80, 0.8],
+  ['Mayonnaise',              'Condiments',     CASE(4),  'HP7838', 15.20, 0.9],
+  ['Burger Sauce',            'Condiments',     CASE(4),  'HP7839', 14.60, 1.1],
+  ['Sachet Assortment',       'Condiments',     CASE(200),'HP7840', 18.90, 0.3],
 ];
-
 /**
  * Unit shapes a real bar list won't necessarily contain. The mirror gives
  * realistic names and messy real-world strings; these make sure casks,
@@ -337,8 +452,9 @@ async function mirrorStockList(accountId, venueId) {
 
 /** Item metadata only — no writes yet, because quantity depends on history. */
 function itemMeta(rows, section) {
-  return rows.map(([name, category, unit, code, cost]) => ({
+  return rows.map(([name, category, unit, code, cost, weekly]) => ({
     id: slug(name), name, category, unit, code, cost, section,
+    weekly: weekly || 0.5,
   }));
 }
 
@@ -389,26 +505,33 @@ function deliveries(accountId, venueId, items, { supplier, weekday, everyWeeks, 
   const path = `accounts/${accountId}/venues/${venueId}`;
   const mine = items.filter((i) => supplierOf(i.code) === supplier);
   const received = []; // { itemId, quantity, at } — feeds the closing position
+
+  // A running deficit per item, so ordering falls out of consumption instead
+  // of being invented. A line used 2.4 kegs a week gets 2 or 3 most weeks; one
+  // used 0.2 cases a week turns up every fifth drop with a single case. That's
+  // what makes the delivery-derived usage rate land near the real figure, and
+  // what stops the demo showing a pub that orders champagne every Thursday.
+  const owed = Object.fromEntries(mine.map((i) => [i.id, rand() * 0.8]));
   let noteNo = 0;
 
   for (let n = count - 1; n >= 0; n--) {
     const back = lastWeekday(weekday, n * everyWeeks);
-    if (back > 84) continue;
     const at = daysAgo(back);
-    const who = n === 0 ? team[0].displayName : pick(team).displayName;
     noteNo += 1;
-    const reference = `${prefix}${(100000 + noteNo * 137).toString()}`;
-    const noteId = `note-${slug(supplier)}-${noteNo}`;
+    const who = pick(team).displayName;
+    const reference = `${prefix}${100000 + noteNo * 137}`;
+    const noteId = `note-${slug(supplier)}-${String(noteNo).padStart(2, '0')}`;
 
-    // A realistic drop: the fast movers most weeks, a tail now and then.
     const lines = [];
     for (const it of mine) {
-      const fast = /Draught|Post Mix|Soft Drinks|Snacks/.test(it.category);
-      if (!fast && rand() > 0.28) continue;
-      if (fast && rand() > 0.85) continue;
-      const ordered = fast ? between(1, 4) : 1;
-      // One short delivery in the set, so fill rate isn't a flat 100%.
-      const short = n === 2 && it.name === 'Meridian Lager';
+      owed[it.id] += it.weekly * everyWeeks;
+      if (owed[it.id] < 1) continue;
+      const ordered = Math.max(1, Math.round(owed[it.id] * (0.85 + rand() * 0.3)));
+      owed[it.id] = Math.max(0, owed[it.id] - ordered);
+
+      // One short delivery in the set, so fill rate isn't a flat 100% and the
+      // usage-rate censoring rule has something real to exclude.
+      const short = n === 3 && it.name === 'Meridian Lager';
       const delivered = short ? ordered - 1 : ordered;
       lines.push({
         itemCode: it.code,
@@ -459,7 +582,7 @@ function deliveries(accountId, venueId, items, { supplier, weekday, everyWeeks, 
       const upw = unitsPerWhole(it.unit);
       put(`${path}/deliveryLog/${noteId}-${l.itemId}`, {
         itemId: l.itemId, itemName: l.itemName, section: it.section,
-        units: [{ label: it.unit.wholeUnit.split(' ')[0] + 's', count: l.qtyDelivered }],
+        units: [{ label: `${it.unit.wholeUnit.split(' ')[0]}s`, count: l.qtyDelivered }],
         quantity: l.qtyDelivered * upw,
         baseLabel: it.unit.partUnit || 'Each',
         supplier,
@@ -485,15 +608,21 @@ function deliveries(accountId, venueId, items, { supplier, weekday, everyWeeks, 
       unitCode: 'EA', unitsPerOuter: 0,
       corrected: false, previousOwner: '',
       confirmedBy: who, firstConfirmedBy: who,
-      timesSeen: between(2, 8),
-      firstSeenAt: daysAgo(between(50, 80)), lastSeenAt: daysAgo(between(1, 10)),
+      timesSeen: between(2, 12),
+      firstSeenAt: daysAgo(between(90, 130)), lastSeenAt: daysAgo(between(1, 12)),
       accountId, venueId,
     });
   }
   return received;
 }
 
-/** Completed stock takes, so usage rates have periods to measure between. */
+/**
+ * Completed stock takes, counted as a plausible level of COVER rather than a
+ * random number — roughly half a week to a week and a half of what the line
+ * actually sells. That's what makes the cellar read as a working pub instead
+ * of one that's about to run dry, and it keeps the variance report's figures
+ * inside believable bounds.
+ */
 function stockTakes(accountId, venueId, items, team, daysBackList) {
   const path = `accounts/${accountId}/venues/${venueId}`;
   let last = null;
@@ -502,20 +631,22 @@ function stockTakes(accountId, venueId, items, team, daysBackList) {
     const counts = {};
     for (const it of items) {
       const upw = unitsPerWhole(it.unit);
-      const whole = between(0, /Draught/.test(it.category) ? 4 : 3);
-      const part = Math.round(rand() * upw * 0.6);
+      const cover = 0.5 + rand() * 1.1;            // weeks of stock on hand
+      const base = Math.max(0, it.weekly * cover * upw);
+      const whole = Math.floor(base / upw);
+      const part = Math.round(base - whole * upw);
       counts[it.id] = {
         itemName: it.name,
-        quantity: whole * upw + part,
+        quantity: Math.round((whole * upw + part) * 100) / 100,
         wholeCount: whole,
         partCount: part,
-        wholeLabel: it.unit.wholeUnit.split(' ')[0] + 's',
+        wholeLabel: `${it.unit.wholeUnit.split(' ')[0]}s`,
         partLabel: it.unit.partUnit || '',
         countedBy: pick(team).displayName,
         countedAt: at,
       };
     }
-    put(`${path}/stockSessions/take-${idx + 1}`, {
+    put(`${path}/stockSessions/take-${String(idx + 1).padStart(2, '0')}`, {
       name: `Stock take ${at.toLocaleDateString('en-GB')}`,
       status: 'completed',
       counts,
@@ -525,7 +656,7 @@ function stockTakes(accountId, venueId, items, team, daysBackList) {
       startedAt: at, completedAt: at,
       accountId, venueId,
     });
-    last = { at, counts };
+    if (!last || at > last.at) last = { at, counts };
   });
   return last;
 }
@@ -534,9 +665,9 @@ function stockTakes(accountId, venueId, items, team, daysBackList) {
 function wastage(accountId, venueId, items, team) {
   const path = `accounts/${accountId}/venues/${venueId}`;
   const lost = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 46; i++) {
     const it = pick(items);
-    const at = daysAgo(between(1, 55));
+    const at = daysAgo(between(1, 150));
     lost.push({ itemId: it.id, quantity: 1, at });
     put(`${path}/wastageLog/waste-${i}`, {
       itemId: it.id, itemName: it.name, section: it.section,
@@ -604,7 +735,7 @@ async function buildTest() {
   console.log(`  container shapes covered: ${shapes.join(', ')}`);
 }
 
-function buildDemo() {
+async function buildDemo() {
   console.log('\nDemo (The Fox & Compass — fictional)');
   account(DEMO_ACCOUNT, 'The Fox & Compass', 'demo');
   venue(DEMO_ACCOUNT, DEMO_VENUE, 'The Fox & Compass');
@@ -616,15 +747,19 @@ function buildDemo() {
   // rate and a delivery-derived usage rate to all have something to say.
   const received = [
     ...deliveries(DEMO_ACCOUNT, DEMO_VENUE, all, {
-      supplier: 'Welloak Drinks', weekday: 4, everyWeeks: 1, count: 11, prefix: 'WO', team: DEMO_TEAM,
+      supplier: 'Welloak Drinks', weekday: 4, everyWeeks: 1, count: 22, prefix: 'WO', team: DEMO_TEAM,
     }),
     ...deliveries(DEMO_ACCOUNT, DEMO_VENUE, all, {
-      supplier: 'Harbour Provisions', weekday: 2, everyWeeks: 2, count: 6, prefix: 'HB', team: DEMO_TEAM,
+      supplier: 'Harbour Provisions', weekday: 2, everyWeeks: 2, count: 11, prefix: 'HB', team: DEMO_TEAM,
     }),
   ];
 
-  // Three counts, the most recent a few days ago so forecasts stay anchored.
-  const lastTake = stockTakes(DEMO_ACCOUNT, DEMO_VENUE, all, DEMO_TEAM, [63, 32, 4]);
+  // Fortnightly counts across five months, the most recent a few days ago so
+  // forecasts stay anchored. Nine counts is eight measurable periods — enough
+  // for the usage rates to reach "good" confidence rather than sitting on
+  // "low" through a whole demo.
+  const lastTake = stockTakes(DEMO_ACCOUNT, DEMO_VENUE, all, DEMO_TEAM,
+    [144, 130, 116, 102, 88, 74, 60, 32, 4]);
   const lost = wastage(DEMO_ACCOUNT, DEMO_VENUE, all, DEMO_TEAM);
 
   // Closing position = last count + delivered since − wasted since.
@@ -635,8 +770,14 @@ function buildDemo() {
   for (const w of lost) if (w.at.getTime() > since) qty[w.itemId] = (qty[w.itemId] || 0) - w.quantity;
 
   writeStockItems(DEMO_ACCOUNT, DEMO_VENUE, all, qty, 'Priya Nair');
+
+  const dropped = await pruneSeeded(`accounts/${DEMO_ACCOUNT}/venues/${DEMO_VENUE}`, [
+    'stockItems', 'stockSessions', 'deliveryNotes', 'deliveryLog', 'supplierProducts', 'wastageLog',
+  ]);
+  if (dropped) console.log(`  pruned ${dropped} documents from earlier runs`);
+
   console.log(`  account ${DEMO_ACCOUNT} · venue ${DEMO_VENUE} · ${all.length} items · ${DEMO_TEAM.length} members`);
-  console.log(`  ${received.length} delivery lines · 3 stock takes · closing stock derived from the history`);
+  console.log(`  ${received.length} delivery lines · 9 stock takes · closing stock derived from the history`);
 }
 
 /**
@@ -663,7 +804,7 @@ async function showPasswords() {
 (async () => {
   if (process.argv.includes('--passwords')) return showPasswords();
   if (ONLY !== 'demo') await buildTest();
-  if (ONLY !== 'test') buildDemo();
+  if (ONLY !== 'test') await buildDemo();
   await commit();
   if (!DRY) {
     console.log('\nDone. Provisioning runs asynchronously — give it a few seconds, then:');
