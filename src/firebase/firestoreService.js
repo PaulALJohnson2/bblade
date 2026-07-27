@@ -94,14 +94,26 @@ export async function getStockItemById(venuePath, itemId) {
 
 /**
  * Save or update a stock item.
+ *
+ * `createdBy`/`createdAt` are stamped on CREATION ONLY and stripped from
+ * updates. Who first identified a product the venue was buying blind is a
+ * durable fact about that product, and a later edit — a rename, a category
+ * fix — must not quietly transfer the credit for it.
+ *
  * @param {string} venuePath
  * @param {string|null} itemId - null for new items
- * @param {object} data
+ * @param {object} data - may carry createdBy on creation
  */
 export async function saveOrUpdateStockItem(venuePath, itemId, data) {
   try {
     const { accountId, venueId } = idsFromVenuePath(venuePath);
-    const docData = { ...data, accountId, venueId, updatedAt: Timestamp.now() };
+    const now = Timestamp.now();
+    const { createdBy, ...rest } = data || {};
+    const docData = { ...rest, accountId, venueId, updatedAt: now };
+    if (!itemId) {
+      docData.createdAt = now;
+      docData.createdBy = createdBy || '';
+    }
     const docRef = itemId
       ? doc(db, `${venuePath}/stockItems/${itemId}`)
       : doc(collection(db, `${venuePath}/stockItems`));
@@ -479,8 +491,14 @@ export async function saveStockCount(venuePath, sessionId, itemId, countData) {
   }
 }
 
-/** Complete a session and write final counted quantities back to stock items. */
-export async function completeStockSession(venuePath, sessionId) {
+/**
+ * Complete a session and write final counted quantities back to stock items.
+ *
+ * `by` is whoever closed it. Credit for the counting itself stays on each
+ * count's own `countedBy` — a stock take is usually several people, and the
+ * one who happened to press the button shouldn't collect for all of it.
+ */
+export async function completeStockSession(venuePath, sessionId, by = '') {
   try {
     const sessionRef = doc(db, `${venuePath}/stockSessions/${sessionId}`);
     const sessionSnap = await getDoc(sessionRef);
@@ -500,7 +518,7 @@ export async function completeStockSession(venuePath, sessionId) {
       });
     }
 
-    batch.update(sessionRef, { status: 'completed', completedAt: Timestamp.now() });
+    batch.update(sessionRef, { status: 'completed', completedAt: Timestamp.now(), completedBy: by });
     await batch.commit();
     return { success: true };
   } catch (error) {
@@ -904,11 +922,16 @@ export async function logDelivery(venuePath, itemId, data) {
 /**
  * Set how many whole units come in a case (0 clears it). Captured during
  * delivery entry; feeds the "Cases (×N)" row in counts and deliveries alike.
+ *
+ * `by` records who established it — a pack fact is permanent and applies to
+ * every future delivery of that product, so it's worth crediting.
  */
-export async function setStockItemCasePack(venuePath, itemId, casePack) {
+export async function setStockItemCasePack(venuePath, itemId, casePack, by = '') {
   try {
     await updateDoc(doc(db, `${venuePath}/stockItems/${itemId}`), {
       casePack: Number(casePack) || 0,
+      casePackSetBy: by,
+      casePackSetAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
     return { success: true };
@@ -918,8 +941,12 @@ export async function setStockItemCasePack(venuePath, itemId, casePack) {
   }
 }
 
-/** Set per-item case sizes in one batched write. entries = [{ id, casePack }]. */
-export async function bulkSetCasePacks(venuePath, entries) {
+/**
+ * Set per-item case sizes in one batched write. entries = [{ id, casePack }].
+ * `by` is the person who reviewed and applied them — the suggestions come from
+ * the model, but a human accepted each one.
+ */
+export async function bulkSetCasePacks(venuePath, entries, by = '') {
   try {
     const now = Timestamp.now();
     let batch = writeBatch(db);
@@ -927,7 +954,12 @@ export async function bulkSetCasePacks(venuePath, entries) {
     let count = 0;
     for (const { id, casePack } of entries) {
       if (!id) continue;
-      batch.set(doc(db, `${venuePath}/stockItems/${id}`), { casePack: Number(casePack) || 0, updatedAt: now }, { merge: true });
+      batch.set(doc(db, `${venuePath}/stockItems/${id}`), {
+        casePack: Number(casePack) || 0,
+        casePackSetBy: by,
+        casePackSetAt: now,
+        updatedAt: now,
+      }, { merge: true });
       count++;
       if (++inBatch === 500) { await batch.commit(); batch = writeBatch(db); inBatch = 0; }
     }

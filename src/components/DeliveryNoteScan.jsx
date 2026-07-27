@@ -229,7 +229,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
   const applyCaseSize = (row) => {
     const n = parseInt(caseSizes[row.index] ?? suggestedCasePack(row.line), 10) || 0;
     if (n <= 0 || !row.item) return;
-    setStockItemCasePack(venuePath, row.item.id, n);
+    setStockItemCasePack(venuePath, row.item.id, n, receivedBy);
     setKeptChanges(true);
     setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, { ...r.item, casePack: n }) : r)));
   };
@@ -262,6 +262,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       quantity: 0,
       archived: false,
       categorySuggested: '',
+      createdBy: receivedBy,
     });
     setAdding(false);
     if (!res.success) { setError('Could not add that item: ' + res.error); return; }

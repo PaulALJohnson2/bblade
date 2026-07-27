@@ -72,6 +72,9 @@ function Deliveries() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
 
+  // Who to credit for anything learned here — pack facts, confirmed matches.
+  const byName = userProfile?.displayName || currentUser?.email || '';
+
   useEffect(() => {
     if (!selectedPub) return;
     const unsubLog = subscribeToDeliveryLog(selectedPub.path, (list) => setRecent(list || []));
@@ -151,7 +154,7 @@ function Deliveries() {
       supplier: supplier.trim(),
       cost: cost === '' ? null : parseFloat(cost),
       note: note.trim(),
-      receivedBy: userProfile?.displayName || currentUser?.email || '',
+      receivedBy: byName,
     });
     setSaving(false);
     if (res.success) { showToast(`Logged delivery: ${selectedItem.name}`); resetEntry(); }
@@ -161,7 +164,7 @@ function Deliveries() {
   // Persist a captured case size onto the item. Not awaited — the offline-first
   // cache write re-renders the entry with its Cases row immediately.
   const handleSetCasePack = (item, n) => {
-    setStockItemCasePack(selectedPub.path, item.id, n).then((res) => {
+    setStockItemCasePack(selectedPub.path, item.id, n, byName).then((res) => {
       if (!res.success) showToast('Could not save case size: ' + res.error);
     });
   };
@@ -212,7 +215,7 @@ function Deliveries() {
       .filter((e) => e.casePack > 0);
     if (entries.length === 0) { setCaseSuggest(null); return; }
     setApplyingSizes(true);
-    const res = await bulkSetCasePacks(selectedPub.path, entries);
+    const res = await bulkSetCasePacks(selectedPub.path, entries, byName);
     setApplyingSizes(false);
     setCaseSuggest(null);
     if (res.success) setBannerDismissed(true);
@@ -491,7 +494,7 @@ function Deliveries() {
           colors={colors}
           accent={accent}
           onAccent={colors.onDelivery}
-          receivedBy={userProfile?.displayName || currentUser?.email || ''}
+          receivedBy={byName}
           onClose={() => setScanOpen(false)}
           onDone={(logged, failed) => {
             setScanOpen(false);

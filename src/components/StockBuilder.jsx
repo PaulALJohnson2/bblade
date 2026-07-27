@@ -133,6 +133,7 @@ function StockBuilder({ venuePath, categoriesBySection = {}, existingItems = [],
       quantity: 0,
       archived: false,
       categorySuggested: '',
+      createdBy: userName || '',
     });
 
     if (!res.success) {

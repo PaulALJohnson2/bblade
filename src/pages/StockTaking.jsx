@@ -439,7 +439,10 @@ function StockTaking() {
       'Complete Stock Take?',
       `This will update ${countedItems} item(s) with the counted quantities.`,
       async () => {
-        const result = await completeStockSession(selectedPub.path, currentSession.id);
+        const result = await completeStockSession(
+          selectedPub.path, currentSession.id,
+          userProfile?.displayName || currentUser?.email || '',
+        );
         if (result.success) {
           setCurrentSession(null);
           setShowSessionPicker(true);
@@ -722,7 +725,8 @@ function StockTaking() {
         wholeUnit: formData.wholeUnit.trim(),
         partUnit: formData.partUnit.trim(),
         unitCost: parseFloat(formData.unitCost) || 0,
-        notes: formData.notes.trim()
+        notes: formData.notes.trim(),
+        createdBy: userProfile?.displayName || currentUser?.email || '',
       }
     );
 
