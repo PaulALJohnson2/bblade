@@ -121,10 +121,10 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
         <span style={{ fontSize: '1.2rem' }}>🧠</span>
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: 'block', fontWeight: 700, color: colors.textPrimary, fontSize: '0.9rem' }}>
-            What this place has taught it
+            What your venue has learnt
           </span>
           <span style={{ display: 'block', fontSize: '0.75rem', color: colors.textSecondary }}>
-            Your contribution and the venue's standing
+            What it knows, and your part in teaching it
           </span>
         </span>
         <span style={{ color: colors.textMuted }}>›</span>
@@ -135,7 +135,7 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
   return (
     <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <span style={heading}>What this place has taught it</span>
+        <span style={heading}>What your venue has learnt</span>
         <span style={{ flex: 1 }} />
         <button
           onClick={() => setOpen(false)}
@@ -158,14 +158,14 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
               <span style={{ fontSize: '1.05rem', fontWeight: 800, color: colors.textPrimary }}>
                 {venue.level.complete
-                  ? 'Fully learned'
+                  ? 'Fully learnt'
                   : `Working towards ${venue.level.current?.name || ''}`}
               </span>
               <span style={{ flex: 1 }} />
               <span style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
                 {venue.level.complete
                   ? `all ${venue.level.total} stages`
-                  : `stage ${venue.level.done + 1} of ${venue.level.total}`} · {venue.total} learned
+                  : `stage ${venue.level.done + 1} of ${venue.level.total}`} · {venue.total} learnt
               </span>
             </div>
             <div style={{ height: '8px', borderRadius: '4px', backgroundColor: colors.bgLight, overflow: 'hidden', marginTop: '0.35rem' }}>
@@ -265,7 +265,7 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
               {showGuide && (
                 <div style={{ marginTop: '0.5rem', padding: '0.7rem 0.8rem', borderRadius: '10px', border: `1px dashed ${colors.border}`, fontSize: '0.78rem', color: colors.textSecondary, lineHeight: 1.5 }}>
                   <p style={{ marginBottom: '0.5rem' }}>
-                    This counts what someone <strong style={{ color: colors.textPrimary }}>taught the system</strong> —
+                    This counts what the venue <strong style={{ color: colors.textPrimary }}>learnt from someone's work</strong> —
                     supplier codes confirmed, products found, case sizes captured, items counted. It is a
                     slice of the job, and not the important slice.
                   </p>

@@ -49,15 +49,21 @@ export const FACT_VALUES = {
   itemCounted: 1,     // per item, so a shared count splits fairly
 };
 
+/**
+ * Written from the VENUE's side, not the person's. "Taught a supplier code"
+ * casts the user as the instructor and the software as the pupil; what the
+ * screen is actually reporting is what the venue now knows that it didn't
+ * before. Same fact, and the one that reads like an asset rather than a chore.
+ */
 export const FACT_LABELS = {
-  correction: 'Corrected a match',
-  newSupplier: 'First note from a new supplier',
-  productAdded: 'Added a product you were buying blind',
-  packFact: 'Captured a case size',
-  supplierCode: 'Taught a supplier code',
-  noteLogged: 'Logged a delivery note',
-  stockTake: 'Completed a stock take',
-  itemCounted: 'Counted an item',
+  correction: 'Learnt the right match',
+  newSupplier: 'Learnt a new supplier',
+  productAdded: 'Learnt a product you buy',
+  packFact: 'Learnt a case size',
+  supplierCode: 'Learnt a supplier code',
+  noteLogged: 'Learnt from a delivery note',
+  stockTake: 'Learnt from a stock take',
+  itemCounted: 'Learnt from a counted item',
 };
 
 /** Rough keying time per line saved by reading a document instead of typing it. */
@@ -497,7 +503,7 @@ export function buildLearningProfile(state, now = Date.now()) {
   };
 }
 
-/** Difference between two states, for the "+120 learned" moment after a scan. */
+/** Difference between two states, for the "+120 learnt" moment after a scan. */
 export function scoreDelta(before, after) {
   const seen = new Set(learningFacts(before).map((f) => f.key));
   const gained = learningFacts(after).filter((f) => !seen.has(f.key));

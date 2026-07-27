@@ -98,7 +98,7 @@ function LearningReward({
 
       {/*
         The facts lead, not the number. What motivates is a signal of
-        COMPETENCE, and "taught 15 supplier codes" carries that in a way an
+        COMPETENCE, and "learnt 15 supplier codes" carries that in a way an
         abstract 19 never does — the score's job is to accumulate towards
         something someone can be thanked for at the end of a month, not to be
         the reward itself. It stays, quietly, so the accumulation is visible
@@ -106,6 +106,9 @@ function LearningReward({
       */}
       {rows.length > 0 && (
         <div style={{ marginTop: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.3rem', textAlign: 'left' }}>
+          <div style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: colors.textSecondary, marginBottom: '0.1rem' }}>
+            What your venue learnt
+          </div>
           {rows.map((r, i) => (
             <div
               key={r.kind}
@@ -145,7 +148,7 @@ function LearningReward({
         <div style={{ marginTop: '1.1rem', textAlign: 'left' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.3rem' }}>
             <span style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: stageReached ? accent : colors.textSecondary }}>
-              {stageReached ? banked?.name : (current ? `Working towards ${current.name}` : 'Fully learned')}
+              {stageReached ? banked?.name : (current ? `Working towards ${current.name}` : 'Fully learnt')}
             </span>
             {stageReached && <span className="bb-pop" style={{ fontSize: '0.68rem', fontWeight: 800, color: accent }}>REACHED</span>}
             <span style={{ flex: 1 }} />
