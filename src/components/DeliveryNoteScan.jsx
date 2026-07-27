@@ -53,6 +53,14 @@ const prettyDate = (iso) => {
 const qtyLabel = (row) => `${row.qty}${row.line.unitCode ? ` ${row.line.unitCode}` : ''}`;
 
 /**
+ * How a document is identified across scans — its printed reference, falling
+ * back to supplier and date. Same key the contribution scoring uses, so a note
+ * that can't earn twice can't be logged twice either.
+ */
+const noteKey = (n) => `${String(n?.supplier || '').trim().toLowerCase()}::${
+  String(n?.reference || '').trim() || n?.deliveryDate || ''}`;
+
+/**
  * The date the goods arrived, from the note itself. Midday local so a timezone
  * shift can't nudge it onto the day before, which for a note delivered the day
  * of a stock take is the difference between two periods.
@@ -106,6 +114,7 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
 
   const [progress, setProgress] = useState(null);
   const [learnedCount, setLearnedCount] = useState(0);
+  const [alreadyLogged, setAlreadyLogged] = useState(null); // the earlier scan of this same note
   const [learnedIndex, setLearnedIndex] = useState(null); // what was known before this scan
   const [updateCosts, setUpdateCosts] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -210,6 +219,15 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
       if (read.documentKind === 'credit-note') {
         reconciled = reconciled.map((r) => ({ ...r, include: false }));
       }
+
+      // Already scanned? Nothing stops a note being logged twice, and the
+      // second time silently doubles the stock — the delivery log has no
+      // notion of a document having been seen before. So the duplicate is
+      // named, and everything starts UNTICKED: double-counting a delivery
+      // should take a deliberate act, not an absent-minded tap.
+      const seen = (existingNotes || []).find((n) => noteKey(n) === noteKey(read));
+      setAlreadyLogged(seen || null);
+      if (seen) reconciled = reconciled.map((r) => ({ ...r, include: false }));
 
       setStepDetail((d) => ({
         ...d,
@@ -788,7 +806,7 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
           </button>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.15rem', flexShrink: 0 }}>
-            {row.viaLearned && <span style={chip(colors.deliverySoft, accent)}>REMEMBERED</span>}
+            {row.viaLearned && <span style={chip(colors.deliverySoft, accent)}>MATCHED BY CODE</span>}
             {row.shortDelivery && (
               <span style={chip(colors.dangerSoft, colors.error)}>
                 {row.line.qtyDelivered} OF {row.line.qtyDespatched}
@@ -887,6 +905,16 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
           </div>
         </div>
 
+        {alreadyLogged && (
+          <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
+            This note has already been logged
+            {alreadyLogged.uploadedAt?.toDate
+              ? ` on ${alreadyLogged.uploadedAt.toDate().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+              : ''}
+            {alreadyLogged.uploadedBy ? ` by ${alreadyLogged.uploadedBy}` : ''}. Logging it again would add
+            the same stock a second time, so nothing is ticked — tick anything you genuinely need to re-add.
+          </div>
+        )}
         {isCreditNote && (
           <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
             This is a credit note — it reverses a charge rather than delivering stock. It can be
