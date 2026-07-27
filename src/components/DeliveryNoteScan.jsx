@@ -32,7 +32,9 @@ import {
   indexLearned, lookupLearned, learnedRecordsFrom,
   suggestedCasePack, cleanProductName, unitFromLine,
 } from '../utils/supplierLearning';
+import { scoreDelta, venueLevel } from '../utils/learningScore';
 import { formatItemDescription } from '../utils/stockUnitUtils';
+import LearningReward from './LearningReward';
 import { loadCatalog, bestCatalogMatch } from '../services/catalogService';
 import {
   logDelivery, saveDeliveryNote, setDeliveryNoteEntries, setStockItemCasePack,
@@ -59,13 +61,18 @@ const STEPS = [
   { key: 'match', label: 'Matching against your stock list' },
 ];
 
-function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, receivedBy, onClose, onDone }) {
+function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent, onAccent, receivedBy, onClose, onDone }) {
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
   const galleryRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const [stage, setStage] = useState('pick'); // pick | working | review | saving
+  const [stage, setStage] = useState('pick'); // pick | working | review | saving | done
+  const [reward, setReward] = useState(null);       // what this note taught
+  // Snapshots taken when the scan starts, so the delta afterwards is exact.
+  const itemsAtStart = useRef(null);
+  const recordsAtStart = useRef([]);
+  const [localItems, setLocalItems] = useState([]); // items created/patched here
   const [error, setError] = useState('');
   const [docFile, setDocFile] = useState(null);
   const [note, setNote] = useState(null);
@@ -145,6 +152,8 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       // What this venue already learned from earlier notes. A confirmed
       // supplier code beats any name matching, so it's consulted first.
       const { data: learnedRecords } = await getSupplierProducts(venuePath);
+      itemsAtStart.current = live;
+      recordsAtStart.current = learnedRecords || [];
       const learnedIndex = indexLearned(learnedRecords);
       setLearnedIndex(learnedIndex);
       const resolve = (line) => {
@@ -233,7 +242,9 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     if (n <= 0 || !row.item) return;
     setStockItemCasePack(venuePath, row.item.id, n, receivedBy);
     setKeptChanges(true);
-    setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, { ...r.item, casePack: n }) : r)));
+    const patched = { ...row.item, casePack: n, casePackSetBy: receivedBy, casePackSetAt: new Date() };
+    setLocalItems((l) => [...l.filter((x) => x.id !== patched.id), patched]);
+    setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, patched) : r)));
   };
 
   const openAddForm = async (row) => {
@@ -273,6 +284,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       unit: draft.unit, wholeUnit: draft.wholeUnit, partUnit: draft.partUnit,
       casePack: draft.casePack || 0, archived: false,
     };
+    setLocalItems((l) => [...l, { ...item, createdBy: receivedBy, createdAt: new Date() }]);
     setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, item, { corrected: true }) : r)));
     setAddFor(null);
     setDraft(null);
@@ -382,13 +394,80 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       if (!res.success) console.warn('Could not update cost prices:', res.error);
     }
 
-    // Learn from what was confirmed. Deliberately last and unawaited-on-failure:
-    // the stock movements are what matter, and a venue that never learns is a
-    // slower product, not a broken one.
-    saveSupplierProducts(venuePath, learnedRecordsFrom(rows, note, receivedBy, learnedIndex))
+    // Learn from what was confirmed. Failure here is survivable — the stock
+    // movements are what matter, and a venue that never learns is a slower
+    // product, not a broken one.
+    const written = learnedRecordsFrom(rows, note, receivedBy, learnedIndex);
+    await saveSupplierProducts(venuePath, written)
       .catch((err) => console.warn('Could not save what this note taught us:', err));
 
-    onDone(entryIds.length, failed);
+    setReward(buildReward(written, entryIds.length, failed));
+    setStage('done');
+  };
+
+  /**
+   * What this note taught, as the difference between two states rather than a
+   * tally of what just happened — the same derivation the standing score uses,
+   * so the moment can never disagree with the running total.
+   *
+   * Both states carry the venue's EXISTING notes, or every scan would look
+   * like a brand-new supplier and pay the discovery bonus again.
+   */
+  const buildReward = (written, logged, failed) => {
+    try {
+      const nowDate = new Date();
+      const merged = new Map(recordsAtStart.current.map((r) => [r.id, r]));
+      for (const w of written) {
+        const prev = merged.get(w.id);
+        merged.set(w.id, {
+          ...prev, ...w,
+          firstSeenAt: prev?.firstSeenAt || nowDate,
+          firstConfirmedBy: prev?.firstConfirmedBy || w.firstConfirmedBy || receivedBy,
+          lastSeenAt: nowDate,
+        });
+      }
+
+      const byId = new Map((itemsAtStart.current || []).map((i) => [i.id, i]));
+      for (const li of localItems) byId.set(li.id, { ...byId.get(li.id), ...li });
+
+      const savedNote = {
+        ...note,
+        uploadedBy: receivedBy,
+        uploadedAt: nowDate,
+        lines: rows.map((r) => ({ ...r.line, status: r.status, included: r.include, itemId: r.itemId || '' })),
+      };
+
+      const before = {
+        items: itemsAtStart.current || [],
+        supplierProducts: recordsAtStart.current,
+        notes: existingNotes,
+        sessions: [],
+      };
+      const after = {
+        items: [...byId.values()],
+        supplierProducts: [...merged.values()],
+        notes: [...existingNotes, savedNote],
+        sessions: [],
+      };
+
+      return {
+        delta: scoreDelta(before, after),
+        levelBefore: venueLevel(before),
+        levelAfter: venueLevel(after),
+        logged,
+        failed,
+        // Everything now mapped for this supplier is a line that won't need a
+        // human next time. That's the promise the next scan has to keep.
+        prediction: {
+          supplier: note.supplier || '',
+          lines: [...merged.values()].filter((r) => r.supplierKey === written[0]?.supplierKey).length,
+          minutes: Math.round(([...merged.values()].filter((r) => r.supplierKey === written[0]?.supplierKey).length * 25) / 60),
+        },
+      };
+    } catch (err) {
+      console.warn('Could not work out what this note taught us:', err);
+      return { delta: { total: 0, byKind: {}, facts: [] }, logged, failed, prediction: null };
+    }
   };
 
   // ---- styles --------------------------------------------------------------
@@ -895,7 +974,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.8rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
           <div style={{ flex: 1, fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>Scan delivery note</div>
-          {stage !== 'saving' && stage !== 'working' && (
+          {stage !== 'saving' && stage !== 'working' && stage !== 'done' && (
             <button onClick={requestClose} aria-label="Close" style={{ width: '30px', height: '30px', border: 'none', borderRadius: '50%', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
           )}
         </div>
@@ -903,6 +982,16 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         {stage === 'pick' && pickPane}
         {stage === 'working' && workingPane}
         {(stage === 'review' || stage === 'saving') && reviewPane}
+        {stage === 'done' && reward && (
+          <LearningReward
+            {...reward}
+            person={receivedBy}
+            colors={colors}
+            accent={accent}
+            onAccent={onAccent}
+            onDone={() => onDone(reward.logged, reward.failed)}
+          />
+        )}
       </div>
 
       {confirmClose && (

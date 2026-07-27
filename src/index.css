@@ -134,11 +134,24 @@ code {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.3; }
 }
+/* Earned moments: things the venue just taught the system arrive one after
+ * another, so you watch it learn rather than being handed a total. */
+@keyframes bb-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes bb-pop {
+  0%   { opacity: 0; transform: scale(0.5); }
+  70%  { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
 .bb-sweep { animation: bb-sweep 1.4s ease-in-out infinite; }
 .bb-pulse { animation: bb-pulse 1.2s ease-in-out infinite; }
+.bb-rise  { animation: bb-rise 0.42s cubic-bezier(.2,.8,.3,1) both; }
+.bb-pop   { animation: bb-pop 0.5s cubic-bezier(.2,.9,.3,1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .bb-sweep, .bb-pulse { animation: none; }
+  .bb-sweep, .bb-pulse, .bb-rise, .bb-pop { animation: none; opacity: 1; transform: none; }
   .bb-sweep { transform: translateX(0); width: 100% !important; opacity: 0.5; }
 }
 

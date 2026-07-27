@@ -491,6 +491,7 @@ function Deliveries() {
         <DeliveryNoteScan
           venuePath={selectedPub.path}
           items={items}
+          existingNotes={notes}
           colors={colors}
           accent={accent}
           onAccent={colors.onDelivery}
