@@ -46,6 +46,13 @@ export {
   setStockItemCasePack,
   bulkSetCasePacks,
 
+  // Delivery notes (scanned proof of delivery)
+  saveDeliveryNote,
+  getDeliveryNoteDocument,
+  setDeliveryNoteEntries,
+  subscribeToDeliveryNotes,
+  deleteDeliveryNote,
+
   // Sales reports (till exports)
   saveSalesReport,
   subscribeToSalesReports,

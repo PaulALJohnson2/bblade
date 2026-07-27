@@ -11,11 +11,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack, bulkSetCasePacks } from '../services/apiService';
+import { logDelivery, subscribeToDeliveryLog, deleteDeliveryEntry, setStockItemCasePack, bulkSetCasePacks, subscribeToDeliveryNotes, deleteDeliveryNote, getDeliveryNoteDocument } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { deliveryUnitsFor, computeDeliveryQuantity, summariseDeliveryUnits } from '../utils/deliveryUnits';
 import { formatItemDescription } from '../utils/stockUnitUtils';
 import DeliveryEntry from '../components/DeliveryEntry';
+import DeliveryNoteScan from '../components/DeliveryNoteScan';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import { compareCategories } from '../utils/categoryName';
@@ -40,6 +41,10 @@ function Deliveries() {
 
   const { items } = useStockData();
   const [recent, setRecent] = useState([]);
+  const [notes, setNotes] = useState([]);        // scanned delivery notes
+  const [scanOpen, setScanOpen] = useState(false);
+  const [viewNote, setViewNote] = useState(null); // note whose document is open
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(null);
   const [section, setSection] = useState('bar');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -67,7 +72,8 @@ function Deliveries() {
   useEffect(() => {
     if (!selectedPub) return;
     const unsubLog = subscribeToDeliveryLog(selectedPub.path, (list) => setRecent(list || []));
-    return () => unsubLog();
+    const unsubNotes = subscribeToDeliveryNotes(selectedPub.path, (list) => setNotes(list || []));
+    return () => { unsubLog(); unsubNotes(); };
   }, [selectedPub]);
 
   const resetEntry = () => {
@@ -196,6 +202,33 @@ function Deliveries() {
     showToast(res.success ? `Case sizes set for ${res.count} items` : 'Could not save: ' + res.error);
   };
 
+  // The document lives in a subdoc so the note list stays light — fetch it only
+  // when someone actually wants to look at the paperwork.
+  const openNote = async (note) => {
+    if (!note.imageStored) return;
+    const res = await getDeliveryNoteDocument(selectedPub.path, note.id);
+    if (!res.success) { showToast(res.error); return; }
+    const { data, mimeType } = res.data;
+    if ((mimeType || '').startsWith('image/')) { setViewNote({ ...note, src: data, revoke: null }); return; }
+    // PDFs: Chrome won't render a data: URL in an iframe, but a blob: one is fine.
+    const blob = await (await fetch(data)).blob();
+    const src = URL.createObjectURL(blob);
+    setViewNote({ ...note, src, revoke: src });
+  };
+
+  const closeNote = () => {
+    if (viewNote?.revoke) URL.revokeObjectURL(viewNote.revoke);
+    setViewNote(null);
+  };
+
+  // Removes the paperwork only — the stock movements it created stand, and are
+  // still individually undoable from the recent list.
+  const handleDeleteNote = async (note) => {
+    const res = await deleteDeliveryNote(selectedPub.path, note.id);
+    setConfirmDeleteNote(null);
+    showToast(res.success ? 'Delivery note deleted' : 'Could not delete: ' + res.error);
+  };
+
   const handleUndo = async (entry) => {
     const res = await deleteDeliveryEntry(selectedPub.path, entry.id);
     setConfirmUndo(null);
@@ -213,6 +246,14 @@ function Deliveries() {
         <button onClick={() => navigate('/')} style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}>← Back</button>
         <h1 style={{ margin: 0, fontSize: '1.5rem', color: accent }}>Deliveries</h1>
       </div>
+
+      {/* Scan the paperwork instead of keying it in item by item */}
+      <button
+        onClick={() => setScanOpen(true)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.85rem', marginBottom: '0.75rem', border: `2px dashed ${accent}`, borderRadius: '10px', backgroundColor: colors.deliverySoft, color: colors.textPrimary, fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' }}
+      >
+        📄 Scan a delivery note
+      </button>
 
       {/* Admin: learn case sizes from the existing stock list */}
       {admin && !bannerDismissed && missingCase.length > 0 && (
@@ -373,6 +414,81 @@ function Deliveries() {
           </div>
         )}
       </div>
+
+      {/* Scanned delivery notes — the proof behind the entries above */}
+      {notes.length > 0 && (
+        <div style={{ marginTop: '2rem' }}>
+          <h2 style={{ fontSize: '1.05rem', color: colors.textPrimary, margin: '0 0 0.75rem' }}>Delivery notes</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {notes.map((n) => {
+              const when = n.uploadedAt?.toDate ? n.uploadedAt.toDate().toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+              const logged = Array.isArray(n.entryIds) ? n.entryIds.length : 0;
+              const confirming = confirmDeleteNote === n.id;
+              return (
+                <div key={n.id} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '10px', padding: '0.6rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <button
+                    onClick={() => openNote(n)}
+                    disabled={!n.imageStored}
+                    title={n.imageStored ? 'View the document' : 'No copy of this document was kept'}
+                    style={{ flexShrink: 0, width: '44px', height: '44px', padding: 0, border: `1px solid ${colors.borderLight}`, borderRadius: '8px', overflow: 'hidden', backgroundColor: colors.bgLight, cursor: n.imageStored ? 'zoom-in' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    {n.thumb
+                      ? <img src={n.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <span style={{ fontSize: '1.2rem' }}>📄</span>}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {n.supplier || n.fileName || 'Delivery note'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: colors.textSecondary }}>
+                      {[n.reference && `Ref ${n.reference}`, `${logged} logged`, `${n.lineCount || 0} lines`].filter(Boolean).join(' · ')}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>{[n.uploadedBy, when].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {confirming ? (
+                    <button onClick={() => handleDeleteNote(n)} style={{ flexShrink: 0, padding: '0.5rem 0.75rem', backgroundColor: accent, color: colors.onDelivery, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>Confirm</button>
+                  ) : (
+                    <button onClick={() => setConfirmDeleteNote(n.id)} style={{ flexShrink: 0, padding: '0.5rem 0.75rem', backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>Delete</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Capture → read → review → log */}
+      {scanOpen && (
+        <DeliveryNoteScan
+          venuePath={selectedPub.path}
+          items={items}
+          colors={colors}
+          accent={accent}
+          onAccent={colors.onDelivery}
+          receivedBy={userProfile?.displayName || currentUser?.email || ''}
+          onClose={() => setScanOpen(false)}
+          onDone={(logged, failed) => {
+            setScanOpen(false);
+            showToast(failed
+              ? `Logged ${logged}, ${failed} failed`
+              : `Logged ${logged} deliver${logged === 1 ? 'y' : 'ies'} from the note`);
+          }}
+        />
+      )}
+
+      {/* The kept document, full size */}
+      {viewNote && (
+        <div
+          onClick={closeNote}
+          style={{ position: 'fixed', inset: 0, zIndex: 5000, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          {(viewNote.mimeType || '').startsWith('image/') ? (
+            <img src={viewNote.src} alt={viewNote.fileName || 'Delivery note'} style={{ maxWidth: '100%', maxHeight: '92vh', objectFit: 'contain', borderRadius: '8px' }} />
+          ) : (
+            <iframe title="Delivery note" src={viewNote.src} onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '92vh', border: 'none', borderRadius: '8px', backgroundColor: '#fff' }} />
+          )}
+        </div>
+      )}
 
       {/* Review modal: AI-suggested case sizes, editable before applying */}
       {caseSuggest && caseSuggest !== 'loading' && (

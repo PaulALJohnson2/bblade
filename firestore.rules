@@ -95,6 +95,14 @@ service cloud.firestore {
         match /deliveryLog/{entryId} {
           allow read, write: if manager(accountId);
         }
+        // Scanned delivery notes (proof of delivery + what was read off it).
+        // The document image itself is a subdoc, loaded only when opened.
+        match /deliveryNotes/{noteId} {
+          allow read, write: if manager(accountId);
+          match /{sub=**} {
+            allow read, write: if manager(accountId);
+          }
+        }
         match /salesReports/{reportId} {
           allow read, write: if manager(accountId);
         }

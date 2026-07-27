@@ -877,6 +877,9 @@ export async function logDelivery(venuePath, itemId, data) {
       supplier: data.supplier || '',
       cost: Number.isFinite(cost) ? cost : null,
       note: data.note || '',
+      // Set when the entry came from a scanned delivery note, so the log line
+      // can be traced back to the document that was signed for.
+      noteId: data.noteId || null,
       receivedBy: data.receivedBy || '',
       receivedAt: now,
       accountId,
@@ -972,6 +975,122 @@ export async function deleteDeliveryEntry(venuePath, entryId) {
     return { success: true };
   } catch (error) {
     console.error('Error deleting delivery entry:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
+// DELIVERY NOTES  (scanned proof of delivery under {venuePath}/deliveryNotes)
+// ============================================
+
+/**
+ * Save a scanned delivery note: the document itself plus what was read off it.
+ *
+ * There's no Storage bucket on this project, so the document lives in Firestore
+ * as a data URL — but NOT on the note doc itself. The scan list subscribes to
+ * every recent note, and a few dozen half-megabyte images would be streamed on
+ * every visit to the Deliveries page. So the full document goes in a
+ * `document/file` subdoc, fetched only when someone opens it, and the note doc
+ * carries just a ~10KB thumbnail for the list.
+ *
+ * `lines` keeps the RAW extraction alongside what each line was reconciled to,
+ * so a mis-match can be understood later without re-reading the paper —
+ * including the lines that were skipped and why.
+ *
+ * @param {Object} note - { supplier, documentType, reference, deliveryDate,
+ *   fileName, mimeType, image, thumb, imageStored, lines, uploadedBy }
+ */
+export async function saveDeliveryNote(venuePath, note) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const ref = doc(collection(db, `${venuePath}/deliveryNotes`));
+    await setDoc(ref, {
+      supplier: note.supplier || '',
+      documentType: note.documentType || '',
+      reference: note.reference || '',
+      deliveryDate: note.deliveryDate || '',
+      fileName: note.fileName || '',
+      mimeType: note.mimeType || '',
+      thumb: note.thumb || '',
+      imageStored: !!note.imageStored,
+      lines: Array.isArray(note.lines) ? note.lines : [],
+      lineCount: Array.isArray(note.lines) ? note.lines.length : 0,
+      entryIds: [],
+      uploadedBy: note.uploadedBy || '',
+      uploadedAt: Timestamp.now(),
+      accountId,
+      venueId,
+    });
+    if (note.imageStored && note.image) {
+      await setDoc(doc(db, `${venuePath}/deliveryNotes/${ref.id}/document/file`), {
+        data: note.image,
+        mimeType: note.mimeType || '',
+        accountId,
+        venueId,
+      });
+    }
+    return { success: true, id: ref.id };
+  } catch (error) {
+    console.error('Error saving delivery note:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Fetch a note's stored document (data URL), on demand. */
+export async function getDeliveryNoteDocument(venuePath, noteId) {
+  try {
+    const snap = await getDoc(doc(db, `${venuePath}/deliveryNotes/${noteId}/document/file`));
+    if (!snap.exists()) return { success: false, error: 'No copy of this document was kept' };
+    return { success: true, data: snap.data() };
+  } catch (error) {
+    console.error('Error loading delivery note document:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Link the delivery-log entries a note produced back onto the note. */
+export async function setDeliveryNoteEntries(venuePath, noteId, entryIds) {
+  try {
+    await updateDoc(doc(db, `${venuePath}/deliveryNotes/${noteId}`), {
+      entryIds: Array.isArray(entryIds) ? entryIds : [],
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error linking delivery note entries:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Live list of scanned delivery notes, newest first. */
+export function subscribeToDeliveryNotes(venuePath, onData, onError, max = 40) {
+  const q = query(
+    collection(db, `${venuePath}/deliveryNotes`),
+    orderBy('uploadedAt', 'desc'),
+    limit(max)
+  );
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+    (error) => {
+      console.error('Error in delivery notes listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/**
+ * Delete a scanned note. The delivery-log entries it created are left alone —
+ * the stock movement really happened, and each entry can still be undone on
+ * its own from the recent-deliveries list.
+ */
+export async function deleteDeliveryNote(venuePath, noteId) {
+  try {
+    // The stored document is a subdoc, which deleting the parent doesn't touch.
+    await deleteDoc(doc(db, `${venuePath}/deliveryNotes/${noteId}/document/file`)).catch(() => {});
+    await deleteDoc(doc(db, `${venuePath}/deliveryNotes/${noteId}`));
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting delivery note:', error);
     return { success: false, error: error.message };
   }
 }
