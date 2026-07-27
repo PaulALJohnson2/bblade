@@ -201,6 +201,9 @@ function StockTaking() {
     if (!selectedPub) return;
 
     setSessionLoading(true);
+    // Staff see only the count that's open. Completed takes are the record a
+    // variance is measured against and are manager-only, in the rules as well
+    // as here — an unconstrained query would simply fail for them.
     const unsubscribe = subscribeToStockSessions(
       selectedPub.path,
       (sessions) => {
@@ -229,10 +232,12 @@ function StockTaking() {
       (err) => {
         console.error('Sessions subscription error:', err);
         setSessionLoading(false);
-      }
+      },
+      { openOnly: !isAdmin() },
     );
 
     return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPub]);
 
   // Subscribe to session updates when we have one
@@ -253,7 +258,16 @@ function StockTaking() {
           if (session.section) setActiveSection(session.section);
         }
       },
-      (err) => console.error('Session subscription error:', err)
+      (err) => {
+        console.error('Session subscription error:', err);
+        // For staff, losing read access means the count was closed or removed
+        // by someone else — completed takes are manager-only. Before, the
+        // listener delivered the completed document and this screen bowed out
+        // gracefully; now it errors instead, so the same exit has to happen
+        // here or a counter is left staring at a session that no longer exists.
+        setCurrentSession(null);
+        setShowSessionPicker(true);
+      },
     );
 
     return () => unsubscribe();

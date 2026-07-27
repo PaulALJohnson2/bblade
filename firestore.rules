@@ -56,8 +56,28 @@ service cloud.firestore {
         match /stockItems/{itemId} {
           allow read, write: if member(accountId);
         }
+        // Staff count; managers keep the record.
+        //
+        // A completed stock take is the evidence every variance is measured
+        // against, so once it's closed nobody below manager may touch it —
+        // editing an old count is the cleanest way to make a shortage
+        // disappear. Nor may they read it: studying past variances is the
+        // groundwork for concealing a future one, and a counter has no need
+        // for last month's figures.
+        //
+        // Members keep everything the job actually requires: start a count,
+        // write into it, and close it. Reopening a closed take, deleting one,
+        // or amending it afterwards are manager-only.
         match /stockSessions/{sessionId} {
-          allow read, write: if member(accountId);
+          allow read: if manager(accountId)
+            || (member(accountId) && resource.data.status == 'in_progress');
+          allow create: if member(accountId)
+            && request.resource.data.status == 'in_progress';
+          // Closing a count passes this: the stored document is still open at
+          // the moment the rule is evaluated. Editing a closed one does not.
+          allow update: if manager(accountId)
+            || (member(accountId) && resource.data.status == 'in_progress');
+          allow delete: if manager(accountId);
         }
         match /wastageLog/{entryId} {
           allow read, write: if member(accountId);

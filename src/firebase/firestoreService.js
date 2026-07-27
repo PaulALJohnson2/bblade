@@ -584,8 +584,19 @@ export async function getAllStockSessions(venuePath) {
 }
 
 /** Subscribe to all sessions for a pub. */
-export function subscribeToStockSessions(venuePath, onData, onError) {
-  const q = query(collection(db, `${venuePath}/stockSessions`), orderBy('createdAt', 'desc'));
+/**
+ * Live stock sessions, newest first.
+ *
+ * `openOnly` isn't a display preference — it's what the rules permit. Members
+ * below manager may only read a count that is still open, and Firestore fails
+ * a whole query rather than filtering out the documents a caller can't see, so
+ * an unconstrained subscription from a staff device returns nothing at all.
+ */
+export function subscribeToStockSessions(venuePath, onData, onError, { openOnly = false } = {}) {
+  const col = collection(db, `${venuePath}/stockSessions`);
+  const q = openOnly
+    ? query(col, where('status', '==', 'in_progress'), orderBy('createdAt', 'desc'))
+    : query(col, orderBy('createdAt', 'desc'));
   return onSnapshot(
     q,
     (snapshot) => {
