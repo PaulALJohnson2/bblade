@@ -29,6 +29,14 @@ export const ACCEPTED_TYPES = 'image/*,application/pdf';
 
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
 
+/**
+ * Some Android gallery pickers hand back a File with an empty `type`, so the
+ * MIME type alone would reject a perfectly good screenshot. Fall back to the
+ * extension, same as the PDF check.
+ */
+const isImage = (file) => (file.type || '').startsWith('image/')
+  || /\.(jpe?g|png|heic|heif|webp|gif|bmp|avif)$/i.test(file.name || '');
+
 /** base64 payload of a data: URL. */
 const payloadOf = (dataUrl) => dataUrl.slice(dataUrl.indexOf(',') + 1);
 
@@ -91,7 +99,7 @@ export async function prepareDocument(file) {
     };
   }
 
-  if (!file.type.startsWith('image/')) {
+  if (!isImage(file)) {
     throw new Error('Please choose a photo or a PDF');
   }
 

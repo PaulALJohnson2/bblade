@@ -62,6 +62,8 @@ const STEPS = [
 function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, receivedBy, onClose, onDone }) {
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
+  const galleryRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const [stage, setStage] = useState('pick'); // pick | working | review | saving
   const [error, setError] = useState('');
@@ -98,6 +100,19 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     if (stage !== 'working') { setElapsed(0); return undefined; }
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
+  }, [stage]);
+
+  // Desktop: a delivery note that arrived by email is usually already on the
+  // clipboard or draggable straight out of the mail client.
+  useEffect(() => {
+    if (stage !== 'pick') return undefined;
+    const onPaste = (e) => {
+      const file = [...(e.clipboardData?.files || [])][0];
+      if (file) { e.preventDefault(); handleFile(file); }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
 
   // ---- capture + read ------------------------------------------------------
@@ -401,37 +416,56 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
 
   // ---- capture pane --------------------------------------------------------
 
+  const onPick = (e) => { handleFile(e.target.files?.[0]); e.target.value = ''; };
+  const mobile = supportsCameraCapture();
+
   const pickPane = (
-    <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
+      style={{
+        padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.7rem',
+        outline: dragOver ? `2px dashed ${accent}` : 'none', outlineOffset: '-8px',
+        backgroundColor: dragOver ? colors.deliverySoft : 'transparent',
+      }}
+    >
       <div style={{ fontSize: '0.88rem', color: colors.textSecondary }}>
-        Photograph the delivery note or upload a copy. Everything on it is matched to your
-        stock list for you to check before anything is logged.
+        Everything on the note is matched to your stock list for you to check before anything
+        is logged.
       </div>
 
-      {supportsCameraCapture() && (
-        <button onClick={() => cameraRef.current?.click()} style={{ ...primaryBtn(), padding: '1rem' }}>
-          📷 Take a photo
-        </button>
+      {mobile ? (
+        <>
+          <button onClick={() => cameraRef.current?.click()} style={{ ...primaryBtn(), padding: '1rem' }}>
+            📷 Take a photo
+          </button>
+          {/* Notes often arrive by email and get screenshotted, so the gallery
+              needs to be its own button — buried in a generic file picker,
+              nobody finds it. */}
+          <button onClick={() => galleryRef.current?.click()} style={{ ...quietBtn, padding: '1rem', width: '100%' }}>
+            🖼 Choose from photos
+          </button>
+          <button onClick={() => fileRef.current?.click()} style={{ ...quietBtn, padding: '1rem', width: '100%' }}>
+            📎 Choose a file or PDF
+          </button>
+        </>
+      ) : (
+        <>
+          <button onClick={() => fileRef.current?.click()} style={{ ...primaryBtn(), padding: '1rem' }}>
+            Choose a photo or PDF
+          </button>
+          <div style={{ fontSize: '0.78rem', color: colors.textMuted, textAlign: 'center' }}>
+            …or drag one in, or paste a screenshot
+          </div>
+        </>
       )}
-      <button
-        onClick={() => fileRef.current?.click()}
-        style={supportsCameraCapture()
-          ? { ...quietBtn, padding: '1rem', width: '100%' }
-          : { ...primaryBtn(), padding: '1rem' }}
-      >
-        Choose a photo or PDF
-      </button>
 
-      <input
-        ref={cameraRef} type="file" accept="image/*" capture="environment"
-        onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
-        style={{ display: 'none' }}
-      />
-      <input
-        ref={fileRef} type="file" accept={ACCEPTED_TYPES}
-        onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ''; }}
-        style={{ display: 'none' }}
-      />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={onPick} style={{ display: 'none' }} />
+      {/* No `capture` attribute — that's what sends the picker to the gallery
+          rather than straight to the camera. */}
+      <input ref={galleryRef} type="file" accept="image/*" onChange={onPick} style={{ display: 'none' }} />
+      <input ref={fileRef} type="file" accept={ACCEPTED_TYPES} onChange={onPick} style={{ display: 'none' }} />
 
       {error && <div style={{ fontSize: '0.85rem', color: colors.error, fontWeight: 600 }}>{error}</div>}
     </div>
