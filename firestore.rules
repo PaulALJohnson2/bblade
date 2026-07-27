@@ -95,6 +95,11 @@ service cloud.firestore {
         match /deliveryLog/{entryId} {
           allow read, write: if manager(accountId);
         }
+        // Derived consumption rates (usage per week per item). Back-office
+        // analytics built from deliveries, so manager-level like its inputs.
+        match /itemStats/{itemId} {
+          allow read, write: if manager(accountId);
+        }
         // What the venue has learned from its delivery notes: supplier item
         // code → stock item, confirmed by a manager during review.
         match /supplierProducts/{productId} {

@@ -22,6 +22,7 @@ import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
 import { useStockData } from '../contexts/StockDataContext';
 import TillMapping from '../components/TillMapping';
 import VarianceReport from '../components/VarianceReport';
+import UsageRates from '../components/UsageRates';
 import CostDerivation from '../components/CostDerivation';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -218,17 +219,29 @@ function Sales() {
       </div>
 
       {pageView === 'variance' ? (
-        <VarianceReport
-          venuePath={selectedPub.path}
-          items={items}
-          mappingsByKey={mappingsByKey}
-          colors={colors}
-          accent={accent}
-          onAccent={colors.onPrimary}
-          showToast={showToast}
-          onGoToProducts={() => setPageView('products')}
-          canDelete={admin}
-        />
+        <>
+          <VarianceReport
+            venuePath={selectedPub.path}
+            items={items}
+            mappingsByKey={mappingsByKey}
+            colors={colors}
+            accent={accent}
+            onAccent={colors.onPrimary}
+            showToast={showToast}
+            onGoToProducts={() => setPageView('products')}
+            canDelete={admin}
+          />
+          {/* Same period model as the variance report — the gap between two
+              completed counts — but measuring consumption rather than loss. */}
+          <UsageRates
+            venuePath={selectedPub.path}
+            items={items}
+            colors={colors}
+            accent={accent}
+            onAccent={colors.onPrimary}
+            showToast={showToast}
+          />
+        </>
       ) : pageView === 'products' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <CostDerivation

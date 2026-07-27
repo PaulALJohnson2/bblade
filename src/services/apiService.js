@@ -53,6 +53,11 @@ export {
   subscribeToDeliveryNotes,
   deleteDeliveryNote,
 
+  // Item stats (derived consumption rates)
+  getDeliveryNotesBetween,
+  getItemStats,
+  saveItemStats,
+
   // Supplier products (learned supplier code → stock item)
   getSupplierProducts,
   saveSupplierProducts,

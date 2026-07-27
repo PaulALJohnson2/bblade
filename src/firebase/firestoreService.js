@@ -1095,6 +1095,70 @@ export async function deleteDeliveryNote(venuePath, noteId) {
   }
 }
 
+/** One-shot: delivery notes scanned in (fromTs, toTs] — for period analysis. */
+export async function getDeliveryNotesBetween(venuePath, fromTs, toTs) {
+  try {
+    const q = query(
+      collection(db, `${venuePath}/deliveryNotes`),
+      where('uploadedAt', '>', fromTs),
+      where('uploadedAt', '<=', toTs)
+    );
+    const snap = await getDocs(q);
+    // The stored document lives in a subdoc, so these stay small.
+    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error getting delivery notes between:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+// ============================================
+// ITEM STATS  (derived consumption rates — see utils/usageRate.js)
+// ============================================
+
+/**
+ * Persisted usage rates, one doc per stock item (doc id = itemId).
+ *
+ * Kept OFF stockItems deliberately: that collection is subscribed live on
+ * every counting screen, and rewriting all of it whenever stats are recomputed
+ * would churn every device's cache for data no counter needs.
+ */
+export async function getItemStats(venuePath) {
+  try {
+    const snap = await getDocs(collection(db, `${venuePath}/itemStats`));
+    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error loading item stats:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+/** Replace the stored usage rates with a freshly derived set. */
+export async function saveItemStats(venuePath, rows) {
+  try {
+    const list = (rows || []).filter((r) => r && r.itemId);
+    if (!list.length) return { success: true, count: 0 };
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const now = Timestamp.now();
+    let batch = writeBatch(db);
+    let inBatch = 0;
+    for (const r of list) {
+      batch.set(doc(db, `${venuePath}/itemStats/${r.itemId}`), {
+        ...r,
+        computedAt: now,
+        accountId,
+        venueId,
+      }, { merge: true });
+      if (++inBatch === 500) { await batch.commit(); batch = writeBatch(db); inBatch = 0; }
+    }
+    if (inBatch > 0) await batch.commit();
+    return { success: true, count: list.length };
+  } catch (error) {
+    console.error('Error saving item stats:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // ============================================
 // SUPPLIER PRODUCTS  (what the venue has learned from its delivery notes)
 // ============================================
