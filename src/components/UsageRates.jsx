@@ -24,7 +24,11 @@ import {
   usagePeriods, computePeriodUsage, shortDeliveredItems, aggregateUsage,
   formatUsage, CONFIDENCE_LABEL,
 } from '../utils/usageRate';
+import { ratesFromDeliveries, mergeRates } from '../utils/deliveryRate';
 import { parseUnitInfo } from '../utils/stockUnitUtils';
+
+/** How far back the delivery-only estimate looks when there are no counts. */
+const DELIVERY_WINDOW_DAYS = 180;
 
 const shortDate = (ms) => (ms
   ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -55,13 +59,31 @@ function UsageRates({ venuePath, items, colors, accent, onAccent, showToast }) {
     if (running) return;
     setRunning(true);
     try {
+      // Deliveries alone give a usable rate long before two counts exist —
+      // a pub can't hoard kegs, so what comes in is what gets drunk. This is
+      // the whole answer for a venue in its first month.
+      const since = new Date(Date.now() - DELIVERY_WINDOW_DAYS * 86400000);
+      const now = new Date();
+      const [allDel, allNotes] = await Promise.all([
+        getDeliveriesBetween(venuePath, since, now),
+        getDeliveryNotesBetween(venuePath, since, now),
+      ]);
+      const derived = ratesFromDeliveries(
+        allDel.data || [],
+        shortDeliveredItems(allNotes.data || [], since.getTime(), now.getTime()),
+      );
+
       const res = await getAllStockSessions(venuePath);
       const sessions = (res.success ? res.data : []).filter((s) => !s.hiddenFromVariance);
       const pairs = usagePeriods(sessions);
+
       if (!pairs.length) {
-        setComputed([]);
+        const merged = mergeRates([], derived);
         setPeriods([]);
-        showToast('Two completed stock takes are needed before usage can be worked out');
+        setComputed(merged);
+        showToast(merged.length
+          ? `Estimated ${merged.length} rates from deliveries — a second stock take will measure them properly`
+          : 'Not enough deliveries yet to estimate how fast anything moves');
         return;
       }
 
@@ -88,7 +110,7 @@ function UsageRates({ venuePath, items, colors, accent, onAccent, showToast }) {
         censored: p.rows.filter((r) => r.censored).length,
         implausible: p.rows.filter((r) => r.implausible).length,
       })));
-      setComputed(aggregateUsage(results));
+      setComputed(mergeRates(aggregateUsage(results), derived));
     } catch (err) {
       console.error('Usage calculation failed:', err);
       showToast('Could not work out usage: ' + (err?.message || 'unknown error'));
@@ -112,7 +134,9 @@ function UsageRates({ venuePath, items, colors, accent, onAccent, showToast }) {
   const visible = expanded ? rows : rows.slice(0, 12);
 
   const totals = useMemo(() => ({
-    rated: rows.filter((r) => r.observations > 0).length,
+    rated: rows.filter((r) => r.usagePerWeek > 0).length,
+    measured: rows.filter((r) => r.source === 'counts').length,
+    estimated: rows.filter((r) => r.source === 'deliveries').length,
     censored: rows.reduce((t, r) => t + (r.censoredPeriods || 0), 0),
     implausible: rows.reduce((t, r) => t + (r.implausiblePeriods || 0), 0),
   }), [rows]);
@@ -131,22 +155,24 @@ function UsageRates({ venuePath, items, colors, accent, onAccent, showToast }) {
         >{running ? 'Working…' : 'Work out usage'}</button>
       </div>
       <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginBottom: '0.75rem' }}>
-        How much of each item leaves the cellar in a week, measured between your completed stock takes.
+        How much of each item leaves the cellar in a week — measured between completed stock takes where
+        there are two, estimated from your delivery pattern until then.
       </div>
 
       {rows.length === 0 && (
         <div style={{ fontSize: '0.85rem', color: colors.textSecondary, padding: '0.9rem', border: `1px dashed ${colors.border}`, borderRadius: '10px' }}>
           {computed
-            ? 'Not enough history yet — two completed stock takes with deliveries in between are needed before a rate means anything.'
-            : 'Nothing worked out yet. Tap “Work out usage” to measure it from your stock takes.'}
+            ? 'Not enough history yet. Two deliveries of the same product will estimate a rate; two completed stock takes will measure one properly.'
+            : 'Nothing worked out yet. Tap “Work out usage” to derive it from your stock takes and deliveries.'}
         </div>
       )}
 
-      {periods && periods.length > 0 && (
+      {computed && rows.length > 0 && (
         <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginBottom: '0.6rem' }}>
-          {periods.length} period{periods.length === 1 ? '' : 's'} measured
-          {' · '}{totals.rated} item{totals.rated === 1 ? '' : 's'} with a rate
-          {totals.censored > 0 && ` · ${totals.censored} excluded for short supply`}
+          {totals.measured > 0 && `${totals.measured} measured across ${periods?.length || 0} period${periods?.length === 1 ? '' : 's'}`}
+          {totals.measured > 0 && totals.estimated > 0 && ' · '}
+          {totals.estimated > 0 && `${totals.estimated} estimated from deliveries`}
+          {totals.censored > 0 && ` · ${totals.censored} period${totals.censored === 1 ? '' : 's'} excluded for short supply`}
           {totals.implausible > 0 && ` · ${totals.implausible} excluded as miscounts`}
         </div>
       )}
@@ -162,11 +188,23 @@ function UsageRates({ venuePath, items, colors, accent, onAccent, showToast }) {
                   <div style={{ fontSize: '0.86rem', fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {item?.name || r.itemName || 'Item'}
                   </div>
+                  {/* Where the number came from matters more than the number:
+                      one is measured, the other rests on an assumption. */}
                   <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>
-                    {r.observations} period{r.observations === 1 ? '' : 's'}
-                    {r.censoredPeriods > 0 && ` · ${r.censoredPeriods} short-supplied`}
-                    {r.ranOutPeriods > 0 && ` · ran out ${r.ranOutPeriods}×`}
-                    {r.lastPeriodEnd ? ` · to ${shortDate(r.lastPeriodEnd)}` : ''}
+                    {r.source === 'deliveries' ? (
+                      <>
+                        From {r.deliveries} deliveries over {Math.round(r.spanDays)} days
+                        {r.lowerBound && ' · at least (short-supplied)'}
+                        {r.lastDelivery ? ` · last ${shortDate(r.lastDelivery)}` : ''}
+                      </>
+                    ) : (
+                      <>
+                        {r.observations} period{r.observations === 1 ? '' : 's'} counted
+                        {r.censoredPeriods > 0 && ` · ${r.censoredPeriods} short-supplied`}
+                        {r.ranOutPeriods > 0 && ` · ran out ${r.ranOutPeriods}×`}
+                        {r.lastPeriodEnd ? ` · to ${shortDate(r.lastPeriodEnd)}` : ''}
+                      </>
+                    )}
                   </div>
                 </div>
                 <div style={{ flexShrink: 0, textAlign: 'right' }}>
