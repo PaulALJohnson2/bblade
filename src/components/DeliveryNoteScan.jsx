@@ -57,8 +57,16 @@ const qtyLabel = (row) => `${row.qty}${row.line.unitCode ? ` ${row.line.unitCode
  * back to supplier and date. Same key the contribution scoring uses, so a note
  * that can't earn twice can't be logged twice either.
  */
-const noteKey = (n) => `${String(n?.supplier || '').trim().toLowerCase()}::${
-  String(n?.reference || '').trim() || n?.deliveryDate || ''}`;
+const noteKey = (n) => {
+  // Needs something that actually distinguishes one document from another.
+  // Falling back to the supplier alone would collapse every note they've ever
+  // sent onto one key, so the second note from a supplier whose reference and
+  // date the model failed to read would be branded a duplicate — and a warning
+  // that cries wolf is worse than no warning.
+  const discriminator = String(n?.reference || '').trim() || String(n?.deliveryDate || '').trim();
+  if (!discriminator) return '';
+  return `${String(n?.supplier || '').trim().toLowerCase()}::${discriminator}`;
+};
 
 /**
  * The date the goods arrived, from the note itself. Midday local so a timezone
@@ -225,7 +233,8 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
       // notion of a document having been seen before. So the duplicate is
       // named, and everything starts UNTICKED: double-counting a delivery
       // should take a deliberate act, not an absent-minded tap.
-      const seen = (existingNotes || []).find((n) => noteKey(n) === noteKey(read));
+      const key = noteKey(read);
+      const seen = key ? (existingNotes || []).find((n) => noteKey(n) === key) : null;
       setAlreadyLogged(seen || null);
       if (seen) reconciled = reconciled.map((r) => ({ ...r, include: false }));
 
@@ -905,16 +914,34 @@ function DeliveryNoteScan({ venuePath, items, existingNotes = [], colors, accent
           </div>
         </div>
 
-        {alreadyLogged && (
-          <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
-            This note has already been logged
-            {alreadyLogged.uploadedAt?.toDate
-              ? ` on ${alreadyLogged.uploadedAt.toDate().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-              : ''}
-            {alreadyLogged.uploadedBy ? ` by ${alreadyLogged.uploadedBy}` : ''}. Logging it again would add
-            the same stock a second time, so nothing is ticked — tick anything you genuinely need to re-add.
-          </div>
-        )}
+        {alreadyLogged && (() => {
+          // How much the earlier scan actually produced matters. The note is
+          // saved before its deliveries are logged, so a connection dropping in
+          // between leaves a note claiming lines with nothing behind it — and
+          // "already logged" would then talk someone out of logging a delivery
+          // that never landed.
+          const before = Array.isArray(alreadyLogged.entryIds) ? alreadyLogged.entryIds.length : 0;
+          const when = alreadyLogged.uploadedAt?.toDate
+            ? ` on ${alreadyLogged.uploadedAt.toDate().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+            : '';
+          const who = alreadyLogged.uploadedBy ? ` by ${alreadyLogged.uploadedBy}` : '';
+          return (
+            <div style={{ marginTop: '0.6rem', padding: '0.6rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
+              {before > 0 ? (
+                <>
+                  This note was scanned{when}{who} and recorded {before} deliver{before === 1 ? 'y' : 'ies'}.
+                  Logging it again would add the same stock a second time, so nothing is ticked — tick
+                  anything you genuinely need to re-add.
+                </>
+              ) : (
+                <>
+                  This note was scanned{when}{who} but recorded no deliveries — it looks like that attempt
+                  didn't finish. Nothing is ticked, but this one probably does need logging.
+                </>
+              )}
+            </div>
+          );
+        })()}
         {isCreditNote && (
           <div style={{ marginTop: '0.6rem', padding: '0.55rem 0.7rem', borderRadius: '8px', backgroundColor: colors.dangerSoft, color: colors.error, fontSize: '0.78rem', fontWeight: 600 }}>
             This is a credit note — it reverses a charge rather than delivering stock. It can be

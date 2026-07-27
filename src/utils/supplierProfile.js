@@ -242,8 +242,21 @@ export function buildSupplierProfiles(notes) {
  */
 export const supplierGroupKey = (name) => baseSlug(name);
 
-/** "94%" / "—" when there's nothing to compare. */
-export const formatFillRate = (r) => (r === null || r === undefined ? '—' : `${Math.round(r * 100)}%`);
+/**
+ * "94%", "99.9%", "—" when there's nothing to compare.
+ *
+ * Never rounds a shortfall away. A supplier who missed one line in eighteen
+ * hundred is not a perfect record, and 99.97% displayed as "100%" beside "1
+ * short line" makes the card contradict itself — which is exactly the sort of
+ * thing that teaches people to stop believing the numbers.
+ */
+export const formatFillRate = (r) => {
+  if (r === null || r === undefined) return '—';
+  if (r >= 1) return '100%';
+  const pct = r * 100;
+  if (Math.round(pct) >= 100) return `${(Math.floor(pct * 10) / 10).toFixed(1)}%`;
+  return `${Math.round(pct)}%`;
+};
 
 /** Short human date from ISO ("23 Jul"). */
 export function shortDate(iso) {

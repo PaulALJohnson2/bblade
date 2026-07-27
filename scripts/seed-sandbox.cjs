@@ -517,7 +517,12 @@ function itemMeta(rows, section) {
  * broken, and the arithmetic has to agree with the variance report anyway.
  */
 function writeStockItems(accountId, venueId, meta, quantities, createdBy) {
-  for (const it of meta) {
+  meta.forEach((it, idx) => {
+    // A venue's founding stock list wasn't discovered from paperwork — it was
+    // typed in when they signed up. Only the occasional item is one a delivery
+    // note revealed they were buying blind, and only those should read as a
+    // person's contribution.
+    const foundOnANote = createdBy && idx % 18 === 7;
     put(`accounts/${accountId}/venues/${venueId}/stockItems/${it.id}`, {
       name: it.name, category: it.category, section: it.section,
       ...it.unit,
@@ -528,11 +533,11 @@ function writeStockItems(accountId, venueId, meta, quantities, createdBy) {
       categorySuggested: '',
       accountId, venueId,
       createdAt: daysAgo(88),
-      createdBy: createdBy || '',
+      createdBy: foundOnANote ? createdBy : '',
       lastCountedAt: daysAgo(4),
       updatedAt: new Date(),
     });
-  }
+  });
 }
 
 /**
