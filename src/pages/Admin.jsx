@@ -14,6 +14,8 @@ import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
 import StockListAdmin from '../components/StockListAdmin';
 import StockManager from '../components/StockManager';
+import CaseSizeSuggestions from '../components/CaseSizeSuggestions';
+import { useStockData } from '../contexts/StockDataContext';
 import StockOverview from '../components/StockOverview';
 import WastageReport from '../components/WastageReport';
 import Timesheets from '../components/Timesheets';
@@ -59,6 +61,7 @@ function Admin() {
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [error, setError] = useState(null);
+  const { items } = useStockData();
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -314,6 +317,18 @@ function Admin() {
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>
         {sectionHeader}
         {selectedPub?.path && <StockManager venuePath={selectedPub.path} canEdit={true} />}
+        {/* List housekeeping belongs here, not on the screen someone opens to
+            book a delivery in. */}
+        {selectedPub?.path && (
+          <CaseSizeSuggestions
+            venuePath={selectedPub.path}
+            items={items}
+            colors={colors}
+            accent={colors.primary}
+            onAccent={colors.onPrimary}
+            byName={userProfile?.displayName || ''}
+          />
+        )}
         {selectedPub?.path && <StockListAdmin venuePath={selectedPub.path} canEdit={true} />}
       </div>
     );
