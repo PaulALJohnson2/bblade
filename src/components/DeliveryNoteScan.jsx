@@ -914,7 +914,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
             </div>
             <div style={{ fontSize: '0.85rem', color: colors.textSecondary, marginBottom: '0.95rem' }}>
               {included.length} line{included.length === 1 ? '' : 's'} ready to log will be lost, and the note will need
-              photographing again.
+              scanning again.
               {keptChanges && ' Any products you added to the stock list, and case sizes you set, are already saved and will stay.'}
             </div>
             <div style={{ display: 'flex', gap: '0.6rem' }}>
