@@ -59,30 +59,6 @@ have come to expect and behaviour can settle *below* where it started.
 - Where a venue adds money, advise: unexpected over announced, occasional over
   standing, recognition over rate. See §8.
 
-## 8. Our position: we measure and give feedback; the venue decides on reward
-
-BBlade does not pay anyone. The platform surfaces contribution and gives
-positive feedback in-product; whether that turns into money is the venue's call.
-
-That lowers our liability and raises our duty of care, because **we are the
-measure designer handing a number to someone who hasn't read Holmström &
-Milgrom.** A landlord shown "Oli: 340 this month" will reasonably read it as a
-basis for reward. So the guidance has to travel *with* the number, on the
-screen, not live in a document nobody opens.
-
-**Rules for anything we show a manager**
-- Call it **contribution**, never performance. It measures what someone taught
-  the system, which is a slice of their job and not the important slice.
-- State inline what it does not capture — service, care over counting, honest
-  reporting, everything unmeasurable.
-- **No default ranking.** A sorted table hands them the decision. Show
-  contributions; don't stack-rank colleagues.
-- Ship the advice: unexpected over announced; occasional over standing;
-  team-wide over individual; recognition over cash. All of it evidence-backed,
-  all of it cheaper than a bonus scheme.
-- Say plainly that rising contribution alongside rising stock variance means the
-  number is being served instead of the venue.
-
 ## 3. Goodhart's law, and the multitask problem (the serious one)
 
 When a measure becomes a target it stops being a good measure. Worse, Holmström
@@ -158,6 +134,30 @@ Staff can't uninstall it. Persuasive mechanics carry more force when the user is
 paid to be there, so the ethical bar is higher, not lower. Once a number
 influences pay it is an employment record: it must be itemised, inspectable by
 the person it describes, and correctable.
+
+## 8. Our position: we measure and give feedback; the venue decides on reward
+
+BBlade does not pay anyone. The platform surfaces contribution and gives
+positive feedback in-product; whether that turns into money is the venue's call.
+
+That lowers our liability and raises our duty of care, because **we are the
+measure designer handing a number to someone who hasn't read Holmström &
+Milgrom.** A landlord shown "Oli: 340 this month" will reasonably read it as a
+basis for reward. So the guidance has to travel *with* the number, on the
+screen, not live in a document nobody opens.
+
+**Rules for anything we show a manager**
+- Call it **contribution**, never performance. It measures what someone taught
+  the system, which is a slice of their job and not the important slice.
+- State inline what it does not capture — service, care over counting, honest
+  reporting, everything unmeasurable.
+- **No default ranking.** A sorted table hands them the decision. Show
+  contributions; don't stack-rank colleagues.
+- Ship the advice: unexpected over announced; occasional over standing;
+  team-wide over individual; recognition over cash. All of it evidence-backed,
+  all of it cheaper than a bonus scheme.
+- Say plainly that rising contribution alongside rising stock variance means the
+  number is being served instead of the venue.
 
 ---
 
