@@ -1029,6 +1029,25 @@ function StockTaking() {
         gap: '0.5rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* From the picker there was no way out but the header's home icon.
+              Fine when this was a top-level page; now that it sits under Stock
+              it needs a step back to where you came from. */}
+          {(showSessionPicker || !currentSession) && (
+            <button
+              onClick={() => navigate('/stock')}
+              style={{
+                padding: '0.5rem 0.75rem',
+                backgroundColor: colors.bgLight,
+                color: colors.textPrimary,
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+              }}
+            >
+              ← Back
+            </button>
+          )}
           {!showSessionPicker && currentSession && (
             <button
               onClick={handleBackToSessionPicker}

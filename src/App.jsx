@@ -32,6 +32,7 @@ const importLeave = () => import('./pages/Leave');
 // loading fallback. The heavier feature pages stay code-split + preloaded.
 const Login = lazy(() => import('./pages/Login'));
 const StockTaking = lazy(importStock);
+const StockHub = lazy(() => import('./pages/StockHub'));
 const Wastage = lazy(importWastage);
 const Deliveries = lazy(importDeliveries);
 const Sales = lazy(importSales);
@@ -226,7 +227,8 @@ function Shell() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/stock" element={<StockAllowed><StockTaking /></StockAllowed>} />
+            <Route path="/stock" element={<StockAllowed><StockHub /></StockAllowed>} />
+            <Route path="/stock/count" element={<StockAllowed><StockTaking /></StockAllowed>} />
             <Route path="/wastage" element={<Wastage />} />
             <Route path="/deliveries" element={<AdminOnly><Deliveries /></AdminOnly>} />
             <Route path="/sales" element={<AdminOnly><Sales /></AdminOnly>} />

@@ -65,7 +65,10 @@ function Home() {
       icon: ['M12 22a10 10 0 1 0 0-20a10 10 0 0 0 0 20', 'M12 6v6l4 2'],
     },
     {
-      key: 'stock', label: 'Stock Count', desc: 'Count bar & kitchen stock',
+      // Counting and booking in are the same job from two ends; behind one
+      // tile they stop competing with clocking in and the rota for the home
+      // screen, which is about what you're doing right now.
+      key: 'stock', label: 'Stock', desc: 'Count stock & book deliveries in',
       to: '/stock', accent: colors.primary, needsStockAccess: true,
       icon: ['M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z', 'M9 5h6', 'M8 11h8', 'M8 15h8'],
     },
@@ -73,11 +76,6 @@ function Home() {
       key: 'wastage', label: 'Wastage', desc: 'Log spillage & breakages',
       to: '/wastage', accent: colors.wastage,
       icon: ['M3 6h18', 'M8 6V4h8v2', 'M6 6l1 14h10l1-14', 'M10 10v6', 'M14 10v6'],
-    },
-    {
-      key: 'deliveries', label: 'Deliveries', desc: 'Log stock coming in',
-      to: '/deliveries', accent: colors.delivery, adminOnly: true,
-      icon: ['M2 6h11v9H2z', 'M13 9h4l3.5 3.5V15H13', 'M5 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0', 'M14 17a2 2 0 1 0 4 0a2 2 0 1 0-4 0'],
     },
     {
       key: 'rota', label: 'Rota', desc: 'See your shifts & book leave',
