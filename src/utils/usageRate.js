@@ -41,14 +41,29 @@ const RAN_LOW_FRACTION = 0.1;
  * @param {Array} sessions - completed sessions (any order)
  */
 export function usagePeriods(sessions) {
-  const ordered = (sessions || [])
-    .filter((s) => s.status === 'completed' && s.completedAt)
-    .sort((a, b) => millis(a.completedAt) - millis(b.completedAt));
-  const pairs = [];
-  for (let i = 1; i < ordered.length; i++) {
-    pairs.push({ opening: ordered[i - 1], closing: ordered[i] });
+  // Paired WITHIN a section. Stock takes are created per section — the app has
+  // separate "Bar stock take" and "Kitchen stock take" buttons — so a venue
+  // that counts both produces an interleaved run of sessions. Pairing them in
+  // plain date order puts a bar take opposite a kitchen one, and since the two
+  // share no items every period comes back empty: a venue counting both halves
+  // of its stock would silently get no usage rates at all.
+  const bySection = new Map();
+  for (const s of sessions || []) {
+    if (s.status !== 'completed' || !s.completedAt) continue;
+    const key = s.section === 'kitchen' ? 'kitchen' : 'bar';
+    if (!bySection.has(key)) bySection.set(key, []);
+    bySection.get(key).push(s);
   }
-  return pairs;
+
+  const pairs = [];
+  for (const group of bySection.values()) {
+    group.sort((a, b) => millis(a.completedAt) - millis(b.completedAt));
+    for (let i = 1; i < group.length; i++) {
+      pairs.push({ opening: group[i - 1], closing: group[i] });
+    }
+  }
+  // Oldest period first, whichever section it belongs to.
+  return pairs.sort((a, b) => millis(a.closing.completedAt) - millis(b.closing.completedAt));
 }
 
 /**

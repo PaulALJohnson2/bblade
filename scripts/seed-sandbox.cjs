@@ -650,43 +650,67 @@ function deliveries(accountId, venueId, items, { supplier, weekday, everyWeeks, 
  * actually sells. That's what makes the cellar read as a working pub instead
  * of one that's about to run dry, and it keeps the variance report's figures
  * inside believable bounds.
+ *
+ * One session PER SECTION per date, which is how the app really works: the
+ * stock screen offers a bar take and a kitchen take as separate things. A
+ * single combined session would have been easier to generate and would have
+ * quietly misrepresented the product.
+ *
+ * `createdAt` matters more than it looks. The sessions listener orders by it,
+ * and Firestore drops documents that lack the ordered field entirely — so a
+ * session written without it is not merely last in the list, it is invisible.
  */
 function stockTakes(accountId, venueId, items, team, daysBackList) {
   const path = `accounts/${accountId}/venues/${venueId}`;
-  let last = null;
+  const sections = [...new Set(items.map((i) => i.section))];
+  const lastBySection = {};
+
   daysBackList.forEach((back, idx) => {
     const at = daysAgo(back);
-    const counts = {};
-    for (const it of items) {
-      const upw = unitsPerWhole(it.unit);
-      const cover = 0.5 + rand() * 1.1;            // weeks of stock on hand
-      const base = Math.max(0, it.weekly * cover * upw);
-      const whole = Math.floor(base / upw);
-      const part = Math.round(base - whole * upw);
-      counts[it.id] = {
-        itemName: it.name,
-        quantity: Math.round((whole * upw + part) * 100) / 100,
-        wholeCount: whole,
-        partCount: part,
-        wholeLabel: `${it.unit.wholeUnit.split(' ')[0]}s`,
-        partLabel: it.unit.partUnit || '',
-        countedBy: pick(team).displayName,
-        countedAt: at,
-      };
+    for (const section of sections) {
+      const mine = items.filter((i) => i.section === section);
+      if (!mine.length) continue;
+      const counts = {};
+      for (const it of mine) {
+        const upw = unitsPerWhole(it.unit);
+        const cover = 0.5 + rand() * 1.1;          // weeks of stock on hand
+        const base = Math.max(0, it.weekly * cover * upw);
+        const whole = Math.floor(base / upw);
+        const part = Math.round(base - whole * upw);
+        counts[it.id] = {
+          itemName: it.name,
+          quantity: Math.round((whole * upw + part) * 100) / 100,
+          wholeCount: whole,
+          partCount: part,
+          wholeLabel: `${it.unit.wholeUnit.split(' ')[0]}s`,
+          partLabel: it.unit.partUnit || '',
+          countedBy: pick(team).displayName,
+          countedAt: at,
+        };
+      }
+      put(`${path}/stockSessions/take-${String(idx + 1).padStart(2, '0')}-${section}`, {
+        name: `${section === 'kitchen' ? 'Kitchen' : 'Bar'} stock take ${at.toLocaleDateString('en-GB')}`,
+        status: 'completed',
+        section,
+        counts,
+        createdAt: at,
+        createdBy: team[0].id,
+        createdByName: team[0].displayName,
+        completedBy: pick(team).displayName,
+        startedAt: at,
+        completedAt: at,
+        accountId, venueId,
+      });
+      const cur = lastBySection[section];
+      if (!cur || at > cur.at) lastBySection[section] = { at, counts };
     }
-    put(`${path}/stockSessions/take-${String(idx + 1).padStart(2, '0')}`, {
-      name: `Stock take ${at.toLocaleDateString('en-GB')}`,
-      status: 'completed',
-      counts,
-      createdBy: team[0].id,
-      createdByName: team[0].displayName,
-      completedBy: pick(team).displayName,
-      startedAt: at, completedAt: at,
-      accountId, venueId,
-    });
-    if (!last || at > last.at) last = { at, counts };
   });
-  return last;
+
+  // Merge the latest count from each section — the caller wants one closing
+  // position across the whole venue.
+  const at = Object.values(lastBySection).reduce((m, x) => (m && m > x.at ? m : x.at), null);
+  const counts = Object.assign({}, ...Object.values(lastBySection).map((x) => x.counts));
+  return at ? { at, counts } : null;
 }
 
 /** A little wastage, so the variance report has something to show. */
