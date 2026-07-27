@@ -81,13 +81,28 @@ export function lookupLearned(index, supplier, line) {
  * manager looked at the screen and pressed the button, which is confirmation.
  * Lines left unmatched teach nothing, and a match the manager deliberately
  * unticked is a signal we can't read — silence is the honest response.
+ *
+ * When the existing index is supplied, records also carry the provenance the
+ * contribution scoring depends on:
+ *
+ *   isNew / firstConfirmedBy  — who established the mapping, written once and
+ *                               never overwritten, so a later edit can't
+ *                               transfer credit for the discovery.
+ *   corrected / previousOwner — a correction is only a correction when the
+ *                               mapping actually CHANGED TARGET. Re-picking
+ *                               the same item isn't one, and neither is
+ *                               "fixing" your own entry — that's the obvious
+ *                               way to farm a correction bonus, so the owner
+ *                               it replaced is recorded and checked.
  */
-export function learnedRecordsFrom(rows, note, confirmedBy) {
+export function learnedRecordsFrom(rows, note, confirmedBy, index) {
   const key = supplierKey(note?.supplier);
   return (rows || [])
     .filter((r) => r.include && r.item && lineKey(r.line))
     .map((r) => {
       const outer = outerPack(r.line);
+      const existing = index ? lookupLearned(index, note?.supplier, r.line) : null;
+      const changedTarget = !!existing && existing.itemId !== r.item.id;
       return {
         id: learnedId(note?.supplier, r.line),
         supplier: note?.supplier || '',
@@ -101,8 +116,11 @@ export function learnedRecordsFrom(rows, note, confirmedBy) {
         container: r.containerClass || '',
         unitCode: String(r.line.unitCode || '').trim(),
         unitsPerOuter: outer?.per || 0,
-        corrected: !!r.corrected,
+        corrected: changedTarget,
+        previousOwner: changedTarget ? (existing.confirmedBy || '') : (existing?.previousOwner || ''),
         confirmedBy: confirmedBy || '',
+        isNew: !existing,
+        firstConfirmedBy: existing ? undefined : (confirmedBy || ''),
       };
     });
 }

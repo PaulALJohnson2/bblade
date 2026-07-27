@@ -88,6 +88,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
 
   const [progress, setProgress] = useState(null);
   const [learnedCount, setLearnedCount] = useState(0);
+  const [learnedIndex, setLearnedIndex] = useState(null); // what was known before this scan
   const [updateCosts, setUpdateCosts] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [keptChanges, setKeptChanges] = useState(false);
@@ -145,6 +146,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       // supplier code beats any name matching, so it's consulted first.
       const { data: learnedRecords } = await getSupplierProducts(venuePath);
       const learnedIndex = indexLearned(learnedRecords);
+      setLearnedIndex(learnedIndex);
       const resolve = (line) => {
         const rec = lookupLearned(learnedIndex, read.supplier, line);
         if (!rec) return null;
@@ -383,7 +385,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     // Learn from what was confirmed. Deliberately last and unawaited-on-failure:
     // the stock movements are what matter, and a venue that never learns is a
     // slower product, not a broken one.
-    saveSupplierProducts(venuePath, learnedRecordsFrom(rows, note, receivedBy))
+    saveSupplierProducts(venuePath, learnedRecordsFrom(rows, note, receivedBy, learnedIndex))
       .catch((err) => console.warn('Could not save what this note taught us:', err));
 
     onDone(entryIds.length, failed);

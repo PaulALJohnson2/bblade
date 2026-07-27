@@ -1226,9 +1226,14 @@ export async function saveSupplierProducts(venuePath, records) {
     const now = Timestamp.now();
     const batch = writeBatch(db);
     for (const r of list) {
-      const { id, ...fields } = r;
+      const { id, isNew, firstConfirmedBy, ...fields } = r;
+      // firstSeenAt / firstConfirmedBy are written on creation only. Who
+      // established a mapping is a durable fact; a later confirmation by
+      // someone else must not silently inherit the credit for it.
+      const firsts = isNew ? { firstSeenAt: now, firstConfirmedBy: firstConfirmedBy || '' } : {};
       batch.set(doc(db, `${venuePath}/supplierProducts/${id}`), {
         ...fields,
+        ...firsts,
         timesSeen: increment(1),
         lastSeenAt: now,
         accountId,
