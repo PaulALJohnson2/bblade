@@ -30,23 +30,58 @@ failure of the reward, it's the mechanism working as designed.
 - Never inflate to compensate for habituation. That's how a score becomes an
   activity meter.
 
-## 2. Extrinsic reward can crowd out intrinsic motivation
+## 2. Feedback and money pull in opposite directions
 
-The overjustification effect: paying for an already-satisfying activity leads
-people to reattribute their behaviour to the payment, and intrinsic motivation
-falls. The literature is genuinely split — free-choice measures show the effect
-clearly, task-performance measures often show extrinsic and intrinsic effects
-are **additive**. So it's a real risk, not a certainty.
+Deci, Koestner & Ryan's meta-analysis of 128 experiments found the two split
+cleanly, and the signs are opposite:
 
-The asymmetry is what matters: if payment stops, behaviour can settle *below*
-where it started. That's expensive to undo.
+| | effect on intrinsic motivation |
+|---|---|
+| Tangible rewards | **d ≈ −0.34** — undermine, most on interesting tasks |
+| Positive feedback | **d ≈ +0.33** free-choice, **+0.31** self-reported interest |
+
+The mediator is how the event is *perceived*: something that reads as
+controlling your behaviour undermines; something that signifies your competence
+enhances. Same event, opposite outcome, depending on framing.
+
+Reward *timing and contingency* matter too. Expected, task-contingent rewards
+carry the risk; unexpected rewards given after the fact do not undermine in the
+same way.
+
+The asymmetry is what makes tangible rewards expensive: withdraw one people
+have come to expect and behaviour can settle *below* where it started.
 
 **Rules**
-- Frame contribution as recognition of competence first, money second.
-- Never make the bonus a material fraction of pay. Small and occasional keeps
-  it a signal; large and dependable makes it the reason.
-- Never remove a reward that people have come to expect without replacing the
-  meaning it carried.
+- **What the platform gives is feedback — the enhancing kind.** That's the
+  entire reward loop we build, and it's free of the crowding-out risk.
+- Every reward moment must signify competence, never control. "Here's what it
+  can now do" beats "well done" and beats a target being hit.
+- Where a venue adds money, advise: unexpected over announced, occasional over
+  standing, recognition over rate. See §8.
+
+## 8. Our position: we measure and give feedback; the venue decides on reward
+
+BBlade does not pay anyone. The platform surfaces contribution and gives
+positive feedback in-product; whether that turns into money is the venue's call.
+
+That lowers our liability and raises our duty of care, because **we are the
+measure designer handing a number to someone who hasn't read Holmström &
+Milgrom.** A landlord shown "Oli: 340 this month" will reasonably read it as a
+basis for reward. So the guidance has to travel *with* the number, on the
+screen, not live in a document nobody opens.
+
+**Rules for anything we show a manager**
+- Call it **contribution**, never performance. It measures what someone taught
+  the system, which is a slice of their job and not the important slice.
+- State inline what it does not capture — service, care over counting, honest
+  reporting, everything unmeasurable.
+- **No default ranking.** A sorted table hands them the decision. Show
+  contributions; don't stack-rank colleagues.
+- Ship the advice: unexpected over announced; occasional over standing;
+  team-wide over individual; recognition over cash. All of it evidence-backed,
+  all of it cheaper than a bonus scheme.
+- Say plainly that rising contribution alongside rising stock variance means the
+  number is being served instead of the venue.
 
 ## 3. Goodhart's law, and the multitask problem (the serious one)
 
@@ -139,18 +174,22 @@ the person it describes, and correctable.
 | Nothing that can mask loss | ✅ wastage excluded |
 | Self-farming closed | ✅ correction needs a changed target + another owner |
 | Itemised and contestable | ✅ `scoreByPerson` returns the facts |
-| Bonus sized as recognition | ❓ not yet decided |
+| Feedback framed as competence | ✅ the moment names the capability gained |
+| Manager view carries its caveats | ❌ not built yet |
+| No default ranking of staff | ❌ `scoreByPerson` currently sorts by earned |
 
 ## Open questions
 
-1. **How big can the bonus be before it crowds out the work it's meant to
-   support?** Small and occasional is what the evidence supports. Needs a
-   decision before any money is attached.
+1. **What guidance ships beside the manager's contribution view?** We don't pay
+   anyone, but we hand over the number that prompts payment, so the advice in
+   §8 needs to be on that screen rather than in this file.
 2. **What opens after level 5?** A maintenance goal, or the gradient dies.
 3. **How do we detect Goodhart drift?** Proposal: watch contribution score
    against stock variance. Score up and variance up together is the alarm.
 4. **Should the venue score be visible to staff, or only their own?** Shared
    goals support relatedness; visible individual comparison doesn't.
+5. **Does `scoreByPerson` keep sorting by earned?** It's a ranking in all but
+   name. Fine as an API; wrong as a default view.
 
 ## Sources
 
@@ -158,6 +197,7 @@ the person it describes, and correctable.
 - [BrainFacts — Discovering dopamine's role in reward prediction error](https://www.brainfacts.org/brain-anatomy-and-function/genes-and-molecules/2021/discovering-dopamines-role-in-reward-prediction-error-122121)
 - [Deci, Koestner & Ryan — meta-analytic review of extrinsic rewards on intrinsic motivation](https://depts.washington.edu/techdocs/papers/deciExtrinsicRewardsAndIntrinsicMotivation99.pdf)
 - [Overjustification effect (overview)](https://en.wikipedia.org/wiki/Overjustification_effect)
+- [Deci, Koestner & Ryan (2001) — *Extrinsic Rewards and Intrinsic Motivation in Education: Reconsidered Once Again*](https://journals.sagepub.com/doi/10.3102/00346543071001001)
 - [Kivetz, Urminsky & Zheng — *The Goal-Gradient Hypothesis Resurrected*](https://www.columbia.edu/~rk566/Session4/Goal-Gradient_Illusionary_Goal_Progress.pdf)
 - [Yu-kai Chou — the points, badges and leaderboards fallacy](https://yukaichou.com/gamification-study/points-badges-and-leaderboards-the-gamification-fallacy/)
 - [SHRM — gamification at work can go very wrong](https://www.shrm.org/topics-tools/news/technology/careful-gamification-work-can-go-wrong)
