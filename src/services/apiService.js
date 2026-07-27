@@ -53,6 +53,10 @@ export {
   subscribeToDeliveryNotes,
   deleteDeliveryNote,
 
+  // Supplier products (learned supplier code → stock item)
+  getSupplierProducts,
+  saveSupplierProducts,
+
   // Sales reports (till exports)
   saveSalesReport,
   subscribeToSalesReports,

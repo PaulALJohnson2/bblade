@@ -23,9 +23,15 @@ import {
   reconcileLines, withItem, unitsForLine,
   containerClassOfLine, containerClassOfItem, containersCompatible,
 } from '../utils/deliveryDoc';
+import {
+  indexLearned, lookupLearned, learnedRecordsFrom,
+  suggestedCasePack, cleanProductName, unitFromLine,
+} from '../utils/supplierLearning';
 import { formatItemDescription } from '../utils/stockUnitUtils';
+import { loadCatalog, bestCatalogMatch } from '../services/catalogService';
 import {
   logDelivery, saveDeliveryNote, setDeliveryNoteEntries, setStockItemCasePack,
+  getSupplierProducts, saveSupplierProducts, saveOrUpdateStockItem,
 } from '../services/apiService';
 
 const prettyDate = (iso) => {
@@ -55,6 +61,10 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
   const [pickerAll, setPickerAll] = useState(false);
   const [caseSizes, setCaseSizes] = useState({}); // row index → typed case size
   const [progress, setProgress] = useState(null); // { done, total }
+  const [addFor, setAddFor] = useState(null);     // row index with the add-item form open
+  const [draft, setDraft] = useState(null);       // { name, category, section, unit… }
+  const [adding, setAdding] = useState(false);
+  const [learnedCount, setLearnedCount] = useState(0); // recognised from memory
 
   const live = useMemo(() => items.filter((i) => !i.archived), [items]);
 
@@ -78,7 +88,21 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       }
 
       setStatus('Matching against your stock list…');
-      let reconciled = reconcileLines(read.lines, live);
+
+      // What this venue already learned from earlier notes. A confirmed
+      // supplier code beats any name matching, so it's consulted first.
+      const { data: learnedRecords } = await getSupplierProducts(venuePath);
+      const learnedIndex = indexLearned(learnedRecords);
+      const resolve = (line) => {
+        const rec = lookupLearned(learnedIndex, read.supplier, line);
+        if (!rec) return null;
+        // The item may since have been deleted or archived — fall through to
+        // name matching rather than pointing at something that isn't there.
+        return live.find((i) => i.id === rec.itemId) || null;
+      };
+
+      let reconciled = reconcileLines(read.lines, live, { resolve });
+      setLearnedCount(reconciled.filter((r) => r.viaLearned).length);
 
       // Second pass: only the lines the offline matcher wouldn't commit to,
       // each with its candidates already narrowed to the right container.
@@ -123,8 +147,10 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     r.index === index && r.status !== 'return' && !r.needsCasePack && r.item
       ? { ...r, include: !r.include } : r)));
 
+  // A human picking the item is the strongest signal there is — flagged as a
+  // correction so it's persisted as one, overruling whatever was learned.
   const chooseItem = (index, item) => {
-    setRows((rs) => rs.map((r) => (r.index === index ? withItem(r, item) : r)));
+    setRows((rs) => rs.map((r) => (r.index === index ? withItem(r, item, { corrected: true }) : r)));
     setPickerFor(null);
     setPickerQuery('');
     setPickerAll(false);
@@ -135,10 +161,51 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     setPickerFor(null);
   };
 
+  // ---- adding a product the venue buys but doesn't count -------------------
+
+  const openAddForm = async (row) => {
+    if (addFor === row.index) { setAddFor(null); return; }
+    const cls = row.containerClass;
+    const name = cleanProductName(row.line);
+    const unit = unitFromLine(row.line, cls);
+    const section = cls === 'weight' ? 'kitchen' : 'bar';
+    setDraft({ name, category: '', section, ...unit });
+    setAddFor(row.index);
+    // The shared catalog knows most of the UK trade — fill the category in if
+    // it can identify the product unambiguously.
+    try {
+      const hit = bestCatalogMatch(await loadCatalog(), name, section);
+      if (hit?.category) setDraft((d) => (d ? { ...d, category: hit.category } : d));
+    } catch { /* the lookup is a nicety, never a blocker */ }
+  };
+
+  const addToStockList = async (row) => {
+    if (!draft?.name.trim() || adding) return;
+    setAdding(true);
+    const res = await saveOrUpdateStockItem(venuePath, null, {
+      name: draft.name.trim(),
+      category: draft.category.trim(),
+      section: draft.section,
+      unit: draft.unit,
+      wholeUnit: draft.wholeUnit,
+      partUnit: draft.partUnit,
+      casePack: draft.casePack || 0,
+      quantity: 0,
+      archived: false,
+      categorySuggested: '',
+    });
+    setAdding(false);
+    if (!res.success) { setError('Could not add that item: ' + res.error); return; }
+    const item = { id: res.id, name: draft.name.trim(), category: draft.category.trim(), section: draft.section, unit: draft.unit, wholeUnit: draft.wholeUnit, partUnit: draft.partUnit, casePack: draft.casePack || 0, archived: false };
+    setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, item, { corrected: true }) : r)));
+    setAddFor(null);
+    setDraft(null);
+  };
+
   // Capture a missing case size the same way the manual entry screen does —
   // persisted onto the item, so the next delivery of it needs no asking.
   const applyCaseSize = (row) => {
-    const n = parseInt(caseSizes[row.index], 10) || 0;
+    const n = parseInt(caseSizes[row.index] ?? suggestedCasePack(row.line), 10) || 0;
     if (n <= 0 || !row.item) return;
     setStockItemCasePack(venuePath, row.item.id, n);
     setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, { ...r.item, casePack: n }) : r)));
@@ -199,6 +266,14 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     }
 
     await setDeliveryNoteEntries(venuePath, saved.id, entryIds);
+
+    // Learn from what was confirmed. Deliberately last and unawaited-on-failure:
+    // the stock movements are what matter, and a venue that never learns is a
+    // slower product, not a broken one.
+    const learned = learnedRecordsFrom(rows, note, receivedBy);
+    saveSupplierProducts(venuePath, learned)
+      .catch((err) => console.warn('Could not save what this note taught us:', err));
+
     onDone(entryIds.length, failed);
   };
 
@@ -317,6 +392,55 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     );
   };
 
+  /**
+   * Add a product the venue buys but has never counted. Name, container and
+   * pack size all come off the note; the category comes from the shared
+   * catalog when it can identify the product. Everything stays editable — the
+   * supplier's "SCAMP FRIE CARD" is a starting point, not a product name.
+   */
+  const addForm = (row) => {
+    const field = { width: '100%', padding: '0.5rem', fontSize: '0.88rem', border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary, boxSizing: 'border-box' };
+    const countedAs = formatItemDescription({ wholeUnit: draft.wholeUnit });
+    const sectionBtn = (key, label) => (
+      <button
+        key={key} onClick={() => setDraft((d) => ({ ...d, section: key }))}
+        style={{ flex: 1, padding: '0.4rem', border: 'none', borderRadius: '6px', fontSize: '0.8rem', fontWeight: draft.section === key ? 700 : 500, backgroundColor: draft.section === key ? accent : colors.bgCard, color: draft.section === key ? onAccent : colors.textPrimary, cursor: 'pointer' }}
+      >{label}</button>
+    );
+    return (
+      <div style={{ marginTop: '0.5rem', padding: '0.6rem', border: `1px solid ${accent}`, borderRadius: '8px', backgroundColor: colors.bgLight, display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+        <div style={{ fontSize: '0.75rem', color: colors.textSecondary }}>
+          You buy this but don't count it. Add it to the stock list?
+        </div>
+        <input
+          autoFocus value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+          placeholder="Product name" style={field}
+        />
+        <input
+          value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}
+          placeholder="Category (e.g. Snacks)" style={field}
+        />
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flex: 1, gap: '0.25rem', padding: '0.2rem', borderRadius: '8px', backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}` }}>
+            {sectionBtn('bar', 'Bar')}
+            {sectionBtn('kitchen', 'Kitchen')}
+          </div>
+          <div style={{ flex: 1, fontSize: '0.75rem', color: colors.textSecondary }}>
+            Counted as <strong style={{ color: colors.textPrimary }}>{countedAs}</strong>
+            {draft.casePack > 0 && <> · {draft.casePack} per case</>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button onClick={() => { setAddFor(null); setDraft(null); }} style={{ ...quietBtn, padding: '0.5rem 0.8rem', fontSize: '0.8rem' }}>Cancel</button>
+          <button
+            onClick={() => addToStockList(row)} disabled={!draft.name.trim() || adding}
+            style={{ flex: 1, padding: '0.5rem', border: 'none', borderRadius: '8px', backgroundColor: accent, color: onAccent, fontWeight: 700, fontSize: '0.82rem', cursor: adding ? 'wait' : 'pointer', opacity: draft.name.trim() ? 1 : 0.5 }}
+          >{adding ? 'Adding…' : 'Add & match this line'}</button>
+        </div>
+      </div>
+    );
+  };
+
   const lineRow = (row) => {
     const isReturn = row.status === 'return';
     const unmatched = row.status === 'unmatched';
@@ -357,6 +481,9 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
                   {units && units.units.length > 0 && (
                     <> · adds {units.units.map(unitPhrase).join(', ')}</>
                   )}
+                  {row.viaLearned && (
+                    <span style={{ ...chip(colors.deliverySoft, accent), marginLeft: '0.35rem' }}>REMEMBERED</span>
+                  )}
                 </span>
               )}
             </div>
@@ -383,7 +510,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
                 </span>
                 <input
                   type="text" inputMode="numeric" placeholder="24"
-                  value={caseSizes[row.index] || ''}
+                  value={caseSizes[row.index] ?? (suggestedCasePack(row.line) || '')}
                   onChange={(e) => setCaseSizes((c) => ({ ...c, [row.index]: e.target.value.replace(/[^0-9]/g, '') }))}
                   style={{ width: '52px', padding: '0.4rem', textAlign: 'center', fontWeight: 700, border: `2px solid ${colors.border}`, borderRadius: '8px', backgroundColor: colors.bgCard, color: colors.textPrimary }}
                 />
@@ -392,15 +519,27 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
             )}
 
             {!isReturn && (
-              <button
-                onClick={() => { setPickerFor(pickerFor === row.index ? null : row.index); setPickerQuery(''); setPickerAll(false); }}
-                style={{ marginTop: '0.35rem', padding: '0.3rem 0.6rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '0.75rem', cursor: 'pointer' }}
-              >
-                {row.item ? 'Change item' : 'Choose item'}
-              </button>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.35rem' }}>
+                <button
+                  onClick={() => { setPickerFor(pickerFor === row.index ? null : row.index); setPickerQuery(''); setPickerAll(false); setAddFor(null); }}
+                  style={{ padding: '0.3rem 0.6rem', border: `1px solid ${colors.border}`, borderRadius: '6px', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '0.75rem', cursor: 'pointer' }}
+                >
+                  {row.item ? 'Change item' : 'Choose item'}
+                </button>
+                {/* An unmatched line is evidence: they buy this and don't count it */}
+                {unmatched && (
+                  <button
+                    onClick={() => { setPickerFor(null); openAddForm(row); }}
+                    style={{ padding: '0.3rem 0.6rem', border: `1px solid ${accent}`, borderRadius: '6px', backgroundColor: 'transparent', color: accent, fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    + Add to stock list
+                  </button>
+                )}
+              </div>
             )}
 
             {pickerFor === row.index && itemPicker(row)}
+            {addFor === row.index && draft && addForm(row)}
           </div>
         </div>
       </div>
@@ -436,6 +575,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
             )}
             <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '0.25rem' }}>
               {counts.matched} matched
+              {learnedCount > 0 && ` (${learnedCount} remembered)`}
               {counts.unmatched > 0 && ` · ${counts.unmatched} not in your stock list`}
               {counts.returns > 0 && ` · ${counts.returns} return`}
               {counts.short > 0 && ` · ${counts.short} short`}

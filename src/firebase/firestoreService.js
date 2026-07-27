@@ -1096,6 +1096,58 @@ export async function deleteDeliveryNote(venuePath, noteId) {
 }
 
 // ============================================
+// SUPPLIER PRODUCTS  (what the venue has learned from its delivery notes)
+// ============================================
+
+/**
+ * The venue's learned supplier-code → stock-item mapping. Small docs, a few
+ * hundred at most, fetched once when a scan starts rather than subscribed —
+ * it's only consulted at that moment.
+ */
+export async function getSupplierProducts(venuePath) {
+  try {
+    const snap = await getDocs(collection(db, `${venuePath}/supplierProducts`));
+    return { success: true, data: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+  } catch (error) {
+    console.error('Error loading supplier products:', error);
+    return { success: false, error: error.message, data: [] };
+  }
+}
+
+/**
+ * Upsert what a reviewed note taught us. Deterministic ids (supplier + item
+ * code) mean re-seeing a line updates its record instead of duplicating it.
+ *
+ * `timesSeen` accumulates, but a correction doesn't have to out-vote it: the
+ * mapping is simply overwritten, because one human saying "no, it's this one"
+ * beats any number of prior observations.
+ */
+export async function saveSupplierProducts(venuePath, records) {
+  try {
+    const list = (records || []).filter((r) => r && r.id && r.itemId);
+    if (!list.length) return { success: true, count: 0 };
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const now = Timestamp.now();
+    const batch = writeBatch(db);
+    for (const r of list) {
+      const { id, ...fields } = r;
+      batch.set(doc(db, `${venuePath}/supplierProducts/${id}`), {
+        ...fields,
+        timesSeen: increment(1),
+        lastSeenAt: now,
+        accountId,
+        venueId,
+      }, { merge: true });
+    }
+    await batch.commit();
+    return { success: true, count: list.length };
+  } catch (error) {
+    console.error('Error saving supplier products:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // SALES REPORTS  (till exports under {venuePath}/salesReports, doc id = YYYY-MM-DD)
 // ============================================
 

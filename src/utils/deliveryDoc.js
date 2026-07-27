@@ -235,24 +235,29 @@ export function unitsForLine(line, item) {
  * Reconcile every extracted line against the stock list, ready for review.
  *
  * Each row: { line, index, containerClass, qty, itemId, item, status, include,
- *             needsCasePack, shortDelivery, shortDespatch }
+ *             viaLearned, needsCasePack, shortDelivery, shortDespatch }
  * status: 'matched' | 'unmatched' | 'return'
+ *
+ * `resolve(line)` is the venue's learned supplier-code → item lookup. It wins
+ * outright over name matching: a human confirmed it, and no amount of string
+ * similarity outranks that.
  *
  * Returns are excluded by default and can't be included — they're stock going
  * out of the door, and the note has no way to say which of your items they are.
  */
-export function reconcileLines(lines, items) {
+export function reconcileLines(lines, items, { resolve } = {}) {
   return (lines || []).map((line, index) => {
     const qty = deliveredQty(line);
     if (isReturnLine(line)) {
       return {
         index, line, qty, containerClass: containerClassOfLine(line),
-        item: null, itemId: null, status: 'return', include: false,
+        item: null, itemId: null, status: 'return', include: false, viaLearned: false,
         needsCasePack: false, shortDelivery: false, shortDespatch: false,
       };
     }
-    const hit = matchLineToItem(line, items);
-    const item = hit?.item || null;
+    const learned = resolve ? resolve(line) : null;
+    const hit = learned ? null : matchLineToItem(line, items);
+    const item = learned || hit?.item || null;
     const units = item ? unitsForLine(line, item) : null;
     return {
       index,
@@ -262,6 +267,7 @@ export function reconcileLines(lines, items) {
       item,
       itemId: item?.id || null,
       status: item ? 'matched' : 'unmatched',
+      viaLearned: !!learned,
       include: !!item && qty > 0 && !units?.needsCasePack,
       needsCasePack: !!units?.needsCasePack,
       shortDelivery: shortDelivery(line),
@@ -270,10 +276,17 @@ export function reconcileLines(lines, items) {
   });
 }
 
-/** Re-derive a row after its item (or the item's case size) changed. */
-export function withItem(row, item) {
+/**
+ * Re-derive a row after its item (or the item's case size) changed.
+ * `corrected` marks a human overruling the match — the strongest signal the
+ * learning layer gets, and it must survive into what's persisted.
+ */
+export function withItem(row, item, { corrected = false } = {}) {
   if (!item) {
-    return { ...row, item: null, itemId: null, status: 'unmatched', include: false, needsCasePack: false };
+    return {
+      ...row, item: null, itemId: null, status: 'unmatched',
+      include: false, needsCasePack: false, viaLearned: false, corrected,
+    };
   }
   const units = unitsForLine(row.line, item);
   return {
@@ -281,6 +294,8 @@ export function withItem(row, item) {
     item,
     itemId: item.id,
     status: 'matched',
+    viaLearned: corrected ? false : row.viaLearned,
+    corrected: corrected || !!row.corrected,
     needsCasePack: units.needsCasePack,
     include: row.qty > 0 && !units.needsCasePack,
   };
