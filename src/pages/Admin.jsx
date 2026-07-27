@@ -192,10 +192,8 @@ function Admin() {
   const TILES = [
     { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, show: true,
       icon: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'] },
-    { key: 'overview', label: 'Stock overview', desc: 'Current & completed stock takes', accent: colors.primary, show: admin,
-      icon: ['M3 3v18h18', 'M18 9l-5 5-3-3-4 4'] },
-    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & import list', accent: colors.primary, show: admin,
-      icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
+    { key: 'stock', label: 'Stock', desc: 'Stock takes, items & units', accent: colors.primary, show: admin,
+      icon: ['M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z', 'M9 5h6', 'M8 11h8', 'M8 15h8'] },
     { key: 'wastage', label: 'Wastage overview', desc: 'Totals & who wasted what', accent: colors.wastage, show: admin,
       icon: ['M3 3v18h18', 'M7 16v-5', 'M12 16V8', 'M17 16v-3'] },
     { key: 'rota', label: 'Rotas', desc: 'Build weekly staff rota', accent: colors.primary, show: admin, to: '/rota?edit=1',
@@ -209,7 +207,17 @@ function Admin() {
       icon: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'] },
   ].filter((t) => t.show);
 
-  const SECTION_TITLES = { account: 'Account', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Requests' };
+  const STOCK_TILES = [
+    { key: 'overview', label: 'Stock overview', desc: 'Current & completed stock takes', accent: colors.primary,
+      icon: ['M3 3v18h18', 'M18 9l-5 5-3-3-4 4'] },
+    { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & import list', accent: colors.primary,
+      icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
+  ];
+
+  const SECTION_TITLES = { account: 'Account', stock: 'Stock', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Requests' };
+  // Where each section sits, so its back button returns one step rather than
+  // dumping someone at the hub from two levels down.
+  const PARENT_VIEW = { overview: 'stock', edit: 'stock' };
 
   // ---- Hub: a 2-column grid of tiles into each settings section ----
   // The admin area deliberately looks different from the staff Home hub:
@@ -263,10 +271,10 @@ function Admin() {
   const sectionHeader = (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
       <button
-        onClick={() => setView(null)}
+        onClick={() => setView(PARENT_VIEW[view] || null)}
         style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.headerBg, color: colors.headerText, border: `1px solid ${colors.primary}`, borderRadius: '8px', cursor: 'pointer', fontSize: '0.9rem' }}
       >
-        ← Admin
+        ← {PARENT_VIEW[view] ? SECTION_TITLES[PARENT_VIEW[view]] : 'Admin'}
       </button>
       <h1 style={{ margin: 0, fontSize: '1.5rem', color: colors.textPrimary }}>{SECTION_TITLES[view]}</h1>
       <span style={{
@@ -278,6 +286,20 @@ function Admin() {
       </span>
     </div>
   );
+
+  // ---- Stock: a sub-hub, same shape as the admin grid one level up ----
+  if (view === 'stock') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          {STOCK_TILES.map((t) => (
+            <Tile key={t.key} variant="admin" label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => setView(t.key)} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'overview') {
     return (
