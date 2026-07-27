@@ -65,6 +65,9 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
   const [draft, setDraft] = useState(null);       // { name, category, section, unit… }
   const [adding, setAdding] = useState(false);
   const [learnedCount, setLearnedCount] = useState(0); // recognised from memory
+  const [confirmClose, setConfirmClose] = useState(false);
+  // Set/added-now-saved changes survive a discard; the prompt has to say so.
+  const [keptChanges, setKeptChanges] = useState(false);
 
   const live = useMemo(() => items.filter((i) => !i.archived), [items]);
 
@@ -200,6 +203,17 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, item, { corrected: true }) : r)));
     setAddFor(null);
     setDraft(null);
+    setKeptChanges(true);
+  };
+
+  /**
+   * Closing after a review throws away the extraction as well as the matches —
+   * a model call and a trip to the cellar with a phone. Worth a question.
+   * Nothing captured yet means nothing to lose, so that closes straight away.
+   */
+  const requestClose = () => {
+    if (stage === 'review' && rows.length) setConfirmClose(true);
+    else onClose();
   };
 
   // Capture a missing case size the same way the manual entry screen does —
@@ -208,6 +222,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
     const n = parseInt(caseSizes[row.index] ?? suggestedCasePack(row.line), 10) || 0;
     if (n <= 0 || !row.item) return;
     setStockItemCasePack(venuePath, row.item.id, n);
+    setKeptChanges(true);
     setRows((rs) => rs.map((r) => (r.index === row.index ? withItem(r, { ...r.item, casePack: n }) : r)));
   };
 
@@ -597,7 +612,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
       <div style={{ padding: '0.85rem 1rem', borderTop: `1px solid ${colors.borderLight}` }}>
         {error && <div style={{ fontSize: '0.82rem', color: colors.error, marginBottom: '0.5rem', fontWeight: 600 }}>{error}</div>}
         <div style={{ display: 'flex', gap: '0.6rem' }}>
-          <button onClick={onClose} disabled={stage === 'saving'} style={quietBtn}>Cancel</button>
+          <button onClick={requestClose} disabled={stage === 'saving'} style={quietBtn}>Cancel</button>
           <button onClick={handleLogAll} disabled={!included.length || stage === 'saving'} style={primaryBtn(!!included.length && stage !== 'saving')}>
             {stage === 'saving'
               ? `Logging… ${progress?.done || 0}/${progress?.total || 0}`
@@ -619,7 +634,7 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.85rem 1rem', borderBottom: `1px solid ${colors.borderLight}` }}>
           <div style={{ flex: 1, fontWeight: 700, fontSize: '1.05rem', color: colors.textPrimary }}>Scan delivery note</div>
           {stage !== 'saving' && stage !== 'working' && (
-            <button onClick={onClose} aria-label="Close" style={{ width: '30px', height: '30px', border: 'none', borderRadius: '50%', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            <button onClick={requestClose} aria-label="Close" style={{ width: '30px', height: '30px', border: 'none', borderRadius: '50%', backgroundColor: 'transparent', color: colors.textSecondary, fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
           )}
         </div>
 
@@ -627,6 +642,29 @@ function DeliveryNoteScan({ venuePath, items, colors, accent, onAccent, received
         {stage === 'working' && workingPane}
         {(stage === 'review' || stage === 'saving') && reviewPane}
       </div>
+
+      {confirmClose && (
+        <div
+          /* Backdrop falls back to the safe answer, never the destructive one. */
+          onClick={(e) => { e.stopPropagation(); setConfirmClose(false); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 5100, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: colors.bgCard, borderRadius: '14px', padding: '1.15rem', maxWidth: '380px', width: '100%', boxShadow: `0 12px 40px ${colors.shadow}` }}>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: colors.textPrimary, marginBottom: '0.4rem' }}>
+              Discard this delivery note?
+            </div>
+            <div style={{ fontSize: '0.85rem', color: colors.textSecondary, marginBottom: '0.95rem' }}>
+              {included.length} line{included.length === 1 ? '' : 's'} ready to log will be lost, and the note will need
+              photographing again.
+              {keptChanges && ' Any products you added to the stock list, and case sizes you set, are already saved and will stay.'}
+            </div>
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              <button onClick={() => setConfirmClose(false)} style={primaryBtn()}>Keep reviewing</button>
+              <button onClick={onClose} style={quietBtn}>Discard</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
