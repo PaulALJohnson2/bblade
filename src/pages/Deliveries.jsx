@@ -295,6 +295,17 @@ function Deliveries() {
         📄 Scan a delivery note
       </button>
 
+      {/* Who delivers what, how often, and how reliably — all derived.
+          Above the item list because it answers the question you arrive with;
+          below it, nobody would ever scroll far enough to find out. */}
+      <SupplierProfiles
+        notes={notes}
+        learned={learned}
+        colors={colors}
+        accent={accent}
+        onForget={handleForgetLearned}
+      />
+
       {/* Admin: learn case sizes from the existing stock list */}
       {admin && !bannerDismissed && missingCase.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.65rem 0.85rem', marginBottom: '0.75rem', backgroundColor: colors.deliverySoft, border: `1px solid ${colors.borderLight}`, borderRadius: '10px' }}>
@@ -467,15 +478,6 @@ function Deliveries() {
           </div>
         )}
       </div>
-
-      {/* Who delivers what, how often, and how reliably — all derived */}
-      <SupplierProfiles
-        notes={notes}
-        learned={learned}
-        colors={colors}
-        accent={accent}
-        onForget={handleForgetLearned}
-      />
 
       {/* Scanned delivery notes — the proof behind the entries above */}
       {notes.length > 0 && (

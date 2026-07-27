@@ -43,10 +43,10 @@ function SupplierProfiles({ notes, learned, colors, accent, onForget }) {
   );
 
   return (
-    <div style={{ marginTop: '2rem' }}>
+    <div style={{ marginTop: '0.5rem', marginBottom: '1.5rem' }}>
       <h2 style={{ fontSize: '1.05rem', color: colors.textPrimary, margin: '0 0 0.25rem' }}>Suppliers</h2>
       <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginBottom: '0.75rem' }}>
-        Learned from your scanned delivery notes.
+        Learnt from your scanned delivery notes.
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
