@@ -120,13 +120,9 @@ function Home() {
       {/* The shared goal, and each person's part in it. Loads on demand —
           scoring reads every note and completed count.
 
-          Managers only for now, and not by choice: scoring reads
-          supplierProducts and deliveryNotes, both manager-level in the rules.
-          Showing staff a partial score computed from only the collections they
-          can read would disagree with the manager's figure, which is worse than
-          showing nothing. The fix is a small cached summary doc staff can read
-          — see design/learning-rewards.md. */}
-      {selectedPub?.path && admin && (
+          Managers compute it; staff read the summary that produces. Gated on
+          stock access because counting is what a non-manager contributes. */}
+      {selectedPub?.path && stockAccess && (
         <div style={{ marginTop: '1.25rem' }}>
           <ContributionPanel
             venuePath={selectedPub.path}

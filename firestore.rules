@@ -95,6 +95,16 @@ service cloud.firestore {
         match /deliveryLog/{entryId} {
           allow read, write: if manager(accountId);
         }
+        // Cached contribution summary. Readable by every member so staff can
+        // see the venue's standing and their own part in it; only managers can
+        // write it, because computing it needs the back-office collections
+        // above. Contains colleagues' totals — no more sensitive than the
+        // member list and wastage attribution, both already member-readable —
+        // but the UI still shows non-managers only their own row.
+        match /learningProfile/{docId} {
+          allow read: if member(accountId);
+          allow write: if manager(accountId);
+        }
         // Derived consumption rates (usage per week per item). Back-office
         // analytics built from deliveries, so manager-level like its inputs.
         match /itemStats/{itemId} {

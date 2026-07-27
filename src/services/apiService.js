@@ -53,6 +53,10 @@ export {
   subscribeToDeliveryNotes,
   deleteDeliveryNote,
 
+  // Learning profile (cached contribution summary)
+  getLearningProfile,
+  saveLearningProfile,
+
   // Item stats (derived consumption rates)
   getDeliveryNotesBetween,
   getItemStats,

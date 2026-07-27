@@ -1145,6 +1145,47 @@ export async function getDeliveryNotesBetween(venuePath, fromTs, toTs) {
 }
 
 // ============================================
+// LEARNING PROFILE  (cached contribution summary — see utils/learningScore.js)
+// ============================================
+
+/**
+ * The venue's contribution standing, cached as one small doc.
+ *
+ * Scoring is derived from notes, mappings and completed counts — all
+ * manager-level, and far too much to pull on a home screen. Writing the
+ * summary once lets staff see the venue's standing and their own part in it
+ * without read access to the back-office collections behind it.
+ *
+ * It's a cache, never a source of truth: a manager viewing the panel
+ * recomputes from scratch and overwrites this.
+ */
+export async function getLearningProfile(venuePath) {
+  try {
+    const snap = await getDoc(doc(db, `${venuePath}/learningProfile/current`));
+    return { success: true, data: snap.exists() ? snap.data() : null };
+  } catch (error) {
+    console.error('Error loading learning profile:', error);
+    return { success: false, error: error.message, data: null };
+  }
+}
+
+export async function saveLearningProfile(venuePath, profile) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    await setDoc(doc(db, `${venuePath}/learningProfile/current`), {
+      ...profile,
+      computedAt: Timestamp.now(),
+      accountId,
+      venueId,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving learning profile:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ============================================
 // ITEM STATS  (derived consumption rates — see utils/usageRate.js)
 // ============================================
 

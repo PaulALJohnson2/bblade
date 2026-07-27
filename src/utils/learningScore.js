@@ -412,6 +412,54 @@ export function scoreByPerson(state, window = {}) {
     .sort((a, b) => a.person.localeCompare(b.person));
 }
 
+/** Calendar-month key, so a cached month figure can't be read in the wrong month. */
+export const periodKeyOf = (now = Date.now()) => {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const startOfMonth = (now) => {
+  const d = new Date(now);
+  return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+};
+
+/**
+ * A small, cacheable summary of the whole picture.
+ *
+ * Scoring reads every note, mapping and completed count — all manager-level,
+ * and far too much to pull on a home screen. This is what gets written once by
+ * a manager and read cheaply by everybody, so staff can see their own
+ * contribution without being able to read the back-office collections it was
+ * derived from.
+ *
+ * Per-person FACTS are deliberately dropped: the itemised detail is a person's
+ * own business and stays behind the live computation.
+ */
+export function buildLearningProfile(state, now = Date.now()) {
+  const venue = scoreVenue(state, now);
+  const people = scoreByPerson(state, { from: startOfMonth(now) });
+  const next = venue.level.next;
+  return {
+    total: venue.total,
+    factCount: venue.factCount,
+    timeSavedMinutes: venue.timeSavedMinutes,
+    level: {
+      level: venue.level.level,
+      name: venue.level.name,
+      progress: venue.level.progress,
+      next: next ? { name: next.name, unlocks: next.unlocks, have: next.have, target: next.target } : null,
+    },
+    // The month figure is only meaningful inside the month it was computed in.
+    periodKey: periodKeyOf(now),
+    people: people.map((p) => ({
+      person: p.person,
+      lifetime: p.lifetime,
+      earned: p.earned,
+      factCount: p.factCount,
+    })),
+  };
+}
+
 /** Difference between two states, for the "+120 learned" moment after a scan. */
 export function scoreDelta(before, after) {
   const seen = new Set(learningFacts(before).map((f) => f.key));

@@ -16,8 +16,12 @@
  *   measure, and how to use it without doing harm, is on this screen rather
  *   than in a document nobody opens.
  *
- * Loaded on demand: scoring needs the notes, the mappings and every completed
- * count, which is far too much to pull on every visit to the home screen.
+ * Two paths, because scoring reads back-office collections staff can't:
+ *   MANAGERS compute it live from notes, mappings and every completed count —
+ *   too much to pull on every home-screen visit, so it loads on demand — and
+ *   publish a small summary as a side effect.
+ *   STAFF read that summary. Cheap, and no back-office access required. It
+ *   carries an "as of" date because it's a snapshot, not a live figure.
  *
  * Props: venuePath, items, personName, isManager, colors, accent, onAccent
  */
@@ -25,8 +29,11 @@
 import React, { useMemo, useState } from 'react';
 import {
   getSupplierProducts, getAllStockSessions, getDeliveryNotesBetween,
+  getLearningProfile, saveLearningProfile,
 } from '../services/apiService';
-import { scoreVenue, scoreByPerson, FACT_LABELS } from '../utils/learningScore';
+import {
+  scoreVenue, scoreByPerson, buildLearningProfile, periodKeyOf, FACT_LABELS,
+} from '../utils/learningScore';
 
 const monthStart = () => {
   const d = new Date();
@@ -36,7 +43,8 @@ const monthName = () => new Date().toLocaleDateString('en-GB', { month: 'long' }
 const shortDate = (ms) => (ms ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
 
 function ContributionPanel({ venuePath, items, personName, isManager, colors, accent, onAccent }) {
-  const [state, setState] = useState(null);   // { supplierProducts, notes, sessions }
+  const [state, setState] = useState(null);   // managers: the raw artefacts
+  const [cached, setCached] = useState(null); // staff: the published summary
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [showMine, setShowMine] = useState(false);
@@ -45,20 +53,30 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
 
   const load = async () => {
     setOpen(true);
-    if (state || loading) return;
+    if (state || cached || loading) return;
     setLoading(true);
     try {
+      if (!isManager) {
+        const res = await getLearningProfile(venuePath);
+        setCached(res.data);
+        return;
+      }
       const long = new Date(Date.now() - 3 * 365 * 86400000);
       const [codes, notes, sessions] = await Promise.all([
         getSupplierProducts(venuePath),
         getDeliveryNotesBetween(venuePath, long, new Date()),
         getAllStockSessions(venuePath),
       ]);
-      setState({
+      const loaded = {
         supplierProducts: codes.data || [],
         notes: notes.data || [],
         sessions: (sessions.success ? sessions.data : []) || [],
-      });
+      };
+      setState(loaded);
+      // Publishing is a side effect of a manager looking, so the figure staff
+      // see is refreshed by ordinary use rather than needing its own chore.
+      saveLearningProfile(venuePath, buildLearningProfile({ ...loaded, items }))
+        .catch((err) => console.warn('Could not publish the contribution summary:', err));
     } catch (err) {
       console.error('Could not load contributions:', err);
       setError('Could not load contributions just now.');
@@ -68,12 +86,22 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
   };
 
   const full = useMemo(() => (state ? { ...state, items } : null), [state, items]);
-  const venue = useMemo(() => (full ? scoreVenue(full) : null), [full]);
-  const people = useMemo(
+  const live = useMemo(() => (full ? scoreVenue(full) : null), [full]);
+  const livePeople = useMemo(
     () => (full ? scoreByPerson(full, { from: monthStart() }) : []),
     [full],
   );
+
+  // Managers read the live computation; staff read the published summary. The
+  // level card is identical either way.
+  const venue = live || (cached ? { total: cached.total, level: cached.level, timeSavedMinutes: cached.timeSavedMinutes } : null);
+  const people = live ? livePeople : (cached?.people || []);
   const mine = people.find((p) => p.person === personName) || null;
+
+  // A cached month figure is only meaningful inside the month it was computed
+  // in — say so rather than quietly showing last month's number as this one's.
+  const staleMonth = !live && cached && cached.periodKey !== periodKeyOf();
+  const asOf = !live && cached?.computedAt?.toDate ? cached.computedAt.toDate() : null;
 
   const card = {
     border: `1px solid ${colors.borderLight}`, borderRadius: '12px',
@@ -117,6 +145,11 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
 
       {loading && <div style={{ fontSize: '0.85rem', color: colors.textSecondary }}>Working it out…</div>}
       {error && <div style={{ fontSize: '0.85rem', color: colors.error }}>{error}</div>}
+      {!loading && !venue && !error && (
+        <div style={{ fontSize: '0.85rem', color: colors.textSecondary }}>
+          Nothing worked out yet — this fills in once a manager has opened it.
+        </div>
+      )}
 
       {venue && (
         <>
@@ -140,6 +173,11 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
                 <strong style={{ color: colors.textPrimary }}>{venue.level.next.name}</strong> — {venue.level.next.unlocks.toLowerCase()}
               </div>
             )}
+            {asOf && (
+              <div style={{ fontSize: '0.7rem', color: colors.textMuted, marginTop: '0.3rem' }}>
+                As of {asOf.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+              </div>
+            )}
             {venue.timeSavedMinutes > 0 && (
               <div style={{ fontSize: '0.75rem', color: colors.textSecondary, marginTop: '0.2rem' }}>
                 About {venue.timeSavedMinutes} minutes not spent keying deliveries in by hand.
@@ -153,12 +191,18 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
             {mine ? (
               <>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginTop: '0.2rem' }}>
-                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: accent }}>{mine.earned}</span>
-                  <span style={{ fontSize: '0.8rem', color: colors.textSecondary }}>in {monthName()}</span>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 800, color: accent }}>
+                    {staleMonth ? mine.lifetime : mine.earned}
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: colors.textSecondary }}>
+                    {staleMonth ? 'all time' : `in ${monthName()}`}
+                  </span>
                   <span style={{ flex: 1 }} />
-                  <span style={{ fontSize: '0.78rem', color: colors.textSecondary }}>{mine.lifetime} all time</span>
+                  {!staleMonth && (
+                    <span style={{ fontSize: '0.78rem', color: colors.textSecondary }}>{mine.lifetime} all time</span>
+                  )}
                 </div>
-                {mine.factCount > 0 && (
+                {mine.factCount > 0 && live && (
                   <button
                     onClick={() => setShowMine((v) => !v)}
                     style={{ marginTop: '0.4rem', padding: '0.3rem 0.6rem', border: `1px solid ${colors.border}`, borderRadius: '7px', background: 'transparent', color: colors.textSecondary, fontSize: '0.74rem', cursor: 'pointer' }}
@@ -180,7 +224,9 @@ function ContributionPanel({ venuePath, items, personName, isManager, colors, ac
               </>
             ) : (
               <div style={{ fontSize: '0.8rem', color: colors.textSecondary, marginTop: '0.2rem' }}>
-                Nothing yet this month. Scanning a delivery note is the quickest way to teach it something.
+                {isManager
+                  ? 'Nothing yet this month. Scanning a delivery note is the quickest way to teach it something.'
+                  : 'Nothing recorded for you yet. Counting stock is what counts towards this.'}
               </div>
             )}
           </div>
