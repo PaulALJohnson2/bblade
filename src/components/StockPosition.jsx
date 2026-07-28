@@ -102,7 +102,7 @@ function StockPosition({ venuePath, items, colors, accent }) {
     check: habits.everRecordsZero
       ? `Left out of the latest count, or never counted at all — so these figures are older than the rest, or are only what was booked in.`
       : `Left out of the latest count, or never counted. Across ${habits.takes} take${habits.takes === 1 ? '' : 's'} not one zero has been recorded here, so a blank may mean "there was none" rather than "nobody got to it" — the figure shown is an upper limit either way.`,
-    stock: `Counted recently, with any deliveries and wastage since applied. There is no till feed, so nothing takes stock off these as you trade — expect them to read high, and more so the longer since the count.`,
+    stock: 'What was counted, plus deliveries and less wastage since. Nothing takes stock off as you trade, so these read high — the longer since the count, the more so.',
   };
 
   return (
@@ -115,39 +115,34 @@ function StockPosition({ venuePath, items, colors, accent }) {
           {summary.lastCountAt ? ` · last count ${shortDate(summary.lastCountAt)}` : ''}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.9rem', flexWrap: 'wrap' }}>
-          {[['In stock', summary.inStock, colors.textPrimary], ['Worth a look', summary.check, colors.warning], ['Nothing left', summary.out, colors.error]].map(([label, n, tone]) => (
-            <div key={label} style={{ flex: '1 1 80px', padding: '0.5rem 0.6rem', borderRadius: '9px', backgroundColor: colors.bgLight }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: tone }}>{n}</div>
-              <div style={{ fontSize: '0.68rem', color: colors.textSecondary }}>{label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: '0.9rem', padding: '0.7rem 0.8rem', borderRadius: '9px', border: `1px dashed ${colors.border}`, fontSize: '0.82rem', color: colors.textPrimary, lineHeight: 1.45 }}>
-          <strong style={{ color: accent }}>Next: </strong>{nextBestAction(summary, allRows, habits)}
-        </div>
-        {error && <div style={{ marginTop: '0.6rem', fontSize: '0.8rem', color: colors.error }}>{error}</div>}
-      </div>
-
-      {/* Filters */}
-      <div style={card}>
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search stock item…" style={input} />
+        {/* Search and categories live in the header rather than a card of
+            their own — on a 90-line list they're how you use the thing, and a
+            second block of chrome only pushes the stock further down. */}
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search stock item…"
+          style={{ ...input, marginTop: '0.8rem' }}
+        />
         {categories.length > 0 && (
-          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.6rem', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem', overflowX: 'auto', scrollbarWidth: 'none' }}>
             <button onClick={() => setCategoryFilter('')} style={pill(categoryFilter === '')}>All</button>
             {categories.map((c) => (
               <button key={c} onClick={() => setCategoryFilter(categoryFilter === c ? '' : c)} style={pill(categoryFilter === c)}>{c}</button>
             ))}
           </div>
         )}
+        {error && <div style={{ marginTop: '0.6rem', fontSize: '0.8rem', color: colors.error }}>{error}</div>}
       </div>
 
       {rows.length === 0 && (
         <div style={{ ...card, textAlign: 'center', color: colors.textSecondary }}>Nothing matches.</div>
       )}
 
-      {['out', 'check', 'stock'].map((g) => {
+      {/* In stock leads. It's the list a manager opens this to read — he
+          already knows his cellar, and this is the app learning it alongside
+          him. The flagged groups are housekeeping and sit underneath. */}
+      {['stock', 'out', 'check'].map((g) => {
         const list = rows.filter((r) => r.group === g);
         if (!list.length) return null;
         const open = openGroup[g];
@@ -220,6 +215,16 @@ function StockPosition({ venuePath, items, colors, accent }) {
           </div>
         );
       })}
+
+      {/* The learning nudge sits under the stock, not over it. Oli already
+          knows his cellar; this is the app catching up, and it shouldn't
+          stand between him and the list he came for. */}
+      <div style={{ ...card, marginBottom: 0, borderStyle: 'dashed' }}>
+        <div style={{ fontSize: '0.82rem', color: colors.textPrimary, lineHeight: 1.5 }}>
+          <strong style={{ color: accent }}>Getting sharper: </strong>
+          {nextBestAction(summary, allRows, habits)}
+        </div>
+      </div>
     </div>
   );
 }

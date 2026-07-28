@@ -267,11 +267,3 @@ export function countedAgo(days) {
   if (days < 60) return `counted ${Math.round(days / 7)} weeks ago`;
   return 'counted months ago';
 }
-
-/** "4 kegs", "1 case" — the container a person pictures. */
-export function formatWholes(n, unitInfo) {
-  const label = unitInfo?.wholeLabel || 'units';
-  const single = label.replace(/s$/i, '');
-  const rounded = round2(n);
-  return `${rounded} ${rounded === 1 ? single : label}`;
-}
