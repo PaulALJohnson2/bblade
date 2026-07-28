@@ -109,6 +109,26 @@ function StockPosition({ venuePath, items, colors, accent }) {
   const summary = useMemo(() => (allRows ? summarise(allRows) : null), [allRows]);
   const habits = useMemo(() => countingHabits(sessions || []), [sessions]);
 
+  /**
+   * Takes that are open right now — started, or completed and then reopened.
+   *
+   * These have to be called out, because an open take is invisible to every
+   * figure on this page and its absence is loud. Nothing anchors to an
+   * unfinished count, so reopening the most recent one silently rewinds the
+   * whole report to the count before it: dates jump back a week, "left out of
+   * the last count" empties (there is no last count), and items only ever seen
+   * in the reopened take reappear as never counted. All of that is correct and
+   * none of it is guessable, so the page says so instead.
+   */
+  const openTakes = useMemo(() => (sessions || [])
+    .filter((s) => s.status !== 'completed')
+    .map((s) => {
+      const section = s.section === 'kitchen' ? 'kitchen' : 'bar';
+      const total = (items || []).filter((i) => !i.archived
+        && (i.section === 'kitchen' ? 'kitchen' : 'bar') === section).length;
+      return { id: s.id, section, counted: Object.keys(s.counts || {}).length, total };
+    }), [sessions, items]);
+
   const card = { backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`, borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem', boxShadow: `0 2px 12px ${colors.shadow}` };
   const toneColor = { error: colors.error, warning: colors.warning, info: colors.textSecondary, muted: colors.textMuted };
   const chip = (tone) => ({ flexShrink: 0, fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', padding: '0.15rem 0.45rem', borderRadius: '9999px', color: toneColor[tone] || colors.textSecondary, border: `1px solid ${toneColor[tone] || colors.border}` });
@@ -157,6 +177,16 @@ function StockPosition({ venuePath, items, colors, accent }) {
             ))}
           </div>
         )}
+        {openTakes.map((t) => (
+          <div
+            key={t.id}
+            style={{ marginTop: '0.8rem', padding: '0.7rem 0.8rem', borderRadius: '9px', backgroundColor: colors.warningSoft, border: `1px solid ${colors.warning}`, fontSize: '0.82rem', color: colors.textPrimary, lineHeight: 1.5 }}
+          >
+            <strong>A {t.section} stock take is open</strong> — {t.counted} of {t.total} counted so far.
+            Nothing below uses it yet: an unfinished count isn't a figure, so these are from the last
+            completed take{summary.lastCountAt ? ` (${shortDate(summary.lastCountAt)})` : ''}. Finish it and this page catches up.
+          </div>
+        ))}
         {error && <div style={{ marginTop: '0.6rem', fontSize: '0.8rem', color: colors.error }}>{error}</div>}
       </div>
 
