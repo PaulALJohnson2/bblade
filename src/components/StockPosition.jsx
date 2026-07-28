@@ -166,10 +166,23 @@ function StockPosition({ venuePath, items, colors, accent }) {
               <>
                 <p style={{ margin: '0.4rem 0 0.8rem', fontSize: '0.76rem', color: colors.textSecondary, lineHeight: 1.45 }}>{groupCaption[g]}</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  {list.map((r) => {
+                  {list.map((r, i) => {
                     const isOpen = openRow === r.itemId;
+                    // Category headings only where the list is in category
+                    // order — the flagged groups are ranked by urgency, and
+                    // stamping headings on them would imply an order they
+                    // aren't in.
+                    const heading = g === 'stock' && (i === 0 || list[i - 1].category !== r.category)
+                      ? (r.category || 'Uncategorised')
+                      : null;
                     return (
-                      <div key={r.itemId} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '9px', overflow: 'hidden' }}>
+                      <React.Fragment key={r.itemId}>
+                      {heading && (
+                        <div style={{ marginTop: i === 0 ? 0 : '0.5rem', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: colors.textSecondary }}>
+                          {heading}
+                        </div>
+                      )}
+                      <div style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '9px', overflow: 'hidden' }}>
                         <button
                           onClick={() => setOpenRow(isOpen ? null : r.itemId)}
                           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.55rem', padding: '0.55rem 0.65rem', background: isOpen ? colors.bgLight : 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
@@ -218,6 +231,7 @@ function StockPosition({ venuePath, items, colors, accent }) {
                           </div>
                         )}
                       </div>
+                      </React.Fragment>
                     );
                   })}
                 </div>

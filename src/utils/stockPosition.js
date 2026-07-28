@@ -34,6 +34,8 @@
  * count of its own section is called out as such.
  */
 
+import { compareCategories } from './categoryName';
+
 const DAY = 24 * 60 * 60 * 1000;
 const round2 = (n) => Math.round(n * 100) / 100;
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -210,12 +212,19 @@ export function buildPositions({ items, sessions, deliveries, wastage, unitInfoF
     const ra = a.signal ? a.signal.rank : 99;
     const rb = b.signal ? b.signal.rank : 99;
     if (ra !== rb) return ra - rb;
-    // The flagged groups are read as a worklist, so the biggest holdings come
-    // first — a skipped cider keg matters more than a skipped shelf liqueur,
-    // and alphabetical would bury it. The plain in-stock list is read as a
-    // lookup ("how much Malibu?"), where alphabetical is the only useful order.
-    const bothInStock = !a.signal && !b.signal;
-    if (!bothInStock && b.wholes !== a.wholes) return b.wholes - a.wholes;
+    // The in-stock list is read the way a cellar is walked and a menu is
+    // written — draught first, then bottles, wine, spirits, softs. That's what
+    // compareCategories already encodes, and following it means the screen runs
+    // in the same order as the job, rather than alphabetically jumbling kegs in
+    // among the crisps.
+    if (!a.signal && !b.signal) {
+      const byCategory = compareCategories(a.category, b.category);
+      if (byCategory) return byCategory;
+      return String(a.name).localeCompare(String(b.name));
+    }
+    // The flagged groups are a worklist instead, so the biggest holdings come
+    // first — a skipped cider keg matters more than a skipped shelf liqueur.
+    if (b.wholes !== a.wholes) return b.wholes - a.wholes;
     return String(a.name).localeCompare(String(b.name));
   });
 }
