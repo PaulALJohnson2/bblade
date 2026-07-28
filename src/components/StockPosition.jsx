@@ -19,6 +19,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   subscribeToStockSessions, getDeliveriesBetween, getWastageBetween,
 } from '../services/apiService';
@@ -61,6 +62,7 @@ function segmentsOf(list, group) {
 }
 
 function StockPosition({ venuePath, items, colors, accent }) {
+  const navigate = useNavigate();
   const [sessions, setSessions] = useState(null);
   const [logs, setLogs] = useState(null); // { deliveries, wastage }
   const [error, setError] = useState(null);
@@ -184,7 +186,18 @@ function StockPosition({ venuePath, items, colors, accent }) {
           >
             <strong>A {t.section} stock take is open</strong> — {t.counted} of {t.total} counted so far.
             Nothing below uses it yet: an unfinished count isn't a figure, so these are from the last
-            completed take{summary.lastCountAt ? ` (${shortDate(summary.lastCountAt)})` : ''}. Finish it and this page catches up.
+            completed take{summary.lastCountAt ? ` (${shortDate(summary.lastCountAt)})` : ''}. Anything counted in it —
+            including anything marked empty — only moves stock once the take is completed.
+            {/* Being told what's wrong without being given the one action that
+                fixes it is how someone ends up staring at a figure they've
+                already corrected, waiting for it to change. */}
+            <button
+              type="button"
+              onClick={() => navigate('/stock/count')}
+              style={{ display: 'block', marginTop: '0.6rem', padding: '0.5rem 0.9rem', border: 'none', borderRadius: '8px', backgroundColor: colors.warning, color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+            >
+              Go and finish the {t.section} take
+            </button>
           </div>
         ))}
         {error && <div style={{ marginTop: '0.6rem', fontSize: '0.8rem', color: colors.error }}>{error}</div>}
