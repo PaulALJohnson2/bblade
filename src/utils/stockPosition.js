@@ -56,7 +56,7 @@ export const BASIS = {
 
 export const SIGNALS = {
   out: { key: 'out', label: 'Nothing left', group: 'out', rank: 0, tone: 'error' },
-  skipped: { key: 'skipped', label: 'Left out of last count', group: 'check', rank: 1, tone: 'warning' },
+  skipped: { key: 'skipped', label: 'Not counted', group: 'check', rank: 1, tone: 'warning' },
   never: { key: 'never', label: 'Never counted', group: 'check', rank: 2, tone: 'info' },
   unseen: { key: 'unseen', label: 'Not counted lately', group: 'check', rank: 3, tone: 'info' },
 };
