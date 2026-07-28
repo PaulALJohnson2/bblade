@@ -2483,6 +2483,62 @@ function StockTaking() {
                     </div>
                   );
                 })()}
+
+                {/* What this take DIDN'T cover.
+                    A summary that lists only what was counted quietly implies
+                    it covered everything, and the gap is the part worth
+                    knowing: at the Richmond one take missed ten lines that were
+                    counted the week before. Split the same way the stock
+                    position splits it, because they're different problems —
+                    a line counted last week and missed this week is probably
+                    empty or overlooked, while one nobody has ever counted is
+                    usually a list entry the venue doesn't really stock. */}
+                {(() => {
+                  const session = summarySession || currentSession;
+                  if (!session) return null;
+
+                  const everCounted = new Set();
+                  for (const s of allSessions) {
+                    if (s.status !== 'completed' || s.hiddenFromVariance) continue;
+                    for (const id of Object.keys(s.counts || {})) everCounted.add(id);
+                  }
+
+                  const sec = session.section === 'kitchen' ? 'kitchen' : 'bar';
+                  const missed = allItems
+                    .filter((i) => !i.archived
+                      && (i.section === 'kitchen' ? 'kitchen' : 'bar') === sec
+                      && !session.counts?.[i.id])
+                    .map((i) => ({ ...i, seenBefore: everCounted.has(i.id) }))
+                    .sort((a, b) => (a.seenBefore === b.seenBefore
+                      ? String(a.name).localeCompare(String(b.name))
+                      : (a.seenBefore ? -1 : 1)));
+                  if (!missed.length) return null;
+
+                  const block = (rows, title, note) => rows.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ fontWeight: 600, color: colors.textSecondary, marginBottom: '0.35rem', fontSize: '0.85rem', textTransform: 'uppercase', borderBottom: `2px solid ${colors.borderLight}`, paddingBottom: '0.25rem' }}>
+                        {title} ({rows.length})
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: colors.textMuted, marginBottom: '0.5rem', lineHeight: 1.45 }}>{note}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {rows.map((i) => (
+                          <div key={i.id} style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, borderRadius: '6px', fontSize: '0.9rem', color: colors.textSecondary }}>
+                            {i.name}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+
+                  return (
+                    <div style={{ marginTop: '1.25rem' }}>
+                      {block(missed.filter((i) => i.seenBefore), 'Not counted',
+                        'Counted in an earlier take but not this one — either empty, or missed.')}
+                      {block(missed.filter((i) => !i.seenBefore), 'Never counted',
+                        "Nobody has ever counted these. If you don't stock them, archiving keeps them off every future count.")}
+                    </div>
+                  );
+                })()}
               </>
             )}
 
