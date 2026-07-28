@@ -460,6 +460,25 @@ export function formatCountOverview(count, unitInfo) {
   return `${total} ${label}`;
 }
 
+/**
+ * The same reading as formatCountOverview, but from a bare base quantity.
+ *
+ * Derived figures — a history entry, a projected position, an order suggestion —
+ * only ever have the base number; there is no whole/part breakdown to show,
+ * because nobody counted one. So the measurement branch reads out the total in
+ * its own unit ("100 Litres") rather than pretending to a keg-and-tenths split.
+ */
+export function formatBaseQuantity(quantity, unitInfo) {
+  const qn = Math.round((quantity || 0) * 100) / 100;
+  if (unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption) {
+    const dec = qn / (unitInfo.unitsPerWhole || 10);
+    const wl = unitInfo.wholeLabel || 'Bottles';
+    return `${oneDp(dec)} ${singularLabel(wl, dec)}`;
+  }
+  if (unitInfo && unitInfo.hasTenthsOption) return `${qn} ${unitInfo.partLabel || ''}`.trim();
+  return `${qn} ${unitInfo?.hasPartUnit ? 'items' : (unitInfo?.wholeLabel || 'items')}`;
+}
+
 export function formatCountSummary(count, unitInfo) {
   if (!count) return '0';
 

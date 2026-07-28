@@ -120,6 +120,8 @@ function StockTaking() {
   const [deletingSession, setDeletingSession] = useState(null); // Session pending deletion confirmation
   const [toast, setToast] = useState(null); // { message, type: 'error'|'info' }
   const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm, confirmLabel, confirmColor }
+  // { uncounted: [item], marked: { [itemId]: true }, countedItems, working }
+  const [finishModal, setFinishModal] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(null); // { itemName, history[], unitInfo }
   const [summarySession, setSummarySession] = useState(null); // Session to show in summary modal
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -440,6 +442,31 @@ function StockTaking() {
     setSelectedItem(null);
   };
 
+  /** Finish the take for real, after any empties have been settled. */
+  const finishSession = async (countedItems) => {
+    const result = await completeStockSession(
+      selectedPub.path, currentSession.id,
+      userProfile?.displayName || currentUser?.email || '',
+    );
+    if (result.success) {
+      setCurrentSession(null);
+      setShowSessionPicker(true);
+      setLastSaved({ name: 'Stock take completed', quantity: `${countedItems} items updated` });
+      setTimeout(() => setLastSaved(null), 3000);
+    } else {
+      showToast('Error completing session: ' + result.error);
+    }
+  };
+
+  /**
+   * Completing a take is the last moment anyone knows why a line is blank.
+   *
+   * A count sheet only records what was counted, so an item left out carries
+   * two opposite meanings — nobody reached it, or there was none there. Days
+   * later nobody can tell, and the difference decides whether the stock report
+   * shows a full keg or a dry line. Asking here costs one screen and settles it
+   * while the person is still standing in the cellar.
+   */
   const handleCompleteSession = async () => {
     if (!currentSession || !selectedPub) return;
 
@@ -449,25 +476,53 @@ function StockTaking() {
       return;
     }
 
+    const section = currentSession.section === 'kitchen' ? 'kitchen' : 'bar';
+    const uncounted = allItems.filter((i) => !i.archived
+      && (i.section === 'kitchen' ? 'kitchen' : 'bar') === section
+      && !currentSession.counts?.[i.id]);
+
+    if (uncounted.length > 0) {
+      setFinishModal({ uncounted, marked: {}, countedItems, working: false });
+      return;
+    }
+
     showConfirm(
       'Complete Stock Take?',
       `This will update ${countedItems} item(s) with the counted quantities.`,
-      async () => {
-        const result = await completeStockSession(
-          selectedPub.path, currentSession.id,
-          userProfile?.displayName || currentUser?.email || '',
-        );
-        if (result.success) {
-          setCurrentSession(null);
-          setShowSessionPicker(true);
-          setLastSaved({ name: 'Stock take completed', quantity: `${countedItems} items updated` });
-          setTimeout(() => setLastSaved(null), 3000);
-        } else {
-          showToast('Error completing session: ' + result.error);
-        }
-      },
+      () => finishSession(countedItems),
       { confirmLabel: 'Complete', confirmColor: '#38a169' }
     );
+  };
+
+  /** Write a zero for each item ticked as empty, then complete. */
+  const confirmFinish = async () => {
+    if (!finishModal || finishModal.working) return;
+    setFinishModal((m) => ({ ...m, working: true }));
+
+    const empties = finishModal.uncounted.filter((i) => finishModal.marked[i.id]);
+    for (const item of empties) {
+      const unitInfo = parseUnitInfo(item);
+      const res = await saveStockCount(selectedPub.path, currentSession.id, item.id, {
+        caseCount: 0,
+        caseLabel: unitInfo.caseLabel,
+        wholeCount: 0,
+        partCount: 0,
+        quantity: 0,
+        itemName: item.name,
+        wholeLabel: unitInfo.wholeLabel,
+        partLabel: unitInfo.partLabel,
+        countedBy: userProfile?.displayName || currentUser?.email || '',
+      });
+      if (!res.success) {
+        setFinishModal((m) => ({ ...m, working: false }));
+        showToast(`Could not record ${item.name} as empty: ${res.error}`);
+        return;
+      }
+    }
+
+    const total = finishModal.countedItems + empties.length;
+    setFinishModal(null);
+    await finishSession(total);
   };
 
   const handleCancelSession = async () => {
@@ -621,19 +676,34 @@ function StockTaking() {
     }
   };
 
-  const handleQuantitySubmit = async () => {
+  /**
+   * Save the entered count — or, with { noneLeft: true }, an explicit zero.
+   *
+   * An empty shelf used to be unrecordable: the all-zero guard below existed to
+   * swallow a Save tapped on a form nobody had typed into, and it swallowed a
+   * genuine zero with it. The counter's only way to express "there's none" was
+   * to skip the item, which is indistinguishable from not reaching it — so the
+   * stock position of every skipped line became a coin toss, and no usage rate
+   * could ever be measured for one. Zero is a count. It just has to be asked
+   * for deliberately, which is what the None left button does.
+   *
+   * Called straight from onClick in places, so the first argument may be a
+   * click event — read the flag off it rather than trusting its shape.
+   */
+  const handleQuantitySubmit = async (opts) => {
     if (!selectedItem || saving || !currentSession) return;
+    const noneLeft = opts?.noneLeft === true;
 
     const unitInfo = parseUnitInfo(selectedItem);
-    const caseVal = parseFloat(caseQuantity) || 0;
-    const wholeVal = parseFloat(wholeQuantity) || 0;
-    let tenthsVal = parseFloat(tenthsQuantity) || 0;
+    const caseVal = noneLeft ? 0 : parseFloat(caseQuantity) || 0;
+    const wholeVal = noneLeft ? 0 : parseFloat(wholeQuantity) || 0;
+    let tenthsVal = noneLeft ? 0 : parseFloat(tenthsQuantity) || 0;
     // ".3" or "0.3" means 3 tenths, not 0.3 tenths
     if (tenthsVal > 0 && tenthsVal < 1) tenthsVal = Math.round(tenthsVal * 10);
-    const partVal = parseFloat(partQuantity) || 0;
+    const partVal = noneLeft ? 0 : parseFloat(partQuantity) || 0;
     const usedTenths = unitInfo.hasTenthsOption && tenthsVal > 0;
 
-    if (caseVal === 0 && wholeVal === 0 && partVal === 0 && tenthsVal === 0) return;
+    if (!noneLeft && caseVal === 0 && wholeVal === 0 && partVal === 0 && tenthsVal === 0) return;
 
     setSaving(true);
 
@@ -678,7 +748,8 @@ function StockTaking() {
         wholeLabel: unitInfo.wholeLabel,
         partLabel: savedPartLabel
       }, unitInfo);
-      setLastSaved({ name: selectedItem.name, quantity: display.detail });
+      // "0 Bottles, 0 Tenths" is a worse confirmation than the words for it.
+      setLastSaved({ name: selectedItem.name, quantity: noneLeft ? 'None left' : display.detail });
       // Collapse the card and stay put in the list. Keep the current tab/search
       // filter, and don't touch focus so the keyboard stays closed.
       setSelectedItem(null);
@@ -1835,6 +1906,26 @@ function StockTaking() {
                                   <span style={{ fontWeight: '500', color: colors.textPrimary, marginLeft: '0.25rem' }}>{unitInfo.partLabel}</span>
                                 </div>
                               )}
+                              {/* Recording an empty shelf has to be at least as
+                                  easy as walking past it, or nobody will. */}
+                              <button
+                                type="button"
+                                onClick={() => handleQuantitySubmit({ noneLeft: true })}
+                                disabled={saving || !!hasAnyValue}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  backgroundColor: 'transparent',
+                                  color: colors.textSecondary,
+                                  border: `1px solid ${colors.border}`,
+                                  borderRadius: '4px',
+                                  cursor: saving || hasAnyValue ? 'not-allowed' : 'pointer',
+                                  fontSize: '0.9rem',
+                                  fontWeight: 600,
+                                  opacity: hasAnyValue ? 0.4 : 1
+                                }}
+                              >
+                                None left
+                              </button>
                               <button
                                 onClick={handleQuantitySubmit}
                                 disabled={saving || !hasAnyValue}
@@ -2078,6 +2169,14 @@ function StockTaking() {
                                 onClick={handleCancelEntry}
                                 style={{ flexShrink: 0, padding: '0.85rem 1.25rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem', fontWeight: 600 }}
                               >Cancel</button>
+                              {/* Recording an empty shelf has to be at least as
+                                  easy as walking past it, or nobody will. */}
+                              <button
+                                type="button"
+                                onClick={() => handleQuantitySubmit({ noneLeft: true })}
+                                disabled={saving || !!hasAnyValue}
+                                style={{ flexShrink: 0, padding: '0.85rem 1rem', backgroundColor: 'transparent', color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: '8px', cursor: saving || hasAnyValue ? 'not-allowed' : 'pointer', fontSize: '0.95rem', fontWeight: 600, opacity: hasAnyValue ? 0.4 : 1 }}
+                              >None left</button>
                               <button
                                 type="button"
                                 onClick={handleQuantitySubmit}
@@ -2941,6 +3040,74 @@ function StockTaking() {
           </div>
         </div>
       )}
+      {/* Finish a take: settle what wasn't counted before it becomes a mystery */}
+      {finishModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2100, padding: '1rem' }}>
+          <div style={{ backgroundColor: colors.bgCard, borderRadius: '12px', padding: '1.25rem', maxWidth: '440px', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}>
+            <h3 style={{ margin: '0 0 0.35rem', color: colors.textPrimary }}>Anything empty?</h3>
+            <p style={{ margin: '0 0 0.9rem', color: colors.textSecondary, fontSize: '0.85rem', lineHeight: 1.5 }}>
+              You counted {finishModal.countedItems} item{finishModal.countedItems === 1 ? '' : 's'}.
+              {' '}{finishModal.uncounted.length} weren't counted — tick any that were <strong style={{ color: colors.textPrimary }}>empty</strong> and they'll be
+              recorded as zero. Leave the ones you simply didn't get to.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.6rem' }}>
+              <button
+                type="button"
+                onClick={() => setFinishModal((m) => ({ ...m, marked: Object.fromEntries(m.uncounted.map((i) => [i.id, true])) }))}
+                style={{ flex: 1, padding: '0.45rem', fontSize: '0.8rem', fontWeight: 600, border: `1px solid ${colors.border}`, borderRadius: '7px', backgroundColor: 'transparent', color: colors.textPrimary, cursor: 'pointer' }}
+              >All empty</button>
+              <button
+                type="button"
+                onClick={() => setFinishModal((m) => ({ ...m, marked: {} }))}
+                style={{ flex: 1, padding: '0.45rem', fontSize: '0.8rem', fontWeight: 600, border: `1px solid ${colors.border}`, borderRadius: '7px', backgroundColor: 'transparent', color: colors.textPrimary, cursor: 'pointer' }}
+              >None of them</button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', border: `1px solid ${colors.borderLight}`, borderRadius: '8px', marginBottom: '0.9rem' }}>
+              {finishModal.uncounted.map((item) => {
+                const on = !!finishModal.marked[item.id];
+                return (
+                  <label
+                    key={item.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.55rem 0.7rem', borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer', backgroundColor: on ? colors.bgLight : 'transparent' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => setFinishModal((m) => ({ ...m, marked: { ...m.marked, [item.id]: !m.marked[item.id] } }))}
+                      style={{ width: '18px', height: '18px', flexShrink: 0 }}
+                    />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                    {on && <span style={{ flexShrink: 0, fontSize: '0.72rem', fontWeight: 700, color: colors.textSecondary }}>0</span>}
+                  </label>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setFinishModal(null)}
+                disabled={finishModal.working}
+                style={{ flexShrink: 0, padding: '0.8rem 1.1rem', border: 'none', borderRadius: '8px', backgroundColor: colors.bgLight, color: colors.textPrimary, fontWeight: 600, cursor: 'pointer' }}
+              >Back</button>
+              <button
+                type="button"
+                onClick={confirmFinish}
+                disabled={finishModal.working}
+                style={{ flex: 1, padding: '0.8rem', border: 'none', borderRadius: '8px', backgroundColor: '#38a169', color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: finishModal.working ? 'wait' : 'pointer', opacity: finishModal.working ? 0.6 : 1 }}
+              >
+                {finishModal.working ? 'Finishing…' : (() => {
+                  const n = finishModal.uncounted.filter((i) => finishModal.marked[i.id]).length;
+                  return n ? `Record ${n} empty & complete` : 'Complete take';
+                })()}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toast && (
         <div

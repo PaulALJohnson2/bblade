@@ -16,19 +16,10 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  getAllStockSessions, getDeliveriesBetween, getWastageBetween,
-  getDeliveryNotesBetween, getItemStats, saveItemStats,
-} from '../services/apiService';
-import {
-  usagePeriods, computePeriodUsage, shortDeliveredItems, aggregateUsage,
-  formatUsage, CONFIDENCE_LABEL,
-} from '../utils/usageRate';
-import { ratesFromDeliveries, mergeRates } from '../utils/deliveryRate';
+import { getItemStats, saveItemStats } from '../services/apiService';
+import { deriveUsageRates } from '../services/stockAnalysis';
+import { formatUsage, CONFIDENCE_LABEL } from '../utils/usageRate';
 import { parseUnitInfo } from '../utils/stockUnitUtils';
-
-/** How far back the delivery-only estimate looks when there are no counts. */
-const DELIVERY_WINDOW_DAYS = 180;
 
 const shortDate = (ms) => (ms
   ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
@@ -50,67 +41,18 @@ function UsageRates({ venuePath, items, colors, accent, onAccent, showToast }) {
     return () => { alive = false; };
   }, [venuePath]);
 
-  /**
-   * Walk every period. Sequential rather than parallel: a venue with a year of
-   * fortnightly counts is 26 periods × 3 queries, and firing 78 at once to
-   * shave a second off a button nobody presses twice isn't a good trade.
-   */
   const recompute = async () => {
     if (running) return;
     setRunning(true);
     try {
-      // Deliveries alone give a usable rate long before two counts exist —
-      // a pub can't hoard kegs, so what comes in is what gets drunk. This is
-      // the whole answer for a venue in its first month.
-      const since = new Date(Date.now() - DELIVERY_WINDOW_DAYS * 86400000);
-      const now = new Date();
-      const [allDel, allNotes] = await Promise.all([
-        getDeliveriesBetween(venuePath, since, now),
-        getDeliveryNotesBetween(venuePath, since, now),
-      ]);
-      const derived = ratesFromDeliveries(
-        allDel.data || [],
-        shortDeliveredItems(allNotes.data || [], since.getTime(), now.getTime()),
-      );
-
-      const res = await getAllStockSessions(venuePath);
-      const sessions = (res.success ? res.data : []).filter((s) => !s.hiddenFromVariance);
-      const pairs = usagePeriods(sessions);
-
-      if (!pairs.length) {
-        const merged = mergeRates([], derived);
-        setPeriods([]);
-        setComputed(merged);
-        showToast(merged.length
-          ? `Estimated ${merged.length} rates from deliveries — a second stock take will measure them properly`
+      const { rates, periods: walked } = await deriveUsageRates(venuePath);
+      setPeriods(walked);
+      setComputed(rates);
+      if (!walked.length) {
+        showToast(rates.length
+          ? `Estimated ${rates.length} rates from deliveries — a second stock take will measure them properly`
           : 'Not enough deliveries yet to estimate how fast anything moves');
-        return;
       }
-
-      const results = [];
-      for (const { opening, closing } of pairs) {
-        const [d, w, n] = await Promise.all([
-          getDeliveriesBetween(venuePath, opening.completedAt, closing.completedAt),
-          getWastageBetween(venuePath, opening.completedAt, closing.completedAt),
-          getDeliveryNotesBetween(venuePath, opening.completedAt, closing.completedAt),
-        ]);
-        results.push(computePeriodUsage({
-          opening,
-          closing,
-          deliveries: d.data || [],
-          wastage: w.data || [],
-          shortItems: shortDeliveredItems(
-            n.data || [], opening.completedAt.toMillis(), closing.completedAt.toMillis(),
-          ),
-        }));
-      }
-
-      setPeriods(results.map((p) => ({
-        from: p.from, to: p.to, days: p.days, items: p.rows.length,
-        censored: p.rows.filter((r) => r.censored).length,
-        implausible: p.rows.filter((r) => r.implausible).length,
-      })));
-      setComputed(mergeRates(aggregateUsage(results), derived));
     } catch (err) {
       console.error('Usage calculation failed:', err);
       showToast('Could not work out usage: ' + (err?.message || 'unknown error'));

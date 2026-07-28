@@ -17,6 +17,7 @@ import StockManager from '../components/StockManager';
 import CaseSizeSuggestions from '../components/CaseSizeSuggestions';
 import { useStockData } from '../contexts/StockDataContext';
 import StockOverview from '../components/StockOverview';
+import StockPosition from '../components/StockPosition';
 import WastageReport from '../components/WastageReport';
 import Timesheets from '../components/Timesheets';
 import Requests from '../components/Requests';
@@ -211,16 +212,20 @@ function Admin() {
   ].filter((t) => t.show);
 
   const STOCK_TILES = [
+    // First tile on purpose: "what do I need?" is the question an owner opens
+    // the stock area to answer. The record of past counts is how you check it.
+    { key: 'position', label: 'Stock position', desc: "What's left & what to order", accent: colors.primary,
+      icon: ['M3 3v18h18', 'M7 14l3-3 3 3 5-6', 'M17 8h3v3'] },
     { key: 'overview', label: 'Stock overview', desc: 'Current & completed stock takes', accent: colors.primary,
       icon: ['M3 3v18h18', 'M18 9l-5 5-3-3-4 4'] },
     { key: 'edit', label: 'Stock edit', desc: 'Edit items, units & import list', accent: colors.primary,
       icon: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'] },
   ];
 
-  const SECTION_TITLES = { account: 'Account', stock: 'Stock', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Requests' };
+  const SECTION_TITLES = { account: 'Account', stock: 'Stock', position: 'Stock position', overview: 'Stock overview', edit: 'Stock edit', wastage: 'Wastage overview', timesheets: 'Timesheets', leave: 'Requests' };
   // Where each section sits, so its back button returns one step rather than
   // dumping someone at the hub from two levels down.
-  const PARENT_VIEW = { overview: 'stock', edit: 'stock' };
+  const PARENT_VIEW = { position: 'stock', overview: 'stock', edit: 'stock' };
 
   // ---- Hub: a 2-column grid of tiles into each settings section ----
   // The admin area deliberately looks different from the staff Home hub:
@@ -304,6 +309,22 @@ function Admin() {
     );
   }
 
+  if (view === 'position') {
+    return (
+      <div style={{ maxWidth: '560px', margin: '0 auto' }}>
+        {sectionHeader}
+        {selectedPub?.path && (
+          <StockPosition
+            venuePath={selectedPub.path}
+            items={items}
+            colors={colors}
+            accent={colors.primary}
+            onAccent={colors.onPrimary}
+          />
+        )}
+      </div>
+    );
+  }
   if (view === 'overview') {
     return (
       <div style={{ maxWidth: '560px', margin: '0 auto' }}>

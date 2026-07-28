@@ -12,7 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { subscribeToStockSessions } from '../services/apiService';
 import { useStockData } from '../contexts/StockDataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { parseUnitInfo, formatCountOverview } from '../utils/stockUnitUtils';
+import { parseUnitInfo, formatCountOverview, formatBaseQuantity } from '../utils/stockUnitUtils';
 import { printSessionReport, downloadSessionCSV, formatDuration } from '../utils/sessionReport';
 import { getThemeColors } from '../utils/theme';
 import useTheme from '../hooks/useTheme';
@@ -28,14 +28,8 @@ const unitInfoFor = (item, count) => (item ? parseUnitInfo(item)
 
 // A history entry only stores `quantity` (base units) + counts, no labels — so
 // format it straight from the total, matching the overview's "total" style.
-function fmtQty(quantity, unitInfo) {
-  const qn = Math.round((quantity || 0) * 100) / 100;
-  if (unitInfo && unitInfo.partLabel === 'Tenths' && !unitInfo.hasTenthsOption) {
-    return `${oneDp(qn / (unitInfo.unitsPerWhole || 10))} ${unitInfo.wholeLabel || 'Bottles'}`;
-  }
-  if (unitInfo && unitInfo.hasTenthsOption) return `${qn} ${unitInfo.partLabel || ''}`.trim();
-  return `${qn} ${unitInfo?.hasPartUnit ? 'items' : (unitInfo?.wholeLabel || 'items')}`;
-}
+// Shared with the stock position report, which has the same problem.
+const fmtQty = formatBaseQuantity;
 
 // Signed change between two base-unit quantities, in the item's display terms.
 function formatDelta(fromQty, toQty, unitInfo) {
