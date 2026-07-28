@@ -477,9 +477,27 @@ function StockTaking() {
     }
 
     const section = currentSession.section === 'kitchen' ? 'kitchen' : 'bar';
-    const uncounted = allItems.filter((i) => !i.archived
-      && (i.section === 'kitchen' ? 'kitchen' : 'bar') === section
-      && !currentSession.counts?.[i.id]);
+    // Two different questions wear the same blank. An item counted in an
+    // earlier take and missing from this one is probably empty — that's the
+    // one worth a tick. An item nobody has EVER counted is usually a line the
+    // venue doesn't really stock, left over from importing a supplier list, and
+    // marking it empty says something much weaker. So they're separated, with
+    // the never-counted below, rather than mixed into one wall of names where
+    // the meaningful ones get lost.
+    const everCounted = new Set();
+    for (const s of allSessions) {
+      if (s.status !== 'completed' || s.hiddenFromVariance) continue;
+      for (const id of Object.keys(s.counts || {})) everCounted.add(id);
+    }
+
+    const uncounted = allItems
+      .filter((i) => !i.archived
+        && (i.section === 'kitchen' ? 'kitchen' : 'bar') === section
+        && !currentSession.counts?.[i.id])
+      .map((i) => ({ ...i, everCounted: everCounted.has(i.id) }))
+      .sort((a, b) => (a.everCounted === b.everCounted
+        ? String(a.name).localeCompare(String(b.name))
+        : (a.everCounted ? -1 : 1)));
 
     if (uncounted.length > 0) {
       setFinishModal({ uncounted, marked: {}, countedItems, working: false });
@@ -3052,11 +3070,22 @@ function StockTaking() {
             </p>
 
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.6rem' }}>
+              {/* Scoped to the items that have been counted before. Bulk-ticking
+                  lines nobody has ever counted would quietly assert something
+                  about stock the venue may not even carry — and would undo the
+                  separation the list just made. */}
               <button
                 type="button"
-                onClick={() => setFinishModal((m) => ({ ...m, marked: Object.fromEntries(m.uncounted.map((i) => [i.id, true])) }))}
+                onClick={() => setFinishModal((m) => ({
+                  ...m,
+                  marked: Object.fromEntries(m.uncounted.filter((i) => i.everCounted).map((i) => [i.id, true])),
+                }))}
                 style={{ flex: 1, padding: '0.45rem', fontSize: '0.8rem', fontWeight: 600, border: `1px solid ${colors.border}`, borderRadius: '7px', backgroundColor: 'transparent', color: colors.textPrimary, cursor: 'pointer' }}
-              >All empty</button>
+              >
+                {finishModal.uncounted.some((i) => !i.everCounted)
+                  ? `Mark ${finishModal.uncounted.filter((i) => i.everCounted).length} empty`
+                  : 'All empty'}
+              </button>
               <button
                 type="button"
                 onClick={() => setFinishModal((m) => ({ ...m, marked: {} }))}
@@ -3065,22 +3094,33 @@ function StockTaking() {
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', border: `1px solid ${colors.borderLight}`, borderRadius: '8px', marginBottom: '0.9rem' }}>
-              {finishModal.uncounted.map((item) => {
+              {finishModal.uncounted.map((item, i) => {
                 const on = !!finishModal.marked[item.id];
+                const prev = finishModal.uncounted[i - 1];
+                const startsNever = !item.everCounted && (i === 0 || prev.everCounted);
                 return (
-                  <label
-                    key={item.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.55rem 0.7rem', borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer', backgroundColor: on ? colors.bgLight : 'transparent' }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => setFinishModal((m) => ({ ...m, marked: { ...m.marked, [item.id]: !m.marked[item.id] } }))}
-                      style={{ width: '18px', height: '18px', flexShrink: 0 }}
-                    />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
-                    {on && <span style={{ flexShrink: 0, fontSize: '0.72rem', fontWeight: 700, color: colors.textSecondary }}>0</span>}
-                  </label>
+                  <React.Fragment key={item.id}>
+                    {startsNever && (
+                      <div style={{ padding: '0.5rem 0.7rem 0.35rem', borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`, backgroundColor: colors.bgLight }}>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.textSecondary }}>Never counted</div>
+                        <div style={{ fontSize: '0.72rem', color: colors.textMuted, marginTop: '0.15rem' }}>
+                          Nobody has ever counted these. If you don't really stock them, archiving is tidier than marking them empty.
+                        </div>
+                      </div>
+                    )}
+                    <label
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.55rem 0.7rem', borderBottom: `1px solid ${colors.borderLight}`, cursor: 'pointer', backgroundColor: on ? colors.primarySoft : 'transparent' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => setFinishModal((m) => ({ ...m, marked: { ...m.marked, [item.id]: !m.marked[item.id] } }))}
+                        style={{ width: '18px', height: '18px', flexShrink: 0 }}
+                      />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: '0.88rem', color: item.everCounted ? colors.textPrimary : colors.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                      {on && <span style={{ flexShrink: 0, fontSize: '0.72rem', fontWeight: 700, color: colors.textSecondary }}>0</span>}
+                    </label>
+                  </React.Fragment>
                 );
               })}
             </div>
