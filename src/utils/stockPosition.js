@@ -258,6 +258,28 @@ export function nextBestAction(summary, rows, habits) {
   return 'Every item has been counted recently — these figures are as good as they get without a till.';
 }
 
+/**
+ * Draught, and anything else measured rather than counted, is stored in litres
+ * — a keg and a cask and a bag-in-box only share arithmetic through a common
+ * unit. But nobody orders in litres. "100 Litres" is a number a cellar person
+ * has to divide before it means anything, and dividing it is the app's job:
+ * two kegs is the thing being decided about.
+ *
+ * Discrete stock is left alone. A pub counts bottled beer in bottles and
+ * spirits in bottles, so "23 items" and "5 Bottles" already read the way they
+ * are ordered, and pushing those into cases would turn a clear figure into
+ * "0.96 Cases".
+ */
+export const isMeasured = (unitInfo) => !!unitInfo?.hasTenthsOption;
+
+/** "2 Kegs", "1 Keg", "1.8 Kegs" — a measured quantity in whole containers. */
+export function formatContainers(quantity, unitInfo) {
+  const upw = (unitInfo?.unitsPerWhole > 0 ? unitInfo.unitsPerWhole : 1);
+  const n = round1((Number(quantity) || 0) / upw);
+  const label = unitInfo?.wholeLabel || 'units';
+  return `${n} ${n === 1 ? label.replace(/s$/i, '') : label}`;
+}
+
 /** "counted today", "counted 7 days ago" — freshness in plain words. */
 export function countedAgo(days) {
   if (days === null || days === undefined) return 'never counted';

@@ -24,7 +24,7 @@ import {
 } from '../services/apiService';
 import {
   buildPositions, summarise, nextBestAction, countedAgo, countingHabits,
-  GROUP_TITLES, UNSEEN_DAYS,
+  isMeasured, formatContainers, GROUP_TITLES, UNSEEN_DAYS,
 } from '../utils/stockPosition';
 import { parseUnitInfo, formatBaseQuantity } from '../utils/stockUnitUtils';
 import { compareCategories } from '../utils/categoryName';
@@ -34,6 +34,11 @@ const DAY = 86400000;
 const LOG_WINDOW_DAYS = 180;
 
 const shortDate = (ms) => (ms ? new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
+
+/** Kegs for draught, the item's own terms for everything else. */
+const qty = (n, unitInfo) => (isMeasured(unitInfo)
+  ? formatContainers(n, unitInfo)
+  : formatBaseQuantity(n, unitInfo));
 
 function StockPosition({ venuePath, items, colors, accent }) {
   const [sessions, setSessions] = useState(null);
@@ -171,11 +176,17 @@ function StockPosition({ venuePath, items, colors, accent }) {
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '0.87rem', fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
-                            <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>{countedAgo(r.daysSinceCount)}</div>
+                            {/* Litres stay visible for draught — the keg count
+                                is what gets ordered, but a part keg is a real
+                                thing and rounding it away would hide it. */}
+                            <div style={{ fontSize: '0.7rem', color: colors.textMuted }}>
+                              {countedAgo(r.daysSinceCount)}
+                              {isMeasured(r.unitInfo) && ` · ${formatBaseQuantity(r.quantity, r.unitInfo)}`}
+                            </div>
                           </div>
                           <div style={{ flexShrink: 0, fontSize: '0.95rem', fontWeight: 700, color: colors.textPrimary }}>
                             {r.skipped && <span style={{ fontWeight: 400, fontSize: '0.75rem', color: colors.textMuted }}>up to </span>}
-                            {formatBaseQuantity(r.quantity, r.unitInfo)}
+                            {qty(r.quantity, r.unitInfo)}
                           </div>
                           {r.signal && <span style={chip(r.signal.tone)}>{r.signal.label}</span>}
                         </button>
@@ -185,14 +196,14 @@ function StockPosition({ venuePath, items, colors, accent }) {
                             <div><strong style={{ color: colors.textPrimary }}>{r.basis.label}</strong> — {r.basis.note}</div>
                             {r.anchorAt ? (
                               <div>
-                                Counted {formatBaseQuantity(r.anchorQty, r.unitInfo)} on {shortDate(r.anchorAt)}
-                                {r.delivered > 0 && `, ${formatBaseQuantity(r.delivered, r.unitInfo)} delivered since`}
-                                {r.wasted > 0 && `, ${formatBaseQuantity(r.wasted, r.unitInfo)} wasted since`}
+                                Counted {qty(r.anchorQty, r.unitInfo)} on {shortDate(r.anchorAt)}
+                                {r.delivered > 0 && `, ${qty(r.delivered, r.unitInfo)} delivered since`}
+                                {r.wasted > 0 && `, ${qty(r.wasted, r.unitInfo)} wasted since`}
                               </div>
                             ) : (
                               <div>
                                 {r.delivered > 0
-                                  ? `${formatBaseQuantity(r.delivered, r.unitInfo)} booked in, never checked against a count.`
+                                  ? `${qty(r.delivered, r.unitInfo)} booked in, never checked against a count.`
                                   : 'Never counted and nothing ever booked in — if you don\'t stock it, archive it.'}
                               </div>
                             )}
