@@ -40,6 +40,26 @@ const qty = (n, unitInfo) => (isMeasured(unitInfo)
   ? formatContainers(n, unitInfo)
   : formatBaseQuantity(n, unitInfo));
 
+/**
+ * Break a group's rows into the blocks the screen draws.
+ *
+ * The in-stock list is already sorted into category order, so consecutive runs
+ * of one category are its sections. Everything else is one unsectioned block —
+ * those lists are ranked by urgency, and dividing them by category would put a
+ * shape on them they don't have.
+ */
+function segmentsOf(list, group) {
+  if (group !== 'stock') return [{ key: group, heading: null, rows: list }];
+  const out = [];
+  for (const r of list) {
+    const heading = r.category || 'Uncategorised';
+    const last = out[out.length - 1];
+    if (last && last.heading === heading) last.rows.push(r);
+    else out.push({ key: heading, heading, rows: [r] });
+  }
+  return out;
+}
+
 function StockPosition({ venuePath, items, colors, accent }) {
   const [sessions, setSessions] = useState(null);
   const [logs, setLogs] = useState(null); // { deliveries, wastage }
@@ -165,27 +185,32 @@ function StockPosition({ venuePath, items, colors, accent }) {
             {open && (
               <>
                 <p style={{ margin: '0.4rem 0 0.8rem', fontSize: '0.76rem', color: colors.textSecondary, lineHeight: 1.45 }}>{groupCaption[g]}</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                  {list.map((r, i) => {
-                    const isOpen = openRow === r.itemId;
-                    // Category headings only where the list is in category
-                    // order — the flagged groups are ranked by urgency, and
-                    // stamping headings on them would imply an order they
-                    // aren't in.
-                    const heading = g === 'stock' && (i === 0 || list[i - 1].category !== r.category)
-                      ? (r.category || 'Uncategorised')
-                      : null;
-                    return (
-                      <React.Fragment key={r.itemId}>
-                      {heading && (
-                        <div style={{ marginTop: i === 0 ? 0 : '0.5rem', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: colors.textSecondary }}>
-                          {heading}
-                        </div>
-                      )}
-                      <div style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '9px', overflow: 'hidden' }}>
+                {/* Each category sits on its own lightly sunken tray, so where
+                    one ends and the next begins is visible at a glance rather
+                    than inferred from a small heading in a long column.
+                    Only the in-stock list is sectioned — the flagged groups are
+                    ranked by urgency, and trays would imply an order they
+                    aren't in. */}
+                {segmentsOf(list, g).map((seg) => (
+                  <div
+                    key={seg.key}
+                    style={seg.heading
+                      ? { backgroundColor: colors.bgLight, borderRadius: '10px', padding: '0.55rem 0.6rem', marginBottom: '0.5rem' }
+                      : undefined}
+                  >
+                    {seg.heading && (
+                      <div style={{ margin: '0 0.05rem 0.4rem', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: colors.textSecondary }}>
+                        {seg.heading}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      {seg.rows.map((r) => {
+                        const isOpen = openRow === r.itemId;
+                        return (
+                          <div key={r.itemId} style={{ border: `1px solid ${colors.borderLight}`, borderRadius: '9px', overflow: 'hidden', backgroundColor: seg.heading ? colors.bgCard : 'transparent' }}>
                         <button
                           onClick={() => setOpenRow(isOpen ? null : r.itemId)}
-                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.55rem', padding: '0.55rem 0.65rem', background: isOpen ? colors.bgLight : 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.55rem', padding: '0.55rem 0.65rem', background: isOpen ? colors.primarySoft : 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '0.87rem', fontWeight: 600, color: colors.textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</div>
@@ -230,11 +255,12 @@ function StockPosition({ venuePath, items, colors, accent }) {
                             )}
                           </div>
                         )}
-                      </div>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </>
             )}
           </div>
