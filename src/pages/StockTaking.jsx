@@ -115,6 +115,10 @@ function StockTaking() {
   const [activeSection, setActiveSection] = useState('all');
   // Category filter (e.g. 'Draught Ale', 'Spirits') - 'all' shows everything
   const [activeCategory, setActiveCategory] = useState('all');
+  // Narrow the list to what this session hasn't counted yet. It's how you
+  // resume an interrupted count, and it's where the "Anything empty?" step
+  // sends you when the answer is "no — I still need to count those".
+  const [uncountedOnly, setUncountedOnly] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [viewingSession, setViewingSession] = useState(null); // For viewing completed session details
   const [deletingSession, setDeletingSession] = useState(null); // Session pending deletion confirmation
@@ -135,6 +139,11 @@ function StockTaking() {
   const showConfirm = (title, message, onConfirm, { confirmLabel = 'Confirm', confirmColor = '#e53e3e' } = {}) => {
     setConfirmModal({ title, message, onConfirm, confirmLabel, confirmColor });
   };
+
+  // The filter belongs to one count, not to the screen — carrying it into the
+  // next session would open a fresh take showing every item and claiming they
+  // were all outstanding, which is true but reads as a bug.
+  useEffect(() => { setUncountedOnly(false); }, [currentSession?.id]);
 
   // Track screen size for mobile vs desktop layout
   useEffect(() => {
@@ -335,7 +344,11 @@ function StockTaking() {
     // While searching, ignore the category tab so results span the whole section
     const matchesCategory = activeCategory === 'all' || !!query ||
       (activeCategory === OTHER_CATEGORY ? !item.category : item.category === activeCategory);
-    return !item.archived && matchesSearch && matchesSection && matchesCategory;
+    // Bypassed while searching, for the same reason the category tab is: if
+    // you've typed a name you want to be shown that item, not told it doesn't
+    // match a filter you set two minutes ago.
+    const matchesUncounted = !uncountedOnly || !!query || !currentSession?.counts?.[item.id];
+    return !item.archived && matchesSearch && matchesSection && matchesCategory && matchesUncounted;
   });
 
   // Categories available within the current section, for the category tabs
@@ -343,6 +356,11 @@ function StockTaking() {
   const categories = [...new Set(sectionItems.map(item => item.category).filter(Boolean))].sort(compareCategories);
   // Append an "Other" tab when the section has any uncategorised items.
   if (sectionItems.some(item => !item.category)) categories.push(OTHER_CATEGORY);
+
+  // How much of this section is still to do. Only meaningful mid-count.
+  const uncountedCount = currentSession
+    ? sectionItems.filter(item => !currentSession.counts?.[item.id]).length
+    : 0;
   // Confirmed categories within one section, for section-scoped quick-pick pills —
   // bar categories must not surface in the kitchen and vice versa.
   const categoriesForSection = (section) => {
@@ -1606,8 +1624,39 @@ function StockTaking() {
             </div>
           )}
 
+          {/* "Still to count" — the one filter that isn't about what an item
+              is, but about whether this session has dealt with it yet. Sits
+              ahead of the category tabs because when it's relevant it's the
+              only thing you want. */}
+          {/* Stays on screen once the last item is counted, otherwise the
+              filter would hide its own off switch and leave an empty list. */}
+          {!searchQuery && (uncountedCount > 0 || uncountedOnly) && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <button
+                onClick={() => { setUncountedOnly((v) => !v); setActiveCategory('all'); }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: uncountedOnly ? sessionAccent : colors.bgLight,
+                  color: uncountedOnly ? onSessionAccent : colors.textPrimary,
+                  border: 'none',
+                  borderRadius: '9999px',
+                  fontSize: '0.85rem',
+                  fontWeight: uncountedOnly ? 700 : 500,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {!uncountedOnly
+                  ? `Still to count (${uncountedCount})`
+                  : uncountedCount > 0
+                    ? `Showing ${uncountedCount} still to count`
+                    : "That's everything — show the full list"}
+              </button>
+            </div>
+          )}
+
           {/* Category Tabs - filter the list to a single category (hidden while searching) */}
-          {!searchQuery && categories.length > 1 && (
+          {!searchQuery && !uncountedOnly && categories.length > 1 && (
             <div style={{
               display: 'flex',
               gap: '0.5rem',
@@ -1663,7 +1712,13 @@ function StockTaking() {
                 padding: '2rem',
                 color: colors.textSecondary
               }}>
-                {searchQuery ? 'No items match your search' : 'No stock items yet'}
+                {searchQuery
+                  ? 'No items match your search'
+                  : uncountedOnly
+                    // "No stock items yet" would be a flat lie here — there are
+                    // ninety of them, they're just all counted.
+                    ? 'Everything in this section has been counted.'
+                    : 'No stock items yet'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -3126,12 +3181,17 @@ function StockTaking() {
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {/* "No — I still need to count those" is the other honest answer
+                  to this screen, and it was previously a dead end: Back
+                  returned you to ninety names with no way to see which ten were
+                  outstanding. It now switches the list to exactly those, in the
+                  real entry form, with its proper units and None left button. */}
               <button
                 type="button"
-                onClick={() => setFinishModal(null)}
+                onClick={() => { setFinishModal(null); setUncountedOnly(true); setActiveCategory('all'); setSearchQuery(''); }}
                 disabled={finishModal.working}
                 style={{ flexShrink: 0, padding: '0.8rem 1.1rem', border: 'none', borderRadius: '8px', backgroundColor: colors.bgLight, color: colors.textPrimary, fontWeight: 600, cursor: 'pointer' }}
-              >Back</button>
+              >Count them</button>
               <button
                 type="button"
                 onClick={confirmFinish}
