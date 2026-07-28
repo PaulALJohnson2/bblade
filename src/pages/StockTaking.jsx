@@ -898,10 +898,29 @@ function StockTaking() {
 
   // Split a summary string into total (bracketed part) and detail (the rest)
   // e.g. "3 Kegs, 5 Tenths (175 Litres)" → { total: "175 Litres", detail: "3 Kegs, 5 Tenths" }
-  const splitSummary = (summary) => {
+  /**
+   * Split a formatted count into its headline figure and its supporting line.
+   *
+   * formatCountSummary puts the derived total in brackets — "1 Kegs (50 Litres)",
+   * "2 Cases, 5 Loose (53 total)" — and for discrete stock the bracketed total
+   * is the useful number, so it leads.
+   *
+   * Measured stock is the other way round. Litres are the storage unit, not the
+   * thinking unit: nobody orders 50 litres, they order a keg. The stock
+   * position leads on containers for exactly that reason, and a count record
+   * that led on litres made the same cellar read two different ways on two
+   * screens. So kegs lead here too, with the litres beneath.
+   */
+  const splitSummary = (summary, unitInfo) => {
     const match = summary.match(/^(.*?)\s*\(([^)]+)\)$/);
-    if (match) return { detail: match[1].trim(), total: match[2].trim() };
-    return { detail: '', total: summary };
+    if (!match) return { detail: '', total: summary };
+    const outside = match[1].trim();
+    const inside = match[2].trim();
+    if (unitInfo?.hasTenthsOption) {
+      // "1 Kegs" is what the formatter emits; nobody says it out loud.
+      return { total: outside.replace(/\b1 ([A-Za-z]+)s\b/g, '1 $1'), detail: inside };
+    }
+    return { detail: outside, total: inside };
   };
 
   const formatCountedAt = (countedAt) => {
@@ -2088,7 +2107,7 @@ function StockTaking() {
                           {item.category || item.section}
                           {formatItemDescription(item) && ` • ${formatItemDescription(item)}`}
                           {isCounted && (() => {
-                            const { detail, total } = splitSummary(formatCountSummary(sessionCount, parseUnitInfo(item)));
+                            const { detail, total } = splitSummary(formatCountSummary(sessionCount, parseUnitInfo(item)), parseUnitInfo(item));
                             return detail && total ? <span style={{ marginLeft: '0.5rem' }}>• {total}</span> : null;
                           })()}
                         </div>
@@ -2341,7 +2360,7 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                      return { itemId, ...count, category: item?.category || '', unitInfo, summary: formatCountSummary(count, unitInfo) };
                     })
                     .sort(walkOrder);
 
@@ -2365,7 +2384,7 @@ function StockTaking() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {barCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
-                          const { total, detail } = splitSummary(count.summary);
+                          const { total, detail } = splitSummary(count.summary, count.unitInfo);
                           const newCategory = hasCategories && (idx === 0 || count.category !== barCounted[idx - 1].category);
                           return (
                             <React.Fragment key={count.itemId}>
@@ -2408,7 +2427,7 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                      return { itemId, ...count, category: item?.category || '', unitInfo, summary: formatCountSummary(count, unitInfo) };
                     })
                     .sort(walkOrder);
 
@@ -2432,7 +2451,7 @@ function StockTaking() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         {kitchenCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
-                          const { total, detail } = splitSummary(count.summary);
+                          const { total, detail } = splitSummary(count.summary, count.unitInfo);
                           const newCategory = hasCategories && (idx === 0 || count.category !== kitchenCounted[idx - 1].category);
                           return (
                             <React.Fragment key={count.itemId}>
@@ -2611,7 +2630,7 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                      return { itemId, ...count, category: item?.category || '', unitInfo, summary: formatCountSummary(count, unitInfo) };
                     })
                     .sort(walkOrder);
 
@@ -2633,7 +2652,7 @@ function StockTaking() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {barCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
-                          const { total, detail } = splitSummary(count.summary);
+                          const { total, detail } = splitSummary(count.summary, count.unitInfo);
                           const newCategory = hasCategories && (idx === 0 || count.category !== barCounted[idx - 1].category);
                           return (
                             <React.Fragment key={count.itemId}>
@@ -2677,7 +2696,7 @@ function StockTaking() {
                     .map(([itemId, count]) => {
                       const item = allItems.find(i => i.id === itemId);
                       const unitInfo = item ? parseUnitInfo(item) : null;
-                      return { itemId, ...count, category: item?.category || '', summary: formatCountSummary(count, unitInfo) };
+                      return { itemId, ...count, category: item?.category || '', unitInfo, summary: formatCountSummary(count, unitInfo) };
                     })
                     .sort(walkOrder);
 
@@ -2699,7 +2718,7 @@ function StockTaking() {
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         {kitchenCounted.map((count, idx) => {
                           const item = allItems.find(i => i.id === count.itemId);
-                          const { total, detail } = splitSummary(count.summary);
+                          const { total, detail } = splitSummary(count.summary, count.unitInfo);
                           const newCategory = hasCategories && (idx === 0 || count.category !== kitchenCounted[idx - 1].category);
                           return (
                             <React.Fragment key={count.itemId}>
@@ -3354,7 +3373,7 @@ function StockTaking() {
                 const summaryOf = (e) => viewingHistory.unitInfo
                   ? formatCountSummary(e, viewingHistory.unitInfo)
                   : `${e.quantity}`;
-                const { total, detail } = splitSummary(summaryOf(entry));
+                const { total, detail } = splitSummary(summaryOf(entry), viewingHistory.unitInfo);
                 // How much this editor added or removed vs the previous entry.
                 const delta = !isFirst
                   ? formatDelta(viewingHistory.history[idx - 1].quantity, entry.quantity, viewingHistory.unitInfo)
