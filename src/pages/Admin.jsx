@@ -36,7 +36,7 @@ const DEPARTMENTS = [
 const departmentLabel = (d) => (DEPARTMENTS.find(([k]) => k === d) || DEPARTMENTS[0])[1];
 
 function Admin() {
-  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, selectedPub, isAdmin, userProfile } = useAuth();
+  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, selectedPub, isAdmin, userProfile, currentUser } = useAuth();
   const [resettingId, setResettingId] = useState(null);
 
   const handleResetPassword = async (member) => {
@@ -70,6 +70,8 @@ function Admin() {
   const [editDepartment, setEditDepartment] = useState('bar');
   const [editOnRota, setEditOnRota] = useState(true);
   const [editWithStock, setEditWithStock] = useState(false);
+  const [removing, setRemoving] = useState(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
@@ -150,10 +152,23 @@ function Admin() {
     else setError('Could not save staff: ' + res.error);
   };
 
-  const handleRemoveMember = async (member) => {
+  // Removing a member deletes their sign-in with them (syncMemberAuth revokes
+  // the auth user once the email goes), and there is no restore — so Remove
+  // asks first. It's a dialog rather than a second tap on the same link
+  // because the mistake this guards against is a stray tap, and an in-place
+  // "Sure?" just puts a live control under the finger that already slipped.
+  const handleRemoveMember = (member) => {
     setError(null);
-    const res = await deleteMember(member.id);
-    if (!res.success) setError('Could not remove staff: ' + res.error);
+    setRemoving(member);
+  };
+
+  const confirmRemove = async () => {
+    if (!removing || removeBusy) return;
+    setRemoveBusy(true);
+    const res = await deleteMember(removing.id);
+    setRemoveBusy(false);
+    if (res.success) setRemoving(null);
+    else setError('Could not remove staff: ' + res.error);
   };
 
   const card = {
@@ -174,6 +189,18 @@ function Admin() {
     backgroundColor: colors.bgCard,
     color: colors.textPrimary,
     boxSizing: 'border-box',
+  };
+  // The per-member actions read as text links, but they need a finger-sized box
+  // behind them — bare 0.85rem text is a ~14px target, and one of these deletes
+  // a person. Padding gives ~36px without changing how the row looks.
+  const rowLink = {
+    background: 'none',
+    border: 'none',
+    padding: '0.6rem 0.3rem',
+    margin: '-0.6rem 0',
+    cursor: 'pointer',
+    fontSize: '0.85rem',
+    textDecoration: 'underline',
   };
   const primaryBtn = {
     padding: '0.75rem 1.25rem',
@@ -611,7 +638,7 @@ function Admin() {
                     <div style={{ display: 'flex', gap: '0.9rem', alignItems: 'center', flexShrink: 0, marginLeft: 'auto' }}>
                       <button
                         onClick={() => startEdit(member)}
-                        style={{ background: 'none', border: 'none', color: colors.primary, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                        style={{ ...rowLink, color: colors.primary }}
                       >
                         Edit
                       </button>
@@ -619,14 +646,14 @@ function Admin() {
                         <button
                           onClick={() => handleResetPassword(member)}
                           disabled={resettingId === member.id}
-                          style={{ background: 'none', border: 'none', color: colors.textSecondary, cursor: resettingId === member.id ? 'default' : 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                          style={{ ...rowLink, color: colors.textSecondary, cursor: resettingId === member.id ? 'default' : 'pointer' }}
                         >
                           {resettingId === member.id ? 'Resetting…' : 'Reset password'}
                         </button>
                       )}
                       <button
                         onClick={() => handleRemoveMember(member)}
-                        style={{ background: 'none', border: 'none', color: colors.errorDark, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}
+                        style={{ ...rowLink, color: colors.errorDark }}
                       >
                         Remove
                       </button>
@@ -647,6 +674,62 @@ function Admin() {
           </div>
         )}
       </div>
+
+      {/* Remove confirmation. Naming the person is the point: the failure this
+          prevents is removing the wrong row, which a generic "Are you sure?"
+          would sail straight through. */}
+      {removing && (() => {
+        const name = removing.displayName || 'this person';
+        const isSelf = !!(removing.email && currentUser?.email
+          && removing.email.toLowerCase() === currentUser.email.toLowerCase());
+        return (
+          <div
+            onClick={() => { if (!removeBusy) setRemoving(null); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 5000, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}
+          >
+            <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: colors.bgCard, borderRadius: '14px', boxShadow: `0 12px 40px ${colors.shadow}`, padding: '1.5rem', maxWidth: '380px', width: '100%' }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: colors.error, marginBottom: '0.5rem' }}>
+                Remove {name}?
+              </div>
+              <div style={{ fontSize: '0.88rem', color: colors.textSecondary, marginBottom: '1rem', lineHeight: 1.45 }}>
+                {isSelf ? (
+                  <>
+                    <strong style={{ color: colors.textPrimary }}>This is your own account.</strong>{' '}
+                    You'll be signed out and won't be able to sign back in — someone
+                    else would have to add you again.
+                  </>
+                ) : removing.email ? (
+                  <>
+                    This deletes their staff record and their sign-in
+                    ({removing.email}). They won't be able to log in, and their
+                    password can't be recovered — adding them back later means a
+                    new one.
+                  </>
+                ) : (
+                  <>This deletes their staff record. They'll come off the rota from now on.</>
+                )}
+                {' '}It can't be undone.
+              </div>
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <button
+                  onClick={() => setRemoving(null)}
+                  disabled={removeBusy}
+                  style={{ flex: 1, padding: '0.8rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '10px', fontWeight: 600, fontSize: '1rem', cursor: 'pointer' }}
+                >Cancel</button>
+                <button
+                  onClick={confirmRemove}
+                  disabled={removeBusy}
+                  style={{
+                    flex: 1, padding: '0.8rem', backgroundColor: colors.error, color: '#fff', border: 'none',
+                    borderRadius: '10px', fontWeight: 700, fontSize: '1rem',
+                    cursor: removeBusy ? 'not-allowed' : 'pointer', opacity: removeBusy ? 0.5 : 1,
+                  }}
+                >{removeBusy ? 'Removing…' : 'Remove'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
