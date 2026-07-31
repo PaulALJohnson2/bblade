@@ -39,6 +39,7 @@ const { onCall, HttpsError: CallableError } = require('firebase-functions/v2/htt
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
+const { randomBytes, scryptSync, timingSafeEqual } = require('node:crypto');
 const logger = require('firebase-functions/logger');
 
 initializeApp();
@@ -120,6 +121,14 @@ exports.syncMemberAuth = onDocumentWritten('accounts/{accountId}/members/{member
     }
   }
 
+  // Member removed outright → their tablet PIN goes with them. Nothing reads an
+  // orphaned hash, but a removed person's secret has no reason to outlive them
+  // (and the id could be reused).
+  if (before && !after) {
+    await db.doc(`accounts/${accountId}/memberSecrets/${event.params.memberId}`).delete()
+      .catch((err) => logger.warn(`Could not clear PIN for removed member: ${err.message}`));
+  }
+
   if (!afterEmail) return;
 
   // Ensure an auth user exists for the member's email, with fresh claims.
@@ -143,9 +152,15 @@ exports.syncMemberAuth = onDocumentWritten('accounts/{accountId}/members/{member
     await event.data.after.ref.update({ initialPassword, mustChangePassword: true });
   }
 
-  const claims = { accountId, role: after.role || 'staff' };
+  // `tablet` marks the shared bar-tablet logins (a member with the "Tablet
+  // account" tick). It rides in the token so the rules can tell a device from a
+  // person — a tablet sits signed in behind the bar all night, so it's kept out
+  // of stock counts even though a person unlocks it with their PIN.
+  const claims = { accountId, role: after.role || 'staff', tablet: !!after.isTablet };
   const existing = user.customClaims || {};
-  if (existing.accountId !== claims.accountId || existing.role !== claims.role) {
+  if (existing.accountId !== claims.accountId
+    || existing.role !== claims.role
+    || !!existing.tablet !== claims.tablet) {
     await auth.setCustomUserClaims(user.uid, { ...existing, ...claims });
     logger.info(`Set claims for ${afterEmail}: ${JSON.stringify(claims)}`);
   }
@@ -186,11 +201,19 @@ exports.gateUserSignIn = beforeUserSignedIn(async (event) => {
     return { sessionClaims: { accountId: ACCOUNT_ID, role: 'owner', platformAdmin: true } };
   }
 
-  // Provisioned member: the auth record carries the claims.
+  // Provisioned member: the auth record carries the claims. `tablet` travels
+  // with them — the session claims are what the rules see, so dropping it here
+  // would leave a bar tablet indistinguishable from a person.
   const claims = (event.data && event.data.customClaims) || {};
   if (claims.accountId) {
     logger.info(`Sign-in allowed (claims): ${email}`);
-    return { sessionClaims: { accountId: claims.accountId, role: claims.role || 'staff' } };
+    return {
+      sessionClaims: {
+        accountId: claims.accountId,
+        role: claims.role || 'staff',
+        tablet: claims.tablet === true,
+      },
+    };
   }
 
   // Pre-provisioning auth user: check membership once and stamp the claims so
@@ -301,6 +324,141 @@ exports.resetMemberPassword = onCall(async (request) => {
   await ref.update({ initialPassword, mustChangePassword: true });
   logger.info(`Initial password reset for ${email} by ${request.auth.token.email}`);
   return { success: true, initialPassword };
+});
+
+// ---------------------------------------------------------------------------
+// Staff PINs (the bar tablet)
+//
+// A tablet behind the bar is signed in as one shared member all night; the PIN
+// is what says which PERSON is using it, so every clock-in and wastage entry
+// carries the right name. PINs therefore have to be verified somewhere the
+// staff can't reach: a 4-digit hash sitting on a member doc (readable by every
+// member) is 10,000 guesses — cracked in the time it takes to open a console.
+// So the hash lives at accounts/{accountId}/memberSecrets/{memberId}, which the
+// rules deny to every client, and only these callables (Admin SDK, rules
+// bypassed) can touch it.
+//
+// Guessing at the pad is capped instead: five wrong tries locks that person's
+// PIN for fifteen minutes, which puts 10,000 combinations far out of reach of
+// anyone standing at the bar.
+// ---------------------------------------------------------------------------
+
+const PIN_RE = /^\d{4}$/;
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCK_MS = 15 * 60 * 1000;
+
+const secretRef = (accountId, memberId) => db.doc(`accounts/${accountId}/memberSecrets/${memberId}`);
+const memberRef = (accountId, memberId) => db.doc(`accounts/${accountId}/members/${memberId}`);
+
+/** scrypt hash of a PIN with a fresh 16-byte salt. Both returned as hex. */
+function hashPin(pin) {
+  const salt = randomBytes(16).toString('hex');
+  return { algo: 'scrypt', salt, hash: scryptSync(String(pin), salt, 32).toString('hex') };
+}
+
+/** Constant-time check of a PIN against a stored { salt, hash }. */
+function pinMatches(pin, secret) {
+  if (!secret || !secret.salt || !secret.hash) return false;
+  const candidate = scryptSync(String(pin), secret.salt, 32);
+  const stored = Buffer.from(secret.hash, 'hex');
+  return candidate.length === stored.length && timingSafeEqual(candidate, stored);
+}
+
+/** The member being acted on, in the caller's own account. Throws if unknown. */
+async function requireMember(request, data) {
+  if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
+  const memberId = String((data && data.memberId) || '').trim();
+  if (!memberId) throw new CallableError('invalid-argument', 'memberId is required.');
+  const accountId = await resolveTargetAccount(request, data && data.accountId);
+  const snap = await memberRef(accountId, memberId).get();
+  if (!snap.exists) throw new CallableError('not-found', 'That person is no longer on the staff list.');
+  return { accountId, memberId, member: snap.data() || {} };
+}
+
+const isManagerCaller = async (request) => request.auth.token.role === 'owner'
+  || request.auth.token.role === 'manager'
+  || request.auth.token.platformAdmin === true
+  || (await isSuperAdmin(request.auth.token.email));
+
+/**
+ * Set a person's PIN — the first time they tap their card on the tablet. Once
+ * set it can't be overwritten from the pad: changing it goes through a manager
+ * reset, so nobody can walk up and quietly take over a colleague's card.
+ */
+exports.setStaffPin = onCall(async (request) => {
+  const pin = String((request.data && request.data.pin) || '');
+  if (!PIN_RE.test(pin)) throw new CallableError('invalid-argument', 'A PIN is 4 digits.');
+  const { accountId, memberId, member } = await requireMember(request, request.data);
+
+  const ref = secretRef(accountId, memberId);
+  if ((await ref.get()).exists) {
+    throw new CallableError('already-exists', 'That person already has a PIN. A manager can reset it.');
+  }
+  await ref.set({
+    ...hashPin(pin),
+    attempts: 0,
+    lockedUntil: null,
+    setAt: FieldValue.serverTimestamp(),
+    setByUid: request.auth.uid,
+  });
+  await memberRef(accountId, memberId).update({ hasPin: true });
+  logger.info(`PIN set for member ${memberId} (${member.displayName || '?'}) by ${request.auth.token.email || request.auth.uid}`);
+  return { success: true };
+});
+
+/**
+ * Check a PIN at the tablet's pad. Counts wrong tries and locks the card for
+ * fifteen minutes after five, so the pad can't be worked through by hand.
+ */
+exports.verifyStaffPin = onCall(async (request) => {
+  const pin = String((request.data && request.data.pin) || '');
+  const { accountId, memberId } = await requireMember(request, request.data);
+
+  const ref = secretRef(accountId, memberId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new CallableError('failed-precondition', 'No PIN set yet.');
+  const secret = snap.data() || {};
+
+  const lockedUntil = secret.lockedUntil ? secret.lockedUntil.toMillis() : 0;
+  if (lockedUntil > Date.now()) {
+    throw new CallableError('resource-exhausted', 'Too many wrong tries. Try again in a few minutes.');
+  }
+
+  if (!PIN_RE.test(pin) || !pinMatches(pin, secret)) {
+    // The lock window starts from the attempt that trips it; earlier attempts
+    // are only cleared by getting it right (or a manager reset), so five wrong
+    // tries spread over an evening still lock the card.
+    const attempts = (secret.attempts || 0) + 1;
+    await ref.update({
+      attempts,
+      lockedUntil: attempts >= PIN_MAX_ATTEMPTS
+        ? new Date(Date.now() + PIN_LOCK_MS)
+        : (secret.lockedUntil || null),
+    });
+    logger.warn(`Wrong PIN for member ${memberId} (attempt ${attempts})`);
+    throw new CallableError('permission-denied', attempts >= PIN_MAX_ATTEMPTS
+      ? 'Too many wrong tries. Try again in a few minutes.'
+      : 'That PIN is not right.');
+  }
+
+  if (secret.attempts) await ref.update({ attempts: 0, lockedUntil: null });
+  return { success: true };
+});
+
+/**
+ * Manager action: clear a PIN — forgotten, locked out, or a card that needs
+ * handing to someone else. The next tap on that card sets a fresh one.
+ */
+exports.resetStaffPin = onCall(async (request) => {
+  if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
+  if (!(await isManagerCaller(request))) {
+    throw new CallableError('permission-denied', 'Only managers can reset a PIN.');
+  }
+  const { accountId, memberId, member } = await requireMember(request, request.data);
+  await secretRef(accountId, memberId).delete();
+  await memberRef(accountId, memberId).update({ hasPin: FieldValue.delete() });
+  logger.info(`PIN reset for member ${memberId} (${member.displayName || '?'}) by ${request.auth.token.email}`);
+  return { success: true };
 });
 
 // ---------------------------------------------------------------------------

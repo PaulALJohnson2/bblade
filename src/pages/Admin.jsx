@@ -29,6 +29,32 @@ const ROLES = ['owner', 'manager', 'staff'];
 
 const DAY_NAMES = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
 
+// ---------------------------------------------------------------------------
+// Tablet accounts.
+//
+// The tablet behind the bar signs in as an ordinary staff member — same
+// provisioning, same initial password in the row below — it just isn't a
+// person. Its login is generated rather than typed, on the venue's own name:
+// tablet@therichmond.email, then tablet2@ for a second device. Nothing is ever
+// emailed to it (sign-in is by password), so the address only has to be
+// unique and recognisable at a glance.
+// ---------------------------------------------------------------------------
+
+const venueSlug = (name) => (name || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'venue';
+
+/** The next free tablet address for this venue, e.g. tablet3@therichmond.email. */
+function nextTabletEmail(members, pubName, excludeId = null) {
+  const domain = `${venueSlug(pubName)}.email`;
+  const taken = new Set((members || [])
+    .filter((m) => m.id !== excludeId)
+    .map((m) => (m.email || '').toLowerCase()));
+  for (let n = 1; n < 50; n += 1) {
+    const candidate = `tablet${n === 1 ? '' : n}@${domain}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `tablet${Date.now()}@${domain}`;
+}
+
 // Candidate closing times: 15-minute steps from 8pm round to 4am. A pub's
 // "close" is when the last person finishes (cleardown included), not last
 // orders, so the list runs well past midnight.
@@ -52,7 +78,7 @@ const DEPARTMENTS = [
 const departmentLabel = (d) => (DEPARTMENTS.find(([k]) => k === d) || DEPARTMENTS[0])[1];
 
 function Admin() {
-  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, selectedPub, isAdmin, userProfile, currentUser } = useAuth();
+  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, resetStaffPin, selectedPub, isAdmin, userProfile, currentMember } = useAuth();
   const [resettingId, setResettingId] = useState(null);
 
   const handleResetPassword = async (member) => {
@@ -62,6 +88,18 @@ function Admin() {
     setResettingId(null);
     // On success the member's initialPassword updates live and shows in the row.
     if (!res.success) setError('Could not reset password: ' + res.error);
+  };
+
+  // Clearing a tablet PIN — forgotten, or locked out after five wrong tries.
+  // No confirmation: unlike Remove, the worst case is the person setting a new
+  // PIN at the tablet ten seconds later.
+  const [pinResettingId, setPinResettingId] = useState(null);
+  const handleResetPin = async (member) => {
+    setError(null);
+    setPinResettingId(member.id);
+    const res = await resetStaffPin(member.id);
+    setPinResettingId(null);
+    if (!res.success) setError('Could not reset PIN: ' + res.error);
   };
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
@@ -75,6 +113,7 @@ function Admin() {
   const [newDepartment, setNewDepartment] = useState('bar');
   const [newOnRota, setNewOnRota] = useState(true);
   const [newWithStock, setNewWithStock] = useState(false);
+  const [newIsTablet, setNewIsTablet] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
   const [error, setError] = useState(null);
@@ -86,6 +125,7 @@ function Admin() {
   const [editDepartment, setEditDepartment] = useState('bar');
   const [editOnRota, setEditOnRota] = useState(true);
   const [editWithStock, setEditWithStock] = useState(false);
+  const [editIsTablet, setEditIsTablet] = useState(false);
   const [removing, setRemoving] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(false);
 
@@ -155,6 +195,24 @@ function Admin() {
     }
   };
 
+  // Ticking "Tablet account" turns the row into a device rather than a person:
+  // the login is generated from the venue name, it never goes on a rota, and it
+  // stays plain staff — a tablet anyone can pick up must never carry a
+  // manager's access. Unticking hands the fields back.
+  const toggleNewIsTablet = (on) => {
+    setNewIsTablet(on);
+    if (on) {
+      setNewEmail(nextTabletEmail(members, pubName));
+      if (!newName.trim()) setNewName('Bar tablet');
+      setNewRole('staff');
+      setNewOnRota(false);
+      setNewWithStock(false);
+    } else {
+      setNewEmail('');
+      setNewOnRota(true);
+    }
+  };
+
   const handleAddMember = async () => {
     const displayName = newName.trim();
     const email = newEmail.trim().toLowerCase();
@@ -168,9 +226,21 @@ function Admin() {
       return;
     }
     setError(null);
-    const res = await saveMember(null, { displayName, email, role: newRole, department: newDepartment, venueAccess: 'all', active: true, onRota: newOnRota, withStock: newWithStock });
-    if (res.success) { setNewName(''); setNewEmail(''); setNewRole('staff'); setNewDepartment('bar'); setNewOnRota(true); setNewWithStock(false); }
-    else setError('Could not add staff: ' + res.error);
+    const res = await saveMember(null, {
+      displayName,
+      email,
+      role: newIsTablet ? 'staff' : newRole,
+      department: newDepartment,
+      venueAccess: 'all',
+      active: true,
+      onRota: newIsTablet ? false : newOnRota,
+      withStock: newIsTablet ? false : newWithStock,
+      isTablet: newIsTablet,
+    });
+    if (res.success) {
+      setNewName(''); setNewEmail(''); setNewRole('staff'); setNewDepartment('bar');
+      setNewOnRota(true); setNewWithStock(false); setNewIsTablet(false);
+    } else setError('Could not add staff: ' + res.error);
   };
 
   const startEdit = (member) => {
@@ -182,6 +252,20 @@ function Admin() {
     setEditDepartment(member.department || 'bar');
     setEditOnRota(member.onRota !== false);
     setEditWithStock(!!member.withStock);
+    setEditIsTablet(!!member.isTablet);
+  };
+
+  // Same rules as the add form, on an existing row. Turning a person INTO a
+  // tablet would strand their real email, so the address is only generated
+  // when the row doesn't already have one it should keep.
+  const toggleEditIsTablet = (on) => {
+    setEditIsTablet(on);
+    if (on) {
+      if (!/^tablet\d*@/.test(editEmail)) setEditEmail(nextTabletEmail(members, pubName, editingId));
+      setEditRole('staff');
+      setEditOnRota(false);
+      setEditWithStock(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -197,10 +281,24 @@ function Admin() {
       return;
     }
     setError(null);
-    const res = await saveMember(editingId, { displayName, email, role: editRole, department: editDepartment, onRota: editOnRota, withStock: editWithStock });
+    const res = await saveMember(editingId, {
+      displayName,
+      email,
+      role: editIsTablet ? 'staff' : editRole,
+      department: editDepartment,
+      onRota: editIsTablet ? false : editOnRota,
+      withStock: editIsTablet ? false : editWithStock,
+      isTablet: editIsTablet,
+    });
     if (res.success) setEditingId(null);
     else setError('Could not save staff: ' + res.error);
   };
+
+  // Nobody removes their own staff record. It takes their sign-in with it and
+  // can't be undone, so an owner doing it alone locks themselves out of the
+  // account with no one left who could add them back. Their row simply has no
+  // Remove link; this guard is the backstop for any other route to it.
+  const isSelf = (member) => !!(currentMember && member.id === currentMember.id);
 
   // Removing a member deletes their sign-in with them (syncMemberAuth revokes
   // the auth user once the email goes), and there is no restore — so Remove
@@ -209,6 +307,10 @@ function Admin() {
   // "Sure?" just puts a live control under the finger that already slipped.
   const handleRemoveMember = (member) => {
     setError(null);
+    if (isSelf(member)) {
+      setError("You can't remove your own account — ask another owner or manager to do it.");
+      return;
+    }
     setRemoving(member);
   };
 
@@ -629,16 +731,19 @@ function Admin() {
             placeholder="Name"
           />
           <input
-            style={{ ...input, minWidth: '180px' }}
+            style={{ ...input, minWidth: '180px', opacity: newIsTablet ? 0.7 : 1 }}
             type="email"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
             placeholder="Google email (optional)"
+            readOnly={newIsTablet}
+            title={newIsTablet ? "A tablet's login is generated from the pub name" : undefined}
           />
           <select
             value={newRole}
             onChange={(e) => setNewRole(e.target.value)}
+            disabled={newIsTablet}
             style={{
               padding: '0.75rem', fontSize: '1rem', borderRadius: '8px',
               border: `2px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary,
@@ -657,16 +762,29 @@ function Admin() {
           >
             {DEPARTMENTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
           </select>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-            <input type="checkbox" checked={newOnRota} onChange={(e) => setNewOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: newIsTablet ? colors.textMuted : colors.textPrimary, whiteSpace: 'nowrap', cursor: newIsTablet ? 'default' : 'pointer' }}>
+            <input type="checkbox" checked={newOnRota} disabled={newIsTablet} onChange={(e) => setNewOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
             On rota
           </label>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-            <input type="checkbox" checked={newWithStock} onChange={(e) => setNewWithStock(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: newIsTablet ? colors.textMuted : colors.textPrimary, whiteSpace: 'nowrap', cursor: newIsTablet ? 'default' : 'pointer' }}>
+            <input type="checkbox" checked={newWithStock} disabled={newIsTablet} onChange={(e) => setNewWithStock(e.target.checked)} style={{ width: '18px', height: '18px' }} />
             With stock
+          </label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+            <input type="checkbox" checked={newIsTablet} onChange={(e) => toggleNewIsTablet(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+            Tablet account
           </label>
           <button onClick={handleAddMember} style={primaryBtn}>Add</button>
         </div>
+
+        {newIsTablet && (
+          <div style={{ margin: '-0.5rem 0 1rem', padding: '0.6rem 0.8rem', borderRadius: '8px', backgroundColor: colors.bgLight, color: colors.textSecondary, fontSize: '0.82rem', lineHeight: 1.45 }}>
+            A tablet for behind the bar, not a person. Add it, then sign the tablet
+            in once with <strong style={{ color: colors.textPrimary }}>{newEmail}</strong> and the initial
+            password that appears in its row. It opens on the staff name cards, and
+            each person taps their own name and PIN to use it.
+          </div>
+        )}
 
         {members.length === 0 ? (
           <div style={{ color: colors.textSecondary, fontSize: '0.9rem', textAlign: 'center', padding: '1rem' }}>
@@ -689,16 +807,18 @@ function Admin() {
                       placeholder="Name"
                     />
                     <input
-                      style={{ ...input, minWidth: '160px' }}
+                      style={{ ...input, minWidth: '160px', opacity: editIsTablet ? 0.7 : 1 }}
                       type="email"
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
                       placeholder="Google email (optional)"
+                      readOnly={editIsTablet}
                     />
                     <select
                       value={editRole}
                       onChange={(e) => setEditRole(e.target.value)}
+                      disabled={editIsTablet}
                       style={{
                         padding: '0.75rem', fontSize: '1rem', borderRadius: '8px',
                         border: `2px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary,
@@ -717,13 +837,17 @@ function Admin() {
                     >
                       {DEPARTMENTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
                     </select>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={editOnRota} onChange={(e) => setEditOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: editIsTablet ? colors.textMuted : colors.textPrimary, whiteSpace: 'nowrap', cursor: editIsTablet ? 'default' : 'pointer' }}>
+                      <input type="checkbox" checked={editOnRota} disabled={editIsTablet} onChange={(e) => setEditOnRota(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                       On rota
                     </label>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={editWithStock} onChange={(e) => setEditWithStock(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: editIsTablet ? colors.textMuted : colors.textPrimary, whiteSpace: 'nowrap', cursor: editIsTablet ? 'default' : 'pointer' }}>
+                      <input type="checkbox" checked={editWithStock} disabled={editIsTablet} onChange={(e) => setEditWithStock(e.target.checked)} style={{ width: '18px', height: '18px' }} />
                       With stock
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.9rem', color: colors.textPrimary, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={editIsTablet} onChange={(e) => toggleEditIsTablet(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                      Tablet account
                     </label>
                     <button onClick={handleSaveEdit} style={primaryBtn}>Save</button>
                     <button
@@ -738,35 +862,60 @@ function Admin() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <span style={{ color: colors.textPrimary, minWidth: 0, flex: '1 1 12rem' }}>
                       {member.displayName}
-                      {member.role && (
+                      {/* Naming your own row is what makes the missing Remove
+                          link read as deliberate rather than a glitch. */}
+                      {isSelf(member) && (
                         <span style={{
-                          marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                          marginLeft: '0.5rem', fontSize: '0.7rem', fontWeight: 700, color: colors.primary,
                           textTransform: 'uppercase', letterSpacing: '0.04em',
                         }}>
-                          {member.role}
+                          you
                         </span>
                       )}
-                      <span style={{
-                        marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
-                        textTransform: 'uppercase', letterSpacing: '0.04em',
-                      }}>
-                        · {departmentLabel(member.department)}
-                      </span>
-                      {member.withStock && (
+                      {/* A tablet isn't a person: role, department and rota
+                          status say nothing useful about it, so the row carries
+                          one chip instead of four. */}
+                      {member.isTablet ? (
                         <span style={{
-                          marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                          marginLeft: '0.5rem', fontSize: '0.7rem', fontWeight: 700, color: colors.primary,
+                          border: `1px solid ${colors.primary}`, borderRadius: '9999px', padding: '0.05rem 0.4rem',
                           textTransform: 'uppercase', letterSpacing: '0.04em',
                         }}>
-                          · with stock
+                          tablet
                         </span>
-                      )}
-                      {member.onRota === false && (
-                        <span style={{
-                          marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textMuted,
-                          textTransform: 'uppercase', letterSpacing: '0.04em',
-                        }}>
-                          · not on rota
-                        </span>
+                      ) : (
+                        <>
+                          {member.role && (
+                            <span style={{
+                              marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                              textTransform: 'uppercase', letterSpacing: '0.04em',
+                            }}>
+                              {member.role}
+                            </span>
+                          )}
+                          <span style={{
+                            marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                            textTransform: 'uppercase', letterSpacing: '0.04em',
+                          }}>
+                            · {departmentLabel(member.department)}
+                          </span>
+                          {member.withStock && (
+                            <span style={{
+                              marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textSecondary,
+                              textTransform: 'uppercase', letterSpacing: '0.04em',
+                            }}>
+                              · with stock
+                            </span>
+                          )}
+                          {member.onRota === false && (
+                            <span style={{
+                              marginLeft: '0.5rem', fontSize: '0.7rem', color: colors.textMuted,
+                              textTransform: 'uppercase', letterSpacing: '0.04em',
+                            }}>
+                              · not on rota
+                            </span>
+                          )}
+                        </>
                       )}
                       {member.email && (
                         <span style={{ display: 'block', fontSize: '0.78rem', color: colors.textSecondary, overflowWrap: 'anywhere' }}>
@@ -790,14 +939,35 @@ function Admin() {
                           {resettingId === member.id ? 'Resetting…' : 'Reset password'}
                         </button>
                       )}
-                      <button
-                        onClick={() => handleRemoveMember(member)}
-                        style={{ ...rowLink, color: colors.errorDark }}
-                      >
-                        Remove
-                      </button>
+                      {/* Tablet PIN. Only offered to people (a tablet has no
+                          PIN of its own) and only once one is set — until then
+                          the state below says so, and there's nothing to clear. */}
+                      {!member.isTablet && member.hasPin && (
+                        <button
+                          onClick={() => handleResetPin(member)}
+                          disabled={pinResettingId === member.id}
+                          style={{ ...rowLink, color: colors.textSecondary, cursor: pinResettingId === member.id ? 'default' : 'pointer' }}
+                        >
+                          {pinResettingId === member.id ? 'Resetting…' : 'Reset PIN'}
+                        </button>
+                      )}
+                      {!isSelf(member) && (
+                        <button
+                          onClick={() => handleRemoveMember(member)}
+                          style={{ ...rowLink, color: colors.errorDark }}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
                   </div>
+                  {!member.isTablet && (
+                    <div style={{ marginTop: '0.15rem', fontSize: '0.76rem', color: member.hasPin ? colors.textSecondary : colors.textMuted }}>
+                      {member.hasPin
+                        ? 'Tablet PIN set'
+                        : 'No tablet PIN yet — they set one the first time they tap their name on the tablet.'}
+                    </div>
+                  )}
                   {member.initialPassword && (
                     <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.7rem', borderRadius: '8px', backgroundColor: colors.bgCard, border: `1px solid ${colors.border}`, fontSize: '0.82rem', color: colors.textPrimary }}>
                       🔑 Initial password: <strong style={{ fontFamily: 'ui-monospace, Menlo, monospace', letterSpacing: '0.02em' }}>{member.initialPassword}</strong>
@@ -819,8 +989,6 @@ function Admin() {
           would sail straight through. */}
       {removing && (() => {
         const name = removing.displayName || 'this person';
-        const isSelf = !!(removing.email && currentUser?.email
-          && removing.email.toLowerCase() === currentUser.email.toLowerCase());
         return (
           <div
             onClick={() => { if (!removeBusy) setRemoving(null); }}
@@ -831,13 +999,7 @@ function Admin() {
                 Remove {name}?
               </div>
               <div style={{ fontSize: '0.88rem', color: colors.textSecondary, marginBottom: '1rem', lineHeight: 1.45 }}>
-                {isSelf ? (
-                  <>
-                    <strong style={{ color: colors.textPrimary }}>This is your own account.</strong>{' '}
-                    You'll be signed out and won't be able to sign back in — someone
-                    else would have to add you again.
-                  </>
-                ) : removing.email ? (
+                {removing.email ? (
                   <>
                     This deletes their staff record and their sign-in
                     ({removing.email}). They won't be able to log in, and their

@@ -22,7 +22,7 @@ import {
 
 function Clock() {
   const navigate = useNavigate();
-  const { currentUser, currentMember, selectedPub } = useAuth();
+  const { currentUser, currentMember, selectedPub, isTabletDevice, endTabletSession } = useAuth();
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -38,6 +38,15 @@ function Clock() {
   const [, forceTick] = useState(0);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  // On the bar tablet, punching in or out is the whole visit — you're holding a
+  // crate. Hand the tablet back to the name cards straight after, rather than
+  // leaving the session open for whoever picks it up next. (The idle lock would
+  // get there eventually; this closes the gap for the commonest action.)
+  const finishIfTablet = () => {
+    if (!isTabletDevice) return;
+    setTimeout(() => endTabletSession(), 1800); // long enough to read the toast
+  };
 
   useEffect(() => {
     if (!selectedPub?.path) return;
@@ -82,6 +91,7 @@ function Clock() {
     showToast(requestedTime
       ? `Clocked in — backdated to ${formatClock(requestedTime)}, awaiting approval`
       : 'Clocked in. Have a good shift!');
+    finishIfTablet();
   };
 
   // Clock out at `at` (defaults to now) — earlier times need no approval,
@@ -94,6 +104,7 @@ function Clock() {
     if (!res.success) { showToast('Could not clock out: ' + res.error); return; }
     resetPicker();
     showToast(`Clocked out · ${formatDuration(effectiveClockIn(active), Math.max(effectiveClockIn(active), at))}`);
+    finishIfTablet();
   };
 
   const card = { backgroundColor: colors.bgCard, border: `1px solid ${colors.borderLight}`, borderRadius: '12px', padding: '1.25rem' };

@@ -51,6 +51,11 @@ const AuthContext = createContext({});
 
 export const useAuth = () => useContext(AuthContext);
 
+// How long a PIN-unlocked tablet session survives with nobody touching it.
+// Long enough to log a few wastages between pulling pints; short enough that
+// the next person to walk up doesn't inherit it.
+const TABLET_IDLE_MS = 90 * 1000;
+
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
@@ -367,11 +372,69 @@ export const AuthProvider = ({ children }) => {
     await signOut(auth);
   };
 
+  // The member record for the LOGIN itself (matched by email from the live
+  // members subscription). On a bar tablet this is the tablet's own record, not
+  // whoever is standing at it — see actingMember below.
+  const signedInMember = members.find(
+    (m) => m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase()
+  ) || null;
+
+  // ---- bar tablet: who the app is acting as ----
+  //
+  // A tablet behind the bar is signed in as one shared member all night. When
+  // someone taps their name and enters their PIN, they become the acting member
+  // for a short session: `currentMember` returns THEM, so clock-ins land under
+  // their name and wastage is attributed to them with no change to those pages.
+  //
+  // Deliberately React state only — a reload re-locks the tablet.
+  const isTabletDevice = !!signedInMember?.isTablet;
+  const [actingMember, setActingMember] = useState(null);
+  const beginTabletSession = (m) => setActingMember(m || null);
+  const endTabletSession = () => setActingMember(null);
+  // The acting member has to be a live row: if an admin removes or renames
+  // someone mid-session, the session follows the members list rather than
+  // holding a stale copy.
+  const liveActing = actingMember ? members.find((m) => m.id === actingMember.id) || null : null;
+
+  const currentMember = (isTabletDevice ? liveActing : null) || signedInMember;
+
+  // Walk away and the tablet locks itself. Without this the next person to pick
+  // it up would be clocking in as whoever used it last, which is the one thing
+  // a shared device must never do. The timer restarts on any touch, so it only
+  // fires on a genuinely abandoned session — and it runs app-wide, not just on
+  // the tablet home page, because the session outlives navigating to Wastage.
+  useEffect(() => {
+    if (!actingMember) return undefined;
+    let timer = null;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setActingMember(null), TABLET_IDLE_MS);
+    };
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    events.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, reset));
+    };
+  }, [actingMember]);
+
   // ---- bound writers for the current (active) tenant ----
   const saveVenue = (data) => saveVenueSvc(PATH, data);
   const saveAccount = (data) => saveAccountSvc(activeAccountId, data);
   const saveMember = (memberId, data) => saveMemberSvc(activeAccountId, memberId, data);
-  const deleteMember = (memberId) => deleteMemberSvc(activeAccountId, memberId);
+  // Deleting a member revokes their sign-in with them (syncMemberAuth), so
+  // deleting your own record locks you out of the account for good. Refused
+  // here as well as hidden in the UI and blocked in the rules — the cost of a
+  // wrong call is unrecoverable, so it's checked wherever it can be. A
+  // super-admin working inside a customer account has no member record there
+  // and so is never "self".
+  const deleteMember = (memberId) => {
+    if (signedInMember && memberId === signedInMember.id) {
+      return Promise.resolve({ success: false, error: "you can't remove your own account" });
+    }
+    return deleteMemberSvc(activeAccountId, memberId);
+  };
 
   // ---- password self-service (callable Cloud Functions) ----
   // The signed-in user sets their own password (forced first-sign-in change or a
@@ -398,6 +461,22 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: error.message };
     }
   };
+
+  // ---- bar-tablet PINs (callables; the hashes never reach the client) ----
+  // Each returns { success } / { success:false, error } like the writers above,
+  // so callers handle one shape. The Firebase error code comes back too — the
+  // pad tells "wrong PIN" apart from "locked out" by it.
+  const callPin = async (name, payload) => {
+    try {
+      await httpsCallable(functions, name)({ ...payload, accountId: activeAccountId });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message, code: error.code || null };
+    }
+  };
+  const setStaffPin = (memberId, pin) => callPin('setStaffPin', { memberId, pin });
+  const verifyStaffPin = (memberId, pin) => callPin('verifyStaffPin', { memberId, pin });
+  const resetStaffPin = (memberId) => callPin('resetStaffPin', { memberId });
 
   // ---- super-admin: switch which account/venue the app is operating on ----
   const switchTenant = (accountId, venueId) => {
@@ -426,12 +505,6 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: error.message };
     }
   };
-
-  // The signed-in user's own member record (matched by email from the live
-  // members subscription). Drives display name and per-member feature flags.
-  const currentMember = members.find(
-    (m) => m.email && currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase()
-  ) || null;
 
   // Counts are attributed to the signed-in user. Prefer the member record's name
   // (set by an admin) over the Google profile name so attribution shows real names.
@@ -465,7 +538,10 @@ export const AuthProvider = ({ children }) => {
     // first sign-in with an admin-issued initial password.
     changeMyPassword,
     resetMemberPassword,
-    mustChangePassword: !!currentMember?.mustChangePassword,
+    // The LOGIN's own flag, never the acting member's — unlocking a tablet as
+    // someone who still has an unused initial password must not throw the
+    // change-password screen up in front of the whole bar.
+    mustChangePassword: !!signedInMember?.mustChangePassword,
 
     // Tenant context (active account/venue — switchable by super-admins)
     accountId: activeAccountId,
@@ -491,8 +567,20 @@ export const AuthProvider = ({ children }) => {
     saveMember,
     deleteMember,
 
-    // The signed-in user's member record (null for super-admins / until loaded).
+    // Who the app is acting as: normally the signed-in user's member record
+    // (null for super-admins / until loaded), or the PIN-unlocked person on a
+    // bar tablet.
     currentMember,
+    signedInMember,
+
+    // Bar tablet: the shared-device mode and its PIN session.
+    isTabletDevice,
+    actingMember: liveActing,
+    beginTabletSession,
+    endTabletSession,
+    setStaffPin,
+    verifyStaffPin,
+    resetStaffPin,
     // Stock sections this user may see (['bar'], ['kitchen'] or both).
     allowedSections,
 
@@ -500,11 +588,14 @@ export const AuthProvider = ({ children }) => {
     // canAccessStock: owners/managers always; staff need the member's
     // "With stock" tick. While the members list is still loading we allow
     // rather than bounce a legitimate deep link — it settles in a moment.
-    canAccessStock: () =>
-      role === 'owner' || role === 'manager' || !membersLoaded || !!currentMember?.withStock,
+    // A bar tablet gets neither, whoever has unlocked it: stock counts are done
+    // on a person's own login (the rules bar the tablet from them too), and the
+    // admin area has no business on a device left out on the bar.
+    canAccessStock: () => !isTabletDevice
+      && (role === 'owner' || role === 'manager' || !membersLoaded || !!currentMember?.withStock),
     canEdit: () => true,
     isSuperAdmin: () => role === 'owner',
-    isAdmin: () => role === 'owner' || role === 'manager',
+    isAdmin: () => !isTabletDevice && (role === 'owner' || role === 'manager'),
     isStockRole: () => false,
   };
 

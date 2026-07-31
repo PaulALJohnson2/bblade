@@ -34,6 +34,25 @@ service cloud.firestore {
       return platformAdmin()
         || (member(accountId) && request.auth.token.role in ['owner', 'manager']);
     }
+    // A shared bar tablet (a member with the "Tablet account" tick). It stays
+    // signed in all night where anyone can reach it, and the person using it is
+    // established by a PIN in the app rather than by the login — so it's held
+    // out of the stock record below. Everything a shift actually needs
+    // (clocking in, wastage, the rota) stays open to it.
+    function tabletDevice() {
+      return request.auth != null && request.auth.token.tablet == true;
+    }
+    // True when the member doc being written is the caller's own — matched on
+    // email, the same way the app resolves who you are. Only meaningful on
+    // reads/writes of an existing doc (it looks at `resource`).
+    function ownRecord() {
+      return request.auth != null
+        && 'email' in request.auth.token
+        && request.auth.token.email is string
+        && 'email' in resource.data
+        && resource.data.email is string
+        && request.auth.token.email.lower() == resource.data.email.lower();
+    }
 
     // Customer account (name, entitlements).
     match /accounts/{accountId} {
@@ -43,9 +62,29 @@ service cloud.firestore {
       // Staff / members (identity, role, department, feature flags).
       // All members may read (names drive attribution and rota display);
       // only managers may change the staff list.
+      //
+      // Nobody may delete their own record. Deleting a member revokes their
+      // sign-in with it (syncMemberAuth), so a lone owner doing it would lock
+      // themselves out of the account with nobody left able to add them back —
+      // and there is no restore. The client hides the control; this is what
+      // holds if it's bypassed. Platform admins are exempt (they're never
+      // deleting their own access to a customer account), and a member with no
+      // email has no sign-in to be anybody's own.
       match /members/{memberId} {
         allow read: if member(accountId);
-        allow write: if manager(accountId);
+        allow create, update: if manager(accountId);
+        allow delete: if platformAdmin()
+          || (manager(accountId) && !ownRecord());
+      }
+
+      // Staff PINs for the bar tablet — scrypt hashes, no client may touch
+      // them. A 4-digit hash that any member could read is 10,000 guesses, so
+      // it never leaves the server: the setStaffPin / verifyStaffPin /
+      // resetStaffPin callables work through the Admin SDK, which bypasses
+      // rules. (The catch-all at the bottom would deny this path anyway —
+      // spelling it out is the point.)
+      match /memberSecrets/{memberId} {
+        allow read, write: if false;
       }
 
       match /venues/{venueId} {
@@ -68,15 +107,20 @@ service cloud.firestore {
         // Members keep everything the job actually requires: start a count,
         // write into it, and close it. Reopening a closed take, deleting one,
         // or amending it afterwards are manager-only.
+        //
+        // A bar tablet is excluded outright: the stock record is the evidence
+        // behind every variance, and an always-on device that anyone can pick
+        // up is the wrong thing to hold it open. Counting is done on a
+        // person's own login.
         match /stockSessions/{sessionId} {
           allow read: if manager(accountId)
-            || (member(accountId) && resource.data.status == 'in_progress');
-          allow create: if member(accountId)
+            || (member(accountId) && !tabletDevice() && resource.data.status == 'in_progress');
+          allow create: if member(accountId) && !tabletDevice()
             && request.resource.data.status == 'in_progress';
           // Closing a count passes this: the stored document is still open at
           // the moment the rule is evaluated. Editing a closed one does not.
           allow update: if manager(accountId)
-            || (member(accountId) && resource.data.status == 'in_progress');
+            || (member(accountId) && !tabletDevice() && resource.data.status == 'in_progress');
           allow delete: if manager(accountId);
         }
         match /wastageLog/{entryId} {

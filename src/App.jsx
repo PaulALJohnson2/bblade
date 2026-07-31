@@ -27,6 +27,7 @@ const importSuper = () => import('./pages/SuperAdmin');
 const importRota = () => import('./pages/Rota');
 const importClock = () => import('./pages/Clock');
 const importLeave = () => import('./pages/Leave');
+const importTablet = () => import('./pages/TabletHome');
 
 // Home is the landing hub — eager (in the main bundle) so it never shows a
 // loading fallback. The heavier feature pages stay code-split + preloaded.
@@ -41,6 +42,7 @@ const SuperAdmin = lazy(importSuper);
 const Rota = lazy(importRota);
 const ClockPage = lazy(importClock);
 const Leave = lazy(importLeave);
+const TabletHome = lazy(importTablet);
 
 // Owner/manager-only routes. Staff see only day-to-day features (Home decides
 // their tiles); this stops direct URLs reaching the rest. Rota and Wastage
@@ -171,7 +173,7 @@ function UserMenu() {
 }
 
 function Shell() {
-  const { pubName, isPlatformAdmin } = useAuth();
+  const { pubName, isPlatformAdmin, isTabletDevice, actingMember } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const onHome = location.pathname === '/';
@@ -185,6 +187,16 @@ function Shell() {
     const t = setTimeout(preload, 1200);
     return () => clearTimeout(t);
   }, []);
+
+  // A tablet whose session has ended — finished, or left alone long enough to
+  // lock — goes back to the name cards from wherever it was. This is the one
+  // place that has to catch it: the session can end on /wastage or /clock, and
+  // leaving that page up would let the next person carry on as the last.
+  useEffect(() => {
+    if (isTabletDevice && !actingMember && location.pathname !== '/tablet') {
+      navigate('/tablet', { replace: true });
+    }
+  }, [isTabletDevice, actingMember, location.pathname, navigate]);
 
   return (
     <div className="app">
@@ -226,7 +238,10 @@ function Shell() {
       <main className="app-main">
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            <Route path="/" element={<Home />} />
+            {/* A tablet's home IS the name grid — it has no personal hub to
+                show, and every route out of it belongs to whoever unlocked. */}
+            <Route path="/" element={isTabletDevice ? <Navigate to="/tablet" replace /> : <Home />} />
+            <Route path="/tablet" element={<TabletHome />} />
             <Route path="/stock" element={<StockAllowed><StockHub /></StockAllowed>} />
             <Route path="/stock/count" element={<StockAllowed><StockTaking /></StockAllowed>} />
             <Route path="/wastage" element={<Wastage />} />
