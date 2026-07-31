@@ -34,6 +34,7 @@
  */
 
 const { setGlobalOptions } = require('firebase-functions/v2');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { beforeUserCreated, beforeUserSignedIn, HttpsError } = require('firebase-functions/v2/identity');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError: CallableError } = require('firebase-functions/v2/https');
@@ -452,6 +453,14 @@ exports.setStaffPin = onCall(async (request) => {
  * fifteen minutes after five, so the pad can't be worked through by hand.
  */
 exports.verifyStaffPin = onCall(async (request) => {
+  // Keep-warm ping (see keepPinWarm below). Answered before anything else
+  // happens: it takes no arguments, touches no data and tells the caller
+  // nothing — its only job is to have started this container, so the first
+  // person at the pad tonight isn't the one paying for the cold start. The
+  // function is publicly reachable either way; all this changes is that an
+  // anonymous POST gets a cheap "warm" instead of a logged auth failure.
+  if (request.data && request.data.warm === true) return { warm: true };
+
   const pin = String((request.data && request.data.pin) || '');
   const { accountId, memberId } = await pinTarget(request, request.data);
 
@@ -505,6 +514,38 @@ exports.resetStaffPin = onCall(async (request) => {
   ]);
   logger.info(`PIN reset for member ${memberId} (${member.displayName || '?'}) by ${request.auth.token.email}`);
   return { success: true };
+});
+
+/**
+ * Keep the PIN check warm through opening hours.
+ *
+ * Functions scale to zero, and a cold start is a second or two — which lands
+ * on whoever taps their name first, standing at the bar holding a crate. A
+ * ping every five minutes keeps one instance up. This is deliberately cheaper
+ * than minInstances: idle containers aren't billed, only the ping's own
+ * runtime, so it costs pennies a month rather than pounds.
+ *
+ * Hours are the pub's, in the pub's timezone: from mid-morning through to 2am,
+ * which covers the close shifts clocking out. Outside that the first tap pays
+ * the cold start, and there's nobody there to mind.
+ */
+exports.keepPinWarm = onSchedule({
+  schedule: '*/5 0-2,9-23 * * *',
+  timeZone: 'Europe/London',
+  retryCount: 0, // a missed ping costs one cold start; retrying it is pointless
+}, async () => {
+  const project = process.env.GCLOUD_PROJECT || 'bar-blade';
+  const url = `https://europe-west2-${project}.cloudfunctions.net/verifyStaffPin`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: { warm: true } }),
+    });
+    if (!res.ok) logger.warn(`Keep-warm ping returned ${res.status}`);
+  } catch (err) {
+    logger.warn(`Keep-warm ping failed: ${err.message}`);
+  }
 });
 
 // ---------------------------------------------------------------------------
