@@ -433,10 +433,23 @@ function Rota() {
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ margin: '0.25rem 0 0.1rem', fontSize: '1.6rem', color: colors.textPrimary }}>Rota</h1>
-      <p style={{ margin: '0 0 1.1rem', color: colors.textSecondary, fontSize: '0.9rem' }}>
-        {pubName ? `${pubName} — weekly staff rota` : 'Weekly staff rota'}
-      </p>
+      {/* Back goes where you came from: the admin hub when the rota was opened
+          to edit it (Admin → Rotas), otherwise home — which on a bar tablet is
+          the name cards. Every other page has one; this was the odd one out. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: '0.25rem 0 1.1rem' }}>
+        <button
+          onClick={() => navigate(canEdit ? '/admin' : '/')}
+          style={{ padding: '0.5rem 0.75rem', backgroundColor: colors.bgLight, color: colors.textPrimary, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', flexShrink: 0 }}
+        >
+          ← Back
+        </button>
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: '1.6rem', color: colors.textPrimary }}>Rota</h1>
+          <p style={{ margin: 0, color: colors.textSecondary, fontSize: '0.9rem' }}>
+            {pubName ? `${pubName} — weekly staff rota` : 'Weekly staff rota'}
+          </p>
+        </div>
+      </div>
 
       {/* Week navigation */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
