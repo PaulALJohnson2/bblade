@@ -72,21 +72,94 @@ export function fmtTime(t, format = '12h') {
   return m === '00' ? String(hour) : `${hour}:${m}`;
 }
 
+// A rough finish for "close" shifts, as stored in rota settings. Anything that
+// isn't a clean 'HH:MM' (unset, cleared, junk) reads as "no estimate", so a bad
+// value can never quietly skew everyone's hours.
+export function normaliseCloseEnd(value) {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+}
+
+/**
+ * The venue's closing times as a full { mon..sun } map of 'HH:MM' or null.
+ * Closing time is per-day because a pub's isn't one number — a midweek 11:30
+ * and a Friday 1am are hours apart, and a single value would mis-plan both.
+ *
+ * `settings.closeEnd` is the older single-value form; it fills any day the
+ * per-day map doesn't cover, so an early setting keeps working. Admin writes
+ * the whole map and clears the old field, so the fallback only ever applies
+ * before the first per-day save.
+ */
+export function normaliseCloseEnds(settings) {
+  const legacy = normaliseCloseEnd(settings?.closeEnd);
+  const byDay = settings?.closeEnds || {};
+  const out = {};
+  DAY_KEYS.forEach((k) => { out[k] = normaliseCloseEnd(byDay[k]) || legacy; });
+  return out;
+}
+
+const DAY_SHORT = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+
+// "Mon", "Mon & Tue", "Mon–Thu" — a run of days named the shortest way that
+// still reads as English.
+function daysLabel(keys) {
+  if (keys.length === 1) return DAY_SHORT[keys[0]];
+  if (keys.length === 2) return `${DAY_SHORT[keys[0]]} & ${DAY_SHORT[keys[1]]}`;
+  return `${DAY_SHORT[keys[0]]}–${DAY_SHORT[keys[keys.length - 1]]}`;
+}
+
+/**
+ * One-line summary of the week's closing times, collapsing runs of days that
+ * share one: "Mon–Thu 11:30pm · Fri & Sat 1am · Sun 11pm", "Every day 11:30pm",
+ * or "Not set". Used on the collapsed settings card and under the rota grid.
+ */
+export function summariseCloseEnds(closeEnds, format = '12h') {
+  const runs = [];
+  DAY_KEYS.forEach((k) => {
+    const value = closeEnds?.[k] || null;
+    const last = runs[runs.length - 1];
+    if (last && last.value === value) last.days.push(k);
+    else runs.push({ value, days: [k] });
+  });
+  if (runs.length === 1) return runs[0].value ? `Every day ${fmtClock(runs[0].value, format)}` : 'Not set';
+  return runs
+    .map((r) => `${daysLabel(r.days)} ${r.value ? fmtClock(r.value, format) : 'not set'}`)
+    .join(' · ');
+}
+
+// A single time on its own, spelled out so it can't be misread — a bare "11:30"
+// for a closing time could be morning. 12-hour: 23:30 → 11:30pm, 23:00 → 11pm.
+// 24-hour: always HH:MM. Used in prose (settings, footnotes), not in the grid.
+export function fmtClock(t, format = '12h') {
+  if (!t || t === 'close') return 'close';
+  const [h, m] = t.split(':').map(Number);
+  if (format === '24h') return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  const suffix = h < 12 ? 'am' : 'pm';
+  const hour = h % 12 || 12;
+  return m === 0 ? `${hour}${suffix}` : `${hour}:${String(m).padStart(2, '0')}${suffix}`;
+}
+
 /** One shift's range label, e.g. "5–11" (12h) or "17:00–23:00" (24h). */
 export function shiftRangeLabel(shift, format = '12h') {
   return `${fmtTime(shift.start, format)}–${fmtTime(shift.end, format)}`;
 }
 
 // Length of a shift in minutes; midnight end counts as end-of-day and an end
-// at/before the start is treated as running overnight. A "close" (open-ended)
-// shift has no planned length — its real hours come from the clock-out — so it
-// contributes nothing to the planned total.
-export function shiftMinutes(shift) {
-  if (!shift || shift.end === 'close') return 0;
+// at/before the start is treated as running overnight.
+//
+// A "close" (open-ended) shift has no fixed finish — the hours that get paid
+// come from the clock-out. But leaving it at zero made a 6–close read as a
+// no-hours day, so the whole rota under-counted. `closeEnd` ('HH:MM') is that
+// DAY's rough closing time (set per weekday in Admin → Account): pass it and
+// close shifts count as planned hours to that time. Without it they still
+// contribute nothing — better a visibly missing number than an invented one.
+export function shiftMinutes(shift, closeEnd = null) {
+  if (!shift) return 0;
+  const end = shift.end === 'close' ? closeEnd : shift.end;
+  if (!end) return 0;
   const [sh, sm] = shift.start.split(':').map(Number);
-  const [eh, em] = shift.end.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
   const s = sh * 60 + sm;
-  let e = shift.end === '00:00' ? 1440 : eh * 60 + em;
+  let e = end === '00:00' ? 1440 : eh * 60 + em;
   if (e <= s) e += 1440;
   return e - s;
 }
@@ -94,9 +167,19 @@ export function shiftMinutes(shift) {
 // Total minutes worked in a day across all of its shifts (handles split days).
 // A sick day keeps its shifts so the grid can show what needs covering, but
 // nobody is working them — so they contribute nothing to the planned total.
-export function dayMinutes(value) {
+export function dayMinutes(value, closeEnd = null) {
   if (isSickDay(value)) return 0;
-  return dayShifts(value).reduce((sum, s) => sum + shiftMinutes(s), 0);
+  return dayShifts(value).reduce((sum, s) => sum + shiftMinutes(s, closeEnd), 0);
+}
+
+/**
+ * True if a day contributes an open-ended ("close") shift to the planned
+ * total — i.e. its hours are an estimate rather than a rota'd finish. Sick
+ * days count for nothing either way, so they never make a total approximate.
+ */
+export function dayHasOpenEnd(value) {
+  if (isSickDay(value)) return false;
+  return dayShifts(value).some((s) => s.end === 'close');
 }
 
 // Minutes → decimal hours, e.g. 330→"5.5", 435→"7.25", 765→"12.75", 480→"12"

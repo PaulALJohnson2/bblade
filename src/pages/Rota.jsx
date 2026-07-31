@@ -13,7 +13,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToRota, saveRota, setRotaPublished, subscribeToShiftPatterns, bumpShiftPattern, subscribeToStaffOrder, saveStaffOrder, subscribeToRotaSettings, saveRotaSettings, subscribeToShiftRequests, createShiftRequest, getRotaWeek } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
-import { dayShifts, isLeaveDay, isSickDay, shiftsOverlap, dayMinutes, requestDayISO } from '../utils/rota';
+import { dayShifts, isLeaveDay, isSickDay, shiftsOverlap, dayMinutes, requestDayISO, normaliseCloseEnds } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 import RotaGrid from '../components/RotaGrid';
 import ShiftEditor from '../components/ShiftEditor';
@@ -81,6 +81,7 @@ function Rota() {
   const [patternCounts, setPatternCounts] = useState({}); // 'HH:MM-HH:MM' → uses
   const [staffOrder, setStaffOrder] = useState([]); // custom memberId ordering
   const [timeFormat, setTimeFormat] = useState('12h'); // venue display: '12h' | '24h'
+  const [closeEnds, setCloseEnds] = useState({}); // rough finish per weekday for "close" shifts
   const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false); // transient "Sent ✓" feedback
   const [editing, setEditing] = useState(null); // { row, dayKey }
@@ -130,10 +131,14 @@ function Rota() {
     return () => unsub();
   }, [venuePath]);
 
-  // Subscribe to the venue's rota display settings (12h/24h clock).
+  // Subscribe to the venue's rota settings: the 12h/24h clock, and the per-day
+  // closing times that give "close" shifts their planned hours.
   useEffect(() => {
     if (!venuePath) return undefined;
-    const unsub = subscribeToRotaSettings(venuePath, (s) => setTimeFormat(s?.timeFormat === '24h' ? '24h' : '12h'), () => {});
+    const unsub = subscribeToRotaSettings(venuePath, (s) => {
+      setTimeFormat(s?.timeFormat === '24h' ? '24h' : '12h');
+      setCloseEnds(normaliseCloseEnds(s));
+    }, () => {});
     return () => unsub();
   }, [venuePath]);
 
@@ -229,10 +234,10 @@ function Rota() {
           name: r.name,
           status,
           dayShifts: working,
-          weekMinutes: DAY_KEYS.reduce((sum, k) => sum + dayMinutes(r.shifts?.[k]), 0),
+          weekMinutes: DAY_KEYS.reduce((sum, k) => sum + dayMinutes(r.shifts?.[k], closeEnds?.[k]), 0),
         };
       });
-  }, [cover, rows]);
+  }, [cover, rows, closeEnds]);
 
   // ---- Staff "can't work this?" flow: tap your own shift on the grid. ----
 
@@ -494,6 +499,7 @@ function Rota() {
             focusDayKey={canEdit ? null : todayKey}
             highlightMemberId={myMemberId}
             timeFormat={timeFormat}
+            closeEnds={closeEnds}
             onCellClick={(row, dayKey) => setEditing({ row, dayKey })}
             onMyDayClick={!canEdit && myMemberId ? askAboutDay : undefined}
             onReorder={reorderStaff}
@@ -552,6 +558,8 @@ function Rota() {
           value={dayShifts(editing.row.shifts?.[editing.dayKey])}
           isLeave={isLeaveDay(editing.row.shifts?.[editing.dayKey])}
           isSick={isSickDay(editing.row.shifts?.[editing.dayKey])}
+          closeEnd={closeEnds?.[editing.dayKey] || null}
+          timeFormat={timeFormat}
           onSave={(shifts) => setDayShifts(editing.row, editing.dayKey, shifts)}
           onCancel={() => setEditing(null)}
           onFindCover={(shifts) => { const e = editing; setEditing(null); setCover({ row: e.row, dayKey: e.dayKey, shifts }); }}

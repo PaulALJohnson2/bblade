@@ -9,7 +9,7 @@
 
 import React, { useState } from 'react';
 import { getThemeColors } from '../utils/theme';
-import { LEAVE_MARKER, SICK_MARKER } from '../utils/rota';
+import { LEAVE_MARKER, SICK_MARKER, fmtClock } from '../utils/rota';
 import useTheme from '../hooks/useTheme';
 
 // 15-minute time options across the full day, 'HH:MM'.
@@ -39,7 +39,7 @@ const isInvalid = (s) => s.end !== 'close' && s.end === s.start;
 // A concrete end earlier than the start (but not midnight) spills into the next day.
 const endsNextDay = (s) => s.end !== 'close' && s.end !== '00:00' && s.end < s.start;
 
-function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isSick = false, onSave, onCancel, onFindCover }) {
+function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isSick = false, closeEnd = null, timeFormat = '12h', onSave, onCancel, onFindCover }) {
   const { isDark } = useTheme();
   const colors = getThemeColors(isDark);
 
@@ -170,6 +170,14 @@ function ShiftEditor({ staffName, dayLabel, presets, value, isLeave = false, isS
             {isInvalid(s) ? (
               <div style={{ color: colors.error, fontSize: '0.78rem', marginTop: '0.35rem' }}>
                 Start and end can't be the same time.
+              </div>
+            ) : s.end === 'close' ? (
+              // Say what a close shift will do to the hours total, so the
+              // choice between "close" and a real finish is an informed one.
+              <div style={{ color: colors.textSecondary, fontSize: '0.78rem', marginTop: '0.35rem' }}>
+                {closeEnd
+                  ? `Counts as about ${fmtClock(closeEnd, timeFormat)} in the hours — the clock-out is what gets paid.`
+                  : "Adds no hours until this day's closing time is set in Admin → Account."}
               </div>
             ) : endsNextDay(s) ? (
               <div style={{ color: colors.textSecondary, fontSize: '0.78rem', marginTop: '0.35rem' }}>

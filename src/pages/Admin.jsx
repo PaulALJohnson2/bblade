@@ -22,9 +22,25 @@ import WastageReport from '../components/WastageReport';
 import Timesheets from '../components/Timesheets';
 import Requests from '../components/Requests';
 import Tile from '../components/Tile';
-import { subscribeToLeaveRequests, subscribeToShiftRequests } from '../services/apiService';
+import { subscribeToLeaveRequests, subscribeToShiftRequests, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
+import { DAY_KEYS, fmtClock, normaliseCloseEnds, summariseCloseEnds } from '../utils/rota';
 
 const ROLES = ['owner', 'manager', 'staff'];
+
+const DAY_NAMES = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+
+// Candidate closing times: 15-minute steps from 8pm round to 4am. A pub's
+// "close" is when the last person finishes (cleardown included), not last
+// orders, so the list runs well past midnight.
+const CLOSE_OPTIONS = (() => {
+  const out = [];
+  for (let mins = 20 * 60; mins <= 28 * 60; mins += 15) {
+    const h = Math.floor(mins / 60) % 24;
+    const m = mins % 60;
+    out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  }
+  return out;
+})();
 
 // Which side of the pub a member works — will drive feature access per
 // department later. 'both' = works across bar and kitchen.
@@ -75,6 +91,40 @@ function Admin() {
 
   // Keep the field in sync if the live value arrives after mount.
   useEffect(() => { setNameInput(pubName || ''); }, [pubName]);
+
+  // Rough closing times for "close" shifts, one per weekday, shared with the
+  // rota (same rotaPrefs/settings doc as the 12h/24h clock, which also sets how
+  // the times are written here). Collapsed by default — it's a set-once
+  // setting, and seven rows would otherwise push Staff off the screen.
+  const [closeEnds, setCloseEnds] = useState({});
+  const [timeFormat, setTimeFormat] = useState('12h');
+  const [closeOpen, setCloseOpen] = useState(false);
+  const [closeSaved, setCloseSaved] = useState(false);
+  useEffect(() => {
+    if (!selectedPub?.path) return undefined;
+    return subscribeToRotaSettings(selectedPub.path, (s) => {
+      setCloseEnds(normaliseCloseEnds(s));
+      setTimeFormat(s?.timeFormat === '24h' ? '24h' : '12h');
+    }, () => {});
+  }, [selectedPub?.path]);
+
+  // Every change writes the whole seven-day map (and clears the older
+  // single-value field), so what's stored always matches what's on screen —
+  // no half-migrated mix of the two to reason about later.
+  const saveCloseEnds = async (next) => {
+    setCloseEnds(next); // optimistic; the subscription confirms it
+    setError(null);
+    const res = await saveRotaSettings(selectedPub.path, { closeEnds: next, closeEnd: null });
+    if (!res.success) { setError('Could not save closing times: ' + res.error); return; }
+    setCloseSaved(true);
+    setTimeout(() => setCloseSaved(false), 2000);
+  };
+  const setDayCloseEnd = (dayKey, value) => saveCloseEnds({ ...closeEnds, [dayKey]: value || null });
+  // "Same every day" from the first day that has a time — the common setup is
+  // one closing time with a couple of late nights edited after.
+  const applyToAllDays = (value) => saveCloseEnds(
+    Object.fromEntries(DAY_KEYS.map((k) => [k, value || null])),
+  );
 
   // Live request lists — shared by the tile badge and the Requests section,
   // so the number on the tile can never disagree with the queue behind it.
@@ -221,7 +271,7 @@ function Admin() {
   if (!admin) return <Navigate to="/" replace />;
 
   const TILES = [
-    { key: 'account', label: 'Account', desc: 'Pub name & staff', accent: colors.primary, show: true,
+    { key: 'account', label: 'Account', desc: 'Pub name, staff & closing time', accent: colors.primary, show: true,
       icon: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'] },
     { key: 'stock', label: 'Stock', desc: 'Stock takes, items & units', accent: colors.primary, show: admin,
       icon: ['M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1z', 'M9 5h6', 'M8 11h8', 'M8 15h8'] },
@@ -467,6 +517,95 @@ function Admin() {
             {savingName ? 'Saving…' : nameSaved ? 'Saved ✓' : 'Save'}
           </button>
         </div>
+      </div>
+
+      {/* Rough closing times. A "6–close" shift has no finish on the rota, so
+          it used to add nothing to anyone's hours — a close-heavy week looked
+          near-empty. These are when the last person actually finishes (not last
+          orders), per weekday because a midweek 11:30 and a Friday 1am are
+          hours apart. Close shifts count to their own day's time, marked "~" on
+          the grid so nobody mistakes it for a promise. Pay comes off the clock.
+
+          Collapsed to its summary line: it's set once and then left alone, and
+          Staff is what people actually open this screen for. */}
+      <div style={card}>
+        <button
+          type="button"
+          onClick={() => setCloseOpen((v) => !v)}
+          aria-expanded={closeOpen}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%',
+            background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left',
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ margin: '0 0 0.15rem', fontSize: '1.1rem', color: colors.textPrimary }}>Closing times</h2>
+            <div style={{ fontSize: '0.85rem', color: colors.textSecondary, overflowWrap: 'anywhere' }}>
+              {summariseCloseEnds(closeEnds, timeFormat)}
+            </div>
+          </div>
+          {closeSaved && !closeOpen && (
+            <span style={{ color: colors.success, fontSize: '0.85rem', fontWeight: 700, flexShrink: 0 }}>Saved ✓</span>
+          )}
+          <span aria-hidden="true" style={{ color: colors.textSecondary, fontSize: '0.9rem', fontWeight: 700, flexShrink: 0 }}>
+            {closeOpen ? '▲' : '▼'}
+          </span>
+        </button>
+
+        {closeOpen && (
+          <div style={{ marginTop: '1rem' }}>
+            <p style={{ margin: '0 0 1rem', color: colors.textSecondary, fontSize: '0.85rem' }}>
+              Roughly when the last person finishes on a close shift — cleardown included.
+              Shifts rota'd as “close” have no end time, so this is what they count as in
+              the rota's hours (shown with a “~” because it's an estimate). Nobody is paid
+              on it: actual hours come from the clock-in and clock-out in Timesheets.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {DAY_KEYS.map((k) => (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <span style={{ width: '5.5rem', flexShrink: 0, fontSize: '0.9rem', fontWeight: 600, color: colors.textPrimary }}>
+                    {DAY_NAMES[k]}
+                  </span>
+                  <select
+                    value={closeEnds[k] || ''}
+                    onChange={(e) => setDayCloseEnd(k, e.target.value)}
+                    aria-label={`${DAY_NAMES[k]} closing time`}
+                    style={{
+                      flex: 1, minWidth: '160px', maxWidth: '230px',
+                      padding: '0.6rem', fontSize: '0.95rem', borderRadius: '8px',
+                      border: `2px solid ${colors.border}`, backgroundColor: colors.bgCard, color: colors.textPrimary,
+                    }}
+                  >
+                    <option value="">Not set — adds no hours</option>
+                    {CLOSE_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {fmtClock(t, timeFormat)}{t < '12:00' ? ' (next day)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {/* Fills the rest of the week from this day — the usual setup
+                      is one time everywhere, then a later Fri/Sat on top. Shown
+                      once per distinct time (on the first day using it), so a
+                      mixed week offers the shortcut without seven copies of it. */}
+                  {closeEnds[k]
+                    && DAY_KEYS.find((other) => closeEnds[other] === closeEnds[k]) === k
+                    && DAY_KEYS.some((other) => closeEnds[other] !== closeEnds[k]) && (
+                    <button
+                      type="button"
+                      onClick={() => applyToAllDays(closeEnds[k])}
+                      style={{ ...rowLink, color: colors.primary, flexShrink: 0 }}
+                    >
+                      Use every day
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {closeSaved && (
+              <div style={{ marginTop: '0.75rem', color: colors.success, fontSize: '0.9rem', fontWeight: 700 }}>Saved ✓</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Staff (members) */}
