@@ -14,7 +14,7 @@
  * a tablet in. Only a tablet account lands here by default.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { subscribeToShifts } from '../services/apiService';
@@ -74,6 +74,51 @@ function TabletHome() {
     }), [members, onClockByMember]);
 
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 3000); };
+
+  // ---- fit the cards to the screen ----
+  //
+  // A phone is the awkward case: ten people at the size a 10" tablet wants
+  // means scrolling to find your own name, which is the one thing this screen
+  // must never make you do. So on a narrow screen the grid measures what's
+  // actually left below it and divides that between however many rows it
+  // needs — cards shrink to fit rather than the page growing. Below a floor
+  // (a card too small to tap reliably) it gives up and scrolls instead.
+  const gridRef = useRef(null);
+  const [fit, setFit] = useState(null); // null on a wide screen — cards keep their full size
+  // Tracked separately from `fit` because the heading shrinks on a phone too,
+  // and it has to have done so BEFORE the grid measures what's left below it.
+  const [narrow, setNarrow] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 768 : false));
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = gridRef.current;
+      if (!el || window.innerWidth >= 768) { setFit(null); return; }
+      const gap = 8;
+      const cols = window.innerWidth < 400 ? 3 : 4;
+      const rows = Math.max(1, Math.ceil(people.length / cols));
+      const available = window.innerHeight - el.getBoundingClientRect().top - 12;
+      const cardH = Math.max(64, Math.floor((available - gap * (rows - 1)) / rows));
+      setFit({ cols, gap, cardH });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+    };
+  }, [people.length, actingMember, notice, narrow]);
+
+  // Everything on the card scales off its height, so a squeezed grid stays
+  // readable instead of overflowing. Under ~90px there's no room for a line of
+  // status text — a dot on the avatar says "on the clock" instead.
+  const avatarPx = fit ? Math.min(64, Math.max(26, Math.round(fit.cardH * 0.4))) : 64;
+  const namePx = fit ? (fit.cardH < 84 ? '0.7rem' : '0.85rem') : '1.05rem';
+  const showStatusText = !fit || fit.cardH >= 90;
 
   // The pad hands back the PIN; which callable it goes to depends on whether
   // this person has one yet. A returned { error } keeps the pad open and shakes.
@@ -157,7 +202,9 @@ function TabletHome() {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+        {/* Two up on a phone (the tiles are square, so one per row would put
+            Rota below the fold), three across on the tablet itself. */}
+        <div style={{ display: 'grid', gridTemplateColumns: narrow ? '1fr 1fr' : 'repeat(auto-fit, minmax(200px, 1fr))', gap: narrow ? '0.6rem' : '1rem' }}>
           {TILES.map((t) => (
             <Tile key={t.key} label={t.label} desc={t.desc} icon={t.icon} accent={t.accent} onClick={() => navigate(t.to)} />
           ))}
@@ -173,10 +220,12 @@ function TabletHome() {
   // ---- Locked: the name cards ----
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-      <h1 style={{ margin: '0.25rem 0 0.25rem', fontSize: '1.6rem', color: colors.textPrimary }}>
+      {/* On a phone the heading gives up most of its height to the cards —
+          it's the same information either way, and the cards are the point. */}
+      <h1 style={{ margin: narrow ? '0 0 0.1rem' : '0.25rem 0 0.25rem', fontSize: narrow ? '1.1rem' : '1.6rem', color: colors.textPrimary }}>
         {pubName || 'Staff'}
       </h1>
-      <p style={{ margin: '0 0 1.5rem', color: colors.textSecondary, fontSize: '0.95rem' }}>
+      <p style={{ margin: narrow ? '0 0 0.6rem' : '0 0 1.5rem', color: colors.textSecondary, fontSize: narrow ? '0.8rem' : '0.95rem' }}>
         Tap your name to clock in, log wastage or check the rota.
       </p>
 
@@ -191,7 +240,15 @@ function TabletHome() {
           Nobody on the rota yet — add staff in Admin → Account.
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '1rem' }}>
+        <div
+          ref={gridRef}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: fit ? `repeat(${fit.cols}, 1fr)` : 'repeat(auto-fill, minmax(190px, 1fr))',
+            gap: fit ? `${fit.gap}px` : '1rem',
+            alignContent: 'start',
+          }}
+        >
           {people.map((m) => {
             const on = onClockByMember.get(m.id);
             return (
@@ -200,29 +257,51 @@ function TabletHome() {
                 type="button"
                 onClick={() => setPicked(m)}
                 style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem',
-                  padding: '1.4rem 1rem', borderRadius: '18px',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: fit ? '0.25rem' : '0.6rem',
+                  height: fit ? `${fit.cardH}px` : undefined,
+                  padding: fit ? '0.35rem' : '1.4rem 1rem',
+                  borderRadius: fit ? '12px' : '18px',
                   border: `1px solid ${on ? colors.success : colors.borderLight}`,
                   backgroundColor: colors.bgCard,
                   boxShadow: `0 2px 12px ${colors.shadow}`,
+                  overflow: 'hidden',
                   cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
                 }}
               >
                 <span style={{
-                  width: '64px', height: '64px', borderRadius: '50%',
+                  position: 'relative', flexShrink: 0,
+                  width: `${avatarPx}px`, height: `${avatarPx}px`, borderRadius: '50%',
                   backgroundColor: on ? colors.success : colors.primary, color: colors.onPrimary,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.4rem', fontWeight: 800,
+                  fontSize: `${Math.max(0.65, avatarPx / 46)}rem`, fontWeight: 800,
                 }}>
                   {initialsOf(m.displayName)}
+                  {/* Too tight for a line of text: the dot carries "on the
+                      clock" on its own, in the same green as the card border. */}
+                  {on && !showStatusText && (
+                    <span style={{
+                      position: 'absolute', right: '-1px', bottom: '-1px',
+                      width: '10px', height: '10px', borderRadius: '50%',
+                      backgroundColor: colors.success, border: `2px solid ${colors.bgCard}`,
+                    }} />
+                  )}
                 </span>
-                <span style={{ fontSize: '1.05rem', fontWeight: 700, color: colors.textPrimary, textAlign: 'center', overflowWrap: 'anywhere' }}>
+                <span style={{
+                  fontSize: namePx, fontWeight: 700, color: colors.textPrimary, textAlign: 'center',
+                  lineHeight: 1.15, overflow: 'hidden', overflowWrap: 'anywhere',
+                  // Two lines maximum, so one long name can't push a whole row
+                  // of cards out of shape.
+                  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                }}>
                   {m.displayName}
                 </span>
-                <span style={{ fontSize: '0.78rem', color: on ? colors.success : colors.textMuted, fontWeight: on ? 700 : 500, minHeight: '1.1em', textAlign: 'center' }}>
-                  {on ? `On since ${formatClock(effectiveClockIn(on))}`
-                    : m.hasPin ? '' : 'Tap to set your PIN'}
-                </span>
+                {showStatusText && (
+                  <span style={{ fontSize: fit ? '0.66rem' : '0.78rem', color: on ? colors.success : colors.textMuted, fontWeight: on ? 700 : 500, minHeight: '1.1em', textAlign: 'center', lineHeight: 1.1 }}>
+                    {on ? `On since ${formatClock(effectiveClockIn(on))}`
+                      : m.hasPin ? '' : 'Tap to set your PIN'}
+                  </span>
+                )}
               </button>
             );
           })}

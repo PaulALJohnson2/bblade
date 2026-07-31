@@ -52,10 +52,11 @@ const AuthContext = createContext({});
 export const useAuth = () => useContext(AuthContext);
 
 // How long a PIN-unlocked tablet session survives with nobody touching it.
-// Short on purpose: behind a bar you put the tablet down mid-task constantly,
-// and the next person to pick it up must not still be you. The timer restarts
-// on any touch, so it only bites once you've genuinely walked away.
-const TABLET_IDLE_MS = 25 * 1000;
+// Behind a bar the tablet gets put down mid-task constantly, and the next
+// person to pick it up must not still be you — but a minute leaves room to
+// finish a wastage entry after a pause. The timer restarts on any touch, so it
+// only bites once you've genuinely walked away.
+const TABLET_IDLE_MS = 60 * 1000;
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
