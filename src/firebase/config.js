@@ -44,9 +44,13 @@ const db = initializeFirestore(app, {
 // Authentication — email + password sign-in.
 const auth = getAuth(app);
 
-// Callable Cloud Functions (default region us-central1, matching the deployed
-// functions) — password self-service and manager password resets.
-const functions = getFunctions(app);
+// Callable Cloud Functions — password self-service, manager resets, tablet
+// PINs. Pinned to europe-west2 because that's where the callables now run,
+// beside the database and the pub: on the default (us-central1) every read
+// inside a call was a transatlantic round trip. The two auth blocking
+// functions stay in us-central1 — Identity Platform allows nowhere else — but
+// nothing here calls those directly.
+const functions = getFunctions(app, 'europe-west2');
 
 // Analytics — only initialised in supported (browser) environments so it never
 // breaks local dev or the build. Safe to ignore the returned promise.

@@ -33,6 +33,7 @@
  * pre-claims sign-in path only.
  */
 
+const { setGlobalOptions } = require('firebase-functions/v2');
 const { beforeUserCreated, beforeUserSignedIn, HttpsError } = require('firebase-functions/v2/identity');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError: CallableError } = require('firebase-functions/v2/https');
@@ -41,6 +42,19 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { randomBytes, scryptSync, timingSafeEqual } = require('node:crypto');
 const logger = require('firebase-functions/logger');
+
+// Everything runs beside the data. The database is in europe-west2 (London),
+// and these functions were in us-central1 — so every read inside a callable was
+// a transatlantic round trip, and the ones that make three of them took whole
+// seconds. The pub is in London too, so the caller's hop shortens as well.
+//
+// The exception below is not a choice: Identity Platform only runs blocking
+// functions in us-central1, so gateUserSignIn and gateUserCreation are pinned
+// there explicitly (they'd otherwise inherit this default and fail to deploy).
+// They do at most one Firestore read, on sign-in, so the cost lands in the
+// right place.
+const BLOCKING_REGION = 'us-central1';
+setGlobalOptions({ region: 'europe-west2' });
 
 initializeApp();
 const db = getFirestore();
@@ -193,7 +207,7 @@ async function resolveMemberAccess(email) {
 
 const DENIED = 'This email is not authorised for BBlade. Ask an administrator to add you.';
 
-exports.gateUserSignIn = beforeUserSignedIn(async (event) => {
+exports.gateUserSignIn = beforeUserSignedIn({ region: BLOCKING_REGION }, async (event) => {
   const email = normEmail(event.data && event.data.email);
 
   if (await isSuperAdmin(email)) {
@@ -235,7 +249,7 @@ exports.gateUserSignIn = beforeUserSignedIn(async (event) => {
 // Defence in depth only: project-wide "Prevent create (sign-up)" already blocks
 // client-driven account creation before this runs (Admin SDK creation skips
 // blocking functions entirely). Enforces the same rule if that toggle is off.
-exports.gateUserCreation = beforeUserCreated(async (event) => {
+exports.gateUserCreation = beforeUserCreated({ region: BLOCKING_REGION }, async (event) => {
   const email = normEmail(event.data && event.data.email);
   if (await isSuperAdmin(email)) return;
   const { allowed } = await resolveMemberAccess(email);
@@ -254,14 +268,19 @@ exports.gateUserCreation = beforeUserCreated(async (event) => {
  */
 async function resolveTargetAccount(request, requested) {
   const claimAccount = request.auth.token.accountId || ACCOUNT_ID;
+  const asked = String(requested || '').trim();
+  // Fast path, and the only one that matters for the bar tablet: the caller is
+  // asking about their own account (or hasn't said), so the answer is the same
+  // whoever they are. Checking for super-admin here would cost a read of
+  // platform/config on every single call — which is a round trip to another
+  // continent's worth of latency for a question with a foregone answer.
+  if (!asked || asked === claimAccount) return claimAccount;
   const platform = request.auth.token.platformAdmin === true
     || (await isSuperAdmin(request.auth.token.email));
-  const asked = String(requested || '').trim();
-  if (platform) return asked || claimAccount;
-  if (asked && asked !== claimAccount) {
+  if (!platform) {
     throw new CallableError('permission-denied', 'That member is not in your account.');
   }
-  return claimAccount;
+  return asked;
 }
 
 /** Clear the initial-password flag + stored value on the member(s) for an email. */
@@ -364,12 +383,23 @@ function pinMatches(pin, secret) {
   return candidate.length === stored.length && timingSafeEqual(candidate, stored);
 }
 
-/** The member being acted on, in the caller's own account. Throws if unknown. */
-async function requireMember(request, data) {
+/** Who is being acted on, and where — no reads on the common path. */
+async function pinTarget(request, data) {
   if (!request.auth) throw new CallableError('unauthenticated', 'Sign in first.');
   const memberId = String((data && data.memberId) || '').trim();
   if (!memberId) throw new CallableError('invalid-argument', 'memberId is required.');
   const accountId = await resolveTargetAccount(request, data && data.accountId);
+  return { accountId, memberId };
+}
+
+/**
+ * As above, plus the member document — for the calls that actually need it
+ * (setting and clearing a PIN both write to it). Kept off the verify path: a
+ * PIN check needs the secret and nothing else, and this is the one call that
+ * happens with somebody standing there waiting for it.
+ */
+async function requireMember(request, data) {
+  const { accountId, memberId } = await pinTarget(request, data);
   const snap = await memberRef(accountId, memberId).get();
   if (!snap.exists) throw new CallableError('not-found', 'That person is no longer on the staff list.');
   return { accountId, memberId, member: snap.data() || {} };
@@ -388,21 +418,32 @@ const isManagerCaller = async (request) => request.auth.token.role === 'owner'
 exports.setStaffPin = onCall(async (request) => {
   const pin = String((request.data && request.data.pin) || '');
   if (!PIN_RE.test(pin)) throw new CallableError('invalid-argument', 'A PIN is 4 digits.');
-  const { accountId, memberId, member } = await requireMember(request, request.data);
+  const { accountId, memberId } = await pinTarget(request, request.data);
 
+  // Both reads at once, then both writes at once — they don't depend on each
+  // other, and each round trip is a real fraction of the wait at the pad.
   const ref = secretRef(accountId, memberId);
-  if ((await ref.get()).exists) {
+  const [memberSnap, secretSnap] = await Promise.all([
+    memberRef(accountId, memberId).get(),
+    ref.get(),
+  ]);
+  if (!memberSnap.exists) {
+    throw new CallableError('not-found', 'That person is no longer on the staff list.');
+  }
+  if (secretSnap.exists) {
     throw new CallableError('already-exists', 'That person already has a PIN. A manager can reset it.');
   }
-  await ref.set({
-    ...hashPin(pin),
-    attempts: 0,
-    lockedUntil: null,
-    setAt: FieldValue.serverTimestamp(),
-    setByUid: request.auth.uid,
-  });
-  await memberRef(accountId, memberId).update({ hasPin: true });
-  logger.info(`PIN set for member ${memberId} (${member.displayName || '?'}) by ${request.auth.token.email || request.auth.uid}`);
+  await Promise.all([
+    ref.set({
+      ...hashPin(pin),
+      attempts: 0,
+      lockedUntil: null,
+      setAt: FieldValue.serverTimestamp(),
+      setByUid: request.auth.uid,
+    }),
+    memberRef(accountId, memberId).update({ hasPin: true }),
+  ]);
+  logger.info(`PIN set for member ${memberId} (${(memberSnap.data() || {}).displayName || '?'}) by ${request.auth.token.email || request.auth.uid}`);
   return { success: true };
 });
 
@@ -412,8 +453,11 @@ exports.setStaffPin = onCall(async (request) => {
  */
 exports.verifyStaffPin = onCall(async (request) => {
   const pin = String((request.data && request.data.pin) || '');
-  const { accountId, memberId } = await requireMember(request, request.data);
+  const { accountId, memberId } = await pinTarget(request, request.data);
 
+  // One read, then the hash. A member who has been removed has no secret left
+  // (syncMemberAuth deletes it), so this also covers "no longer on the staff
+  // list" without a second lookup to prove it.
   const ref = secretRef(accountId, memberId);
   const snap = await ref.get();
   if (!snap.exists) throw new CallableError('failed-precondition', 'No PIN set yet.');
@@ -455,8 +499,10 @@ exports.resetStaffPin = onCall(async (request) => {
     throw new CallableError('permission-denied', 'Only managers can reset a PIN.');
   }
   const { accountId, memberId, member } = await requireMember(request, request.data);
-  await secretRef(accountId, memberId).delete();
-  await memberRef(accountId, memberId).update({ hasPin: FieldValue.delete() });
+  await Promise.all([
+    secretRef(accountId, memberId).delete(),
+    memberRef(accountId, memberId).update({ hasPin: FieldValue.delete() }),
+  ]);
   logger.info(`PIN reset for member ${memberId} (${member.displayName || '?'}) by ${request.auth.token.email}`);
   return { success: true };
 });
