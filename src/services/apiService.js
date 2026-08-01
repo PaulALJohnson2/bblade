@@ -127,6 +127,10 @@ export {
   subscribeToRotaSettings,
   saveRotaSettings,
 
+  // Bar tablet (PIN on/off)
+  subscribeToTabletSettings,
+  saveTabletSettings,
+
   // Annual leave
   subscribeToLeaveRequests,
   requestLeave,

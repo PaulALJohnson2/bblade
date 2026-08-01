@@ -17,7 +17,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeToShifts } from '../services/apiService';
+import { subscribeToShifts, subscribeToTabletSettings } from '../services/apiService';
 import { getThemeColors } from '../utils/theme';
 import { formatClock, effectiveClockIn } from '../utils/shiftUtils';
 import useTheme from '../hooks/useTheme';
@@ -53,6 +53,15 @@ function TabletHome() {
     if (!selectedPub?.path) return undefined;
     const unsub = subscribeToShifts(selectedPub.path, setShifts, () => {});
     return () => unsub();
+  }, [selectedPub?.path]);
+
+  // Whether tapping a name asks for a PIN (Admin → Account → Tablet PIN,
+  // owners only). Defaults to on: if the setting can't be read for any reason,
+  // the tablet asks rather than waving everyone through.
+  const [requirePin, setRequirePin] = useState(true);
+  useEffect(() => {
+    if (!selectedPub?.path) return undefined;
+    return subscribeToTabletSettings(selectedPub.path, (s) => setRequirePin(s?.requirePin !== false), () => {});
   }, [selectedPub?.path]);
 
   const onClockByMember = useMemo(() => {
@@ -255,7 +264,8 @@ function TabletHome() {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setPicked(m)}
+                // PINs off: the tap IS the sign-in. Straight through, no pad.
+                onClick={() => (requirePin ? setPicked(m) : beginTabletSession(m))}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                   gap: fit ? '0.25rem' : '0.6rem',
@@ -299,7 +309,7 @@ function TabletHome() {
                 {showStatusText && (
                   <span style={{ fontSize: fit ? '0.66rem' : '0.78rem', color: on ? colors.success : colors.textMuted, fontWeight: on ? 700 : 500, minHeight: '1.1em', textAlign: 'center', lineHeight: 1.1 }}>
                     {on ? `On since ${formatClock(effectiveClockIn(on))}`
-                      : m.hasPin ? '' : 'Tap to set your PIN'}
+                      : (requirePin && !m.hasPin) ? 'Tap to set your PIN' : ''}
                   </span>
                 )}
               </button>

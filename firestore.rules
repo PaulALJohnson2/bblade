@@ -34,6 +34,13 @@ service cloud.firestore {
       return platformAdmin()
         || (member(accountId) && request.auth.token.role in ['owner', 'manager']);
     }
+    // The account's owners. Narrower than manager() and used only where a
+    // setting weakens a control rather than configuring one — turning the
+    // tablet's PINs off is the owner's call, not a shift manager's.
+    function owner(accountId) {
+      return platformAdmin()
+        || (member(accountId) && request.auth.token.role == 'owner');
+    }
     // A shared bar tablet (a member with the "Tablet account" tick). It stays
     // signed in all night where anyone can reach it, and the person using it is
     // established by a PIN in the app rather than by the login — so it's held
@@ -153,6 +160,14 @@ service cloud.firestore {
         match /rotaPrefs/{docId} {
           allow read: if member(accountId);
           allow write: if manager(accountId);
+        }
+        // Bar tablet settings. Every member reads it (the tablet is signed in
+        // as one), but only an owner may change it: `requirePin: false` lets
+        // anyone tap any name and act as them, which is a decision about how
+        // much the pub's own records are worth, not a shift-level setting.
+        match /tabletPrefs/{docId} {
+          allow read: if member(accountId);
+          allow write: if owner(accountId);
         }
 
         // ---- owner/manager features ----

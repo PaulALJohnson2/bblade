@@ -2255,6 +2255,37 @@ export async function saveRotaSettings(venuePath, patch) {
   }
 }
 
+// ---- Bar tablet settings ({venuePath}/tabletPrefs/settings) ----
+// Kept apart from rotaPrefs because it isn't a rota preference and because it
+// is owner-only to change (see the rules): switching PINs off removes the only
+// thing tying what the tablet records to the person who did it.
+
+/** Live bar-tablet settings (e.g. { requirePin: false }). */
+export function subscribeToTabletSettings(venuePath, onData, onError) {
+  const ref = doc(db, `${venuePath}/tabletPrefs/settings`);
+  return onSnapshot(
+    ref,
+    (snap) => onData(snap.exists() ? (snap.data() || {}) : {}),
+    (error) => {
+      console.error('Error in tablet settings listener:', error);
+      if (onError) onError(error.message);
+    }
+  );
+}
+
+/** Persist bar-tablet settings (merged, so callers pass only what changed). */
+export async function saveTabletSettings(venuePath, patch) {
+  try {
+    const { accountId, venueId } = idsFromVenuePath(venuePath);
+    const ref = doc(db, `${venuePath}/tabletPrefs/settings`);
+    await setDoc(ref, { accountId, venueId, ...patch, updatedAt: Timestamp.now() }, { merge: true });
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving tablet settings:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 /** Record one use of a start–end shift pattern (increments its counter). */
 export async function bumpShiftPattern(venuePath, start, end) {
   try {

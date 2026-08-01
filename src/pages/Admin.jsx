@@ -22,7 +22,7 @@ import WastageReport from '../components/WastageReport';
 import Timesheets from '../components/Timesheets';
 import Requests from '../components/Requests';
 import Tile from '../components/Tile';
-import { subscribeToLeaveRequests, subscribeToShiftRequests, subscribeToRotaSettings, saveRotaSettings } from '../services/apiService';
+import { subscribeToLeaveRequests, subscribeToShiftRequests, subscribeToRotaSettings, saveRotaSettings, subscribeToTabletSettings, saveTabletSettings } from '../services/apiService';
 import { DAY_KEYS, fmtClock, normaliseCloseEnds, summariseCloseEnds } from '../utils/rota';
 
 const ROLES = ['owner', 'manager', 'staff'];
@@ -78,7 +78,7 @@ const DEPARTMENTS = [
 const departmentLabel = (d) => (DEPARTMENTS.find(([k]) => k === d) || DEPARTMENTS[0])[1];
 
 function Admin() {
-  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, resetStaffPin, selectedPub, isAdmin, userProfile, currentMember } = useAuth();
+  const { pubName, members, saveVenue, saveMember, deleteMember, resetMemberPassword, resetStaffPin, selectedPub, isAdmin, isSuperAdmin, userProfile, currentMember } = useAuth();
   const [resettingId, setResettingId] = useState(null);
 
   const handleResetPassword = async (member) => {
@@ -165,6 +165,27 @@ function Admin() {
   const applyToAllDays = (value) => saveCloseEnds(
     Object.fromEntries(DAY_KEYS.map((k) => [k, value || null])),
   );
+
+  // Bar tablet: whether tapping a name asks for a PIN. Every admin sees the
+  // state; only an owner may change it (the rules say so too).
+  const [requirePin, setRequirePin] = useState(true);
+  const [pinToggleBusy, setPinToggleBusy] = useState(false);
+  useEffect(() => {
+    if (!selectedPub?.path) return undefined;
+    return subscribeToTabletSettings(selectedPub.path, (s) => setRequirePin(s?.requirePin !== false), () => {});
+  }, [selectedPub?.path]);
+
+  const toggleRequirePin = async (next) => {
+    setPinToggleBusy(true);
+    setRequirePin(next); // optimistic; the subscription confirms it
+    setError(null);
+    const res = await saveTabletSettings(selectedPub.path, { requirePin: next });
+    setPinToggleBusy(false);
+    if (!res.success) {
+      setRequirePin(!next);
+      setError('Could not change the PIN setting: ' + res.error);
+    }
+  };
 
   // Live request lists — shared by the tile badge and the Requests section,
   // so the number on the tile can never disagree with the queue behind it.
@@ -368,6 +389,9 @@ function Admin() {
   };
 
   const admin = !!(isAdmin && isAdmin());
+  // Owners only — the PIN switch below weakens a control rather than
+  // configuring one, so a shift manager can see the state but not flip it.
+  const ownerOnly = !!(isSuperAdmin && isSuperAdmin());
 
   // Admin section is owner/manager only — non-admins can't reach it at all.
   if (!admin) return <Navigate to="/" replace />;
@@ -710,6 +734,56 @@ function Admin() {
         )}
       </div>
 
+      {/* Bar tablet PINs. Off, the tablet is a list of names anyone can tap —
+          quicker on a busy night, but nothing then separates "Sarah clocked
+          in" from "someone tapped Sarah". Owners only, and the wording says
+          what it costs rather than just what it does. */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: colors.textPrimary }}>Tablet PIN</h2>
+            <p style={{ margin: 0, color: colors.textSecondary, fontSize: '0.85rem', lineHeight: 1.45 }}>
+              {requirePin ? (
+                <>
+                  On: tapping a name on the bar tablet asks for that person&apos;s 4-digit
+                  PIN, so clock-ins and wastage can only be logged by the person they
+                  name. They set their own the first time they use it.
+                </>
+              ) : (
+                <>
+                  <strong style={{ color: colors.warning }}>Off:</strong> anyone can tap any
+                  name on the bar tablet and act as them — clock them in, log wastage
+                  against them. Quicker, but the tablet&apos;s records no longer prove who
+                  did what. PINs already set are kept, ready for if you switch it back on.
+                </>
+              )}
+            </p>
+            {!ownerOnly && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: colors.textMuted }}>
+                Only an owner can change this.
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => ownerOnly && !pinToggleBusy && toggleRequirePin(!requirePin)}
+            role="switch"
+            aria-checked={requirePin}
+            aria-label="Require a PIN on the bar tablet"
+            disabled={!ownerOnly || pinToggleBusy}
+            style={{
+              width: '52px', height: '30px', borderRadius: '9999px', border: 'none', flexShrink: 0,
+              cursor: ownerOnly && !pinToggleBusy ? 'pointer' : 'not-allowed',
+              opacity: ownerOnly ? 1 : 0.5,
+              padding: '3px', backgroundColor: requirePin ? colors.primary : colors.border,
+              display: 'flex', justifyContent: requirePin ? 'flex-end' : 'flex-start',
+              transition: 'background-color 0.15s',
+            }}
+          >
+            <span style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: requirePin ? colors.onPrimary : '#fff', boxShadow: `0 1px 3px ${colors.shadow}` }} />
+          </button>
+        </div>
+      </div>
+
       {/* Staff (members) */}
       <div style={card}>
         <h2 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: colors.textPrimary }}>Staff</h2>
@@ -942,7 +1016,7 @@ function Admin() {
                       {/* Tablet PIN. Only offered to people (a tablet has no
                           PIN of its own) and only once one is set — until then
                           the state below says so, and there's nothing to clear. */}
-                      {!member.isTablet && member.hasPin && (
+                      {!member.isTablet && member.hasPin && requirePin && (
                         <button
                           onClick={() => handleResetPin(member)}
                           disabled={pinResettingId === member.id}
@@ -961,7 +1035,9 @@ function Admin() {
                       )}
                     </div>
                   </div>
-                  {!member.isTablet && (
+                  {/* Nothing to say about PINs while the tablet isn't asking
+                      for them — the switch above is where that story lives. */}
+                  {!member.isTablet && requirePin && (
                     <div style={{ marginTop: '0.15rem', fontSize: '0.76rem', color: member.hasPin ? colors.textSecondary : colors.textMuted }}>
                       {member.hasPin
                         ? 'Tablet PIN set'
